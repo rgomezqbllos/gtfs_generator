@@ -6,8 +6,8 @@
   "scripts": {
     "dev": "tsx watch src/server.ts",
     "db:view": "sqlite3 gtfs.db",
-    "osrm:setup": "npx ts-node scripts/osrm_manager.ts",
-    "build": "tsc",
+    "osrm:setup": "tsx scripts/osrm_manager.ts",
+    "build": "tsc -p tsconfig.build.json",
     "start": "node dist/server.js",
     "test": "echo \"Error: no test specified\" && exit 1"
   },
