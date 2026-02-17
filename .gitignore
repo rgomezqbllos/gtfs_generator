@@ -1,0 +1,29 @@
+# Dependencies
+node_modules/
+
+# Build outputs
+dist/
+build/
+
+# Database
+*.db
+*.db-shm
+*.db-wal
+*.sqlite
+
+# Environment variables
+.env
+.env.local
+
+# System
+.DS_Store
+.base_ref
+.ref
+
+# OSRM Data (Large files)
+server/osrm-data/
+
+# Logs
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*

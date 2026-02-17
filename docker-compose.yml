@@ -1,0 +1,10 @@
+version: '3.8'
+services:
+  app:
+    build: .
+    ports:
+      - "3000:3000"
+    volumes:
+      - ./gtfs_data:/app/gtfs_data
+    environment:
+      - DB_PATH=/app/gtfs_data/gtfs.db
