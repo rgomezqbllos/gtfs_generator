@@ -11,7 +11,9 @@ import calendarRoutes from './routes/calendar';
 import tripsRoutes from './routes/trips';
 import agencyRoutes from './routes/agency';
 import mapsRoutes from './routes/maps';
+import importRoutes from './routes/import';
 import fastifyStatic from '@fastify/static';
+import fastifyMultipart from '@fastify/multipart';
 import path from 'path';
 
 const server = Fastify({
@@ -23,6 +25,13 @@ server.register(cors, {
     methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
     allowedHeaders: ['Content-Type', 'Authorization'],
     exposedHeaders: ['Content-Disposition']
+});
+
+// Register Multipart for file uploads (50MB limit)
+server.register(fastifyMultipart, {
+    limits: {
+        fileSize: 50 * 1024 * 1024 // 50MB
+    }
 });
 
 // Serve static files (Frontend)
@@ -40,6 +49,7 @@ server.register(calendarRoutes, { prefix: '/api' });
 server.register(tripsRoutes, { prefix: '/api' });
 server.register(agencyRoutes, { prefix: '/api' });
 server.register(mapsRoutes, { prefix: '/api' });
+server.register(importRoutes, { prefix: '/api' });
 
 // Initialize DB
 try {

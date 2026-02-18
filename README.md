@@ -12,6 +12,17 @@ Una herramienta web completa para generar, editar y exportar archivos GTFS (Gene
 *   **Gestión de Rutas**:
     *   Editor visual de recorridos (unir segmentos).
     *   Soporte para múltiples agencias y tipos de ruta.
+*   **Importación Avanzada GTFS**:
+    *   **Selección Granular**: Elige qué Agencias, Rutas y Servicios importar.
+    *   **Filtrado Estricto**: Solo importa paradas y segmentos utilizados, optimizando la base de datos.
+    *   **Cálculo de Tiempos**: Estima tiempos de viaje automáticamente basado en datos GTFS y geometría.
+*   **Editor de Horarios (Timetable)**:
+    *   **Alertas de Duplicados**: Detecta visualmente viajes superpuestos.
+    *   **Edición Manual Rápida**: Click derecho para "Saltar Parada" (Skip) o "Restaurar Tiempo" (Auto-cálculo).
+    *   **Generación Automática**: Crea viajes masivos basados en frecuencia y tiempo de viaje.
+*   **Optimización de Rendimiento**:
+    *   **Renderizado WebGL**: Mapa optimizado capaz de visualizar miles de paradas a 60FPS.
+    *   **Importación por Streaming**: Procesa archivos GTFS grandes sin saturar la memoria.
 *   **Tipos de Parada Personalizados**: Soporte visual para paradas regulares, estaciones, parkings, etc.
 *   **Persistencia Local**: Base de datos SQLite local (`gtfs.db`) que guarda todo tu progreso.
 *   **Exportación GTFS**: Genera archivos `.zip` válidos y compatibles con el estándar GTFS.

@@ -10,16 +10,19 @@ import {
     CalendarDays,
     Sun,
     Moon,
-    Download
+    Download,
+    Upload
 } from 'lucide-react';
 import { clsx } from 'clsx';
 import ExportModal from '../ExportModal';
+import ImportModal from '../ImportModal';
 import { useEditor } from '../../context/EditorContext';
 import { useTheme } from '../../context/ThemeContext';
 
 const Sidebar: React.FC = () => {
     const { mode, setMode, activePanel, setActivePanel } = useEditor();
     const [isExportOpen, setIsExportOpen] = React.useState(false);
+    const [isImportOpen, setIsImportOpen] = React.useState(false);
 
     const MENU_ITEMS = [
         {
@@ -125,6 +128,17 @@ const Sidebar: React.FC = () => {
             {/* Theme Toggle */}
             <div className="w-full px-3 mb-2 space-y-2">
                 <button
+                    onClick={() => setIsImportOpen(true)}
+                    className="flex h-12 w-full items-center rounded-lg px-3 text-slate-400 hover:bg-white/10 hover:text-white transition-all duration-200"
+                    title="Import GTFS"
+                >
+                    <Upload size={22} className="shrink-0" />
+                    <span className="ml-4 overflow-hidden whitespace-nowrap opacity-0 transition-opacity duration-300 group-hover:opacity-100 font-medium text-sm">
+                        Import GTFS
+                    </span>
+                </button>
+
+                <button
                     onClick={() => setIsExportOpen(true)}
                     className="flex h-12 w-full items-center rounded-lg px-3 text-slate-400 hover:bg-white/10 hover:text-white transition-all duration-200"
                     title="Export GTFS"
@@ -148,6 +162,7 @@ const Sidebar: React.FC = () => {
             </div>
 
             <ExportModal isOpen={isExportOpen} onClose={() => setIsExportOpen(false)} />
+            <ImportModal isOpen={isImportOpen} onClose={() => setIsImportOpen(false)} />
 
             {/* User Profile Section */}
             <div className="mt-6 flex w-full border-t border-white/10 p-3">

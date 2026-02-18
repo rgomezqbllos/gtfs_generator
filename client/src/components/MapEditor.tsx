@@ -284,8 +284,6 @@ const MapEditor: React.FC = () => {
         // Note: pickingState is already in scope from the component body.
         // But if we use useCallback, we must include it in deps.
 
-
-
         // If picking mode is active
         if (pickingState.isActive && pickingState.type === 'segment') {
             const features = event.features || [];
@@ -299,10 +297,20 @@ const MapEditor: React.FC = () => {
             return; // Stop processing
         }
 
+        // Check for Stops Layer Click FIRST (High Priority)
+        const features = event.features || [];
+        const stopFeature = features.find(f => f.layer.id === 'stops-layer-circle');
+        if (stopFeature && stopFeature.properties) {
+            const stop = stopFeature.properties as Stop;
+            // Must cast properly or ensure properties are correct
+            if (stop.stop_id) {
+                handleStopClick(stop);
+                return;
+            }
+        }
+
         // If we are in path edit mode (activeRoute is set)
         if (activeRoute) {
-
-            const features = event.features || [];
             const segmentFeature = features.find(f => f.layer.id === 'segments-layer');
             if (segmentFeature && segmentFeature.properties) {
                 const seg = segmentFeature.properties as Segment;
@@ -326,11 +334,8 @@ const MapEditor: React.FC = () => {
             return;
         }
 
-        // Check for segment clicks first
+        // Check for segment clicks
         if (mode === 'idle') {
-
-            const features = event.features || [];
-            // Filter for segments layer
             const segmentFeature = features.find(f => f.layer.id === 'segments-layer');
 
             if (segmentFeature && segmentFeature.properties) {
@@ -342,12 +347,11 @@ const MapEditor: React.FC = () => {
                 }
             }
 
-            // If we selected nothing, clear selection
+            // If we selected nothing (and didn't hit a stop above), clear selection
             clearSelection();
         }
 
         if (mode === 'add_stop') {
-
             const { lngLat } = event;
             setNewStopCoords({ lat: lngLat.lat, lon: lngLat.lng });
             setIsCreatingStop(true);
@@ -358,9 +362,7 @@ const MapEditor: React.FC = () => {
     // Segment Creation State
     const [segmentStartNode, setSegmentStartNode] = React.useState<string | null>(null);
 
-    const handleStopClick = async (e: React.MouseEvent, stop: Stop) => {
-        e.stopPropagation();
-
+    const handleStopClick = async (stop: Stop) => {
         // Path Editing Mode
         if (activeRoute) {
             setPathStops(prev => [...prev, stop.stop_id]);
@@ -650,7 +652,7 @@ const MapEditor: React.FC = () => {
                     ]
                 }}
                 onClick={handleMapClick}
-                interactiveLayerIds={['segments-layer']}
+                interactiveLayerIds={['segments-layer', 'stops-layer-circle']}
                 cursor={mode === 'add_stop' ? 'crosshair' : pickingState.isActive ? 'pointer' : 'grab'}
             >
                 {/* Default NavigationControl Removed */}
@@ -713,42 +715,59 @@ const MapEditor: React.FC = () => {
                 </Source>
 
                 {/* Stops Markers */}
-                {displayStops.map(stop => {
-                    // const isSelected = selectedStops.includes(stop.stop_id);
-                    const isViewing = viewingStop?.stop_id === stop.stop_id;
-                    const isSegmentStart = (mode === 'add_segment' || mode === 'add_empty_segment') && segmentStartNode === stop.stop_id;
+                {/* Stops Layer (WebGL) */}
+                {/* Stops Layer (WebGL) */}
+                <Source id="stops-source" type="geojson" data={{
+                    type: 'FeatureCollection',
+                    features: displayStops.map(stop => ({
+                        type: 'Feature',
+                        geometry: { type: 'Point', coordinates: [stop.stop_lon, stop.stop_lat] },
+                        properties: { ...stop }
+                    }))
+                }}>
+                    <Layer
+                        id="stops-layer-circle"
+                        type="circle"
+                        paint={{
+                            'circle-radius': [
+                                'case',
+                                ['==', ['get', 'stop_id'], viewingStop?.stop_id || ''],
+                                8,
+                                6
+                            ],
+                            'circle-color': [
+                                'case',
+                                ['==', ['get', 'node_type'], 'parking'], '#000000',
+                                ['==', ['get', 'stop_id'], viewingStop?.stop_id || ''], '#2563eb', // Blue for selected
+                                '#dc2626' // Red for default
+                            ],
+                            'circle-stroke-width': 2,
+                            'circle-stroke-color': '#ffffff'
+                        }}
+                    />
+                    {/* Optional Symbol Layer for Icons if needed, for now Circle is enough for performance */}
+                </Source>
 
-                    return (
-                        <Marker
-                            key={stop.stop_id}
-                            longitude={stop.stop_lon}
-                            latitude={stop.stop_lat}
-                            anchor="bottom"
-                            draggable={true}
-                            onDragEnd={(e) => handleStopDragEnd(e, stop)}
-                            onClick={(e: unknown) => handleStopClick((e as { originalEvent: React.MouseEvent }).originalEvent, stop)}
-                            style={{ zIndex: isViewing || isSegmentStart ? 50 : 1, ...markerStyle }}
-                        >
-                            <div
-                                className={clsx(
-                                    "cursor-pointer transition-colors duration-200",
-                                    isViewing ? "text-blue-600 scale-125" :
-                                        isSegmentStart ? "text-green-500 scale-125 animate-pulse" :
-                                            "text-red-500 hover:text-red-700"
-                                )}
-                                title={stop.stop_name}
-                            >
-                                {stop.node_type === 'parking' ? (
-                                    <div className="w-6 h-6 bg-black rounded-md flex items-center justify-center text-white font-bold text-sm shadow-sm border border-white/20">
-                                        P
-                                    </div>
-                                ) : (
-                                    <MapPin size={24} fill="currentColor" />
-                                )}
-                            </div>
-                        </Marker>
-                    )
-                })}
+                {/* Draggable Marker ONLY for selected Stop */}
+                {viewingStop && (
+                    <Marker
+                        key={viewingStop.stop_id}
+                        longitude={viewingStop.stop_lon}
+                        latitude={viewingStop.stop_lat}
+                        anchor="bottom"
+                        draggable={true}
+                        onDragEnd={(e) => handleStopDragEnd(e, viewingStop)}
+                        style={{ zIndex: 100, ...markerStyle }}
+                    >
+                        <div className="text-blue-600 scale-125 transition-transform">
+                            {viewingStop.node_type === 'parking' ? (
+                                <div className="w-8 h-8 bg-black rounded-lg flex items-center justify-center text-white font-bold text-lg shadow-md border-2 border-white">P</div>
+                            ) : (
+                                <MapPin size={32} fill="currentColor" />
+                            )}
+                        </div>
+                    </Marker>
+                )}
             </Map>
 
             {/* Side Panels */}

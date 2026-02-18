@@ -45,25 +45,55 @@ export default async function routesRoutes(fastify: FastifyInstance) {
         return route;
     });
 
-    // GET route structure for filtering - OPTIMIZED
+    // GET route structure for filtering - HIGHLY OPTIMIZED
     fastify.get('/routes/structure', async () => {
         try {
-            // 1. Bulk Fetch All Data
+            // 1. Fetch Routes (Lightweight)
             const routes = db.prepare(`
                 SELECT r.route_id, r.route_short_name, r.route_long_name, r.route_color, a.agency_name 
                 FROM routes r
                 LEFT JOIN agency a ON r.agency_id = a.agency_id
             `).all() as any[];
-            const trips = db.prepare('SELECT trip_id, route_id, direction_id FROM trips').all() as any[];
+
+            // 2. Fetch Representative Trips ONLY (One per direction per route)
+            // We use MIN(trip_id) or similar to pick one. 
+            // Ideally we'd pick the "most common" one but for structure visualization, any valid trip works.
+            const trips = db.prepare(`
+                SELECT route_id, direction_id, trip_id 
+                FROM trips 
+                GROUP BY route_id, direction_id
+            `).all() as any[];
+
+            // Create a set of trip_ids to fetch stop_times for
+            const relevantTripIds = trips.map(t => t.trip_id);
+
+            if (relevantTripIds.length === 0) {
+                return routes.map(r => ({ ...r, directions: [] }));
+            }
+
+            // 3. Fetch StopTimes ONLY for relevant trips
+            // SQLite limit on variables is usually 999 or 32000 depending on version. 
+            // If we have 400 routes * 2 directions = 800 trips, it fits in `IN (...)`.
+            // If it exceeds, we might need a temp table or chunking.
+            // For now, let's assume < 900 trips. If more, we can construct the query dynamically or just join?
+            // Actually, JOIN is better:
+            // SELECT st.* FROM stop_times st JOIN (SELECT trip_id FROM trips GROUP BY route_id, direction_id) t ON st.trip_id = t.trip_id
+
             const stopTimes = db.prepare(`
                 SELECT st.trip_id, st.stop_id, s.stop_name, s.stop_code, st.stop_sequence
                 FROM stop_times st
                 JOIN stops s ON st.stop_id = s.stop_id
+                WHERE st.trip_id IN (
+                    SELECT trip_id 
+                    FROM trips 
+                    GROUP BY route_id, direction_id
+                )
                 ORDER BY st.trip_id, st.stop_sequence
             `).all() as any[];
+
             const segments = db.prepare('SELECT segment_id, start_node_id, end_node_id, distance FROM segments').all() as any[];
 
-            // 2. Data Structures for Fast Lookup
+            // 4. Data Structures for Fast Lookup
             const tripsByRoute = new Map<string, any[]>();
             trips.forEach(t => {
                 if (!tripsByRoute.has(t.route_id)) tripsByRoute.set(t.route_id, []);
@@ -76,50 +106,29 @@ export default async function routesRoutes(fastify: FastifyInstance) {
                 stopTimesByTrip.get(st.trip_id)!.push(st);
             });
 
-            // Segment Lookup by Start/End Node (Usage Oriented)
-            // Key: "start-end" -> Segment
             const segmentMap = new Map<string, any>();
             segments.forEach(seg => {
-                // Store both directions in map for easy lookup
-                // Primary direction
                 segmentMap.set(`${seg.start_node_id}-${seg.end_node_id}`, seg);
-
-                // If the segment is bidirectional or we just want to find it regardless of how it was stored
-                // We'll handle the lookup logic in the loop below
             });
 
-
-            // 3. Assemble Structure
+            // 5. Assemble Structure
             const structure = routes.map(route => {
                 const routeTrips = tripsByRoute.get(route.route_id) || [];
-                // Group by direction
-                const directions = [0, 1].map(dirId => {
-                    // Find a representative trip for this direction
-                    const repTrip = routeTrips.find((t: any) => t.direction_id === dirId);
 
-                    if (!repTrip) return null;
-
+                const directions = routeTrips.map((repTrip: any) => {
                     const stops = stopTimesByTrip.get(repTrip.trip_id) || [];
-
-                    // Identify Segments
                     const routeSegments = [];
+
                     for (let i = 0; i < stops.length - 1; i++) {
                         const from = stops[i].stop_id;
                         const to = stops[i + 1].stop_id;
-
-                        // Try exact match first (Respect Direction)
                         let seg = segmentMap.get(`${from}-${to}`);
-
-                        // If not found, try reverse (Shared Segment, e.g. single line representing 2-way street)
-                        if (!seg) {
-                            seg = segmentMap.get(`${to}-${from}`);
-                        }
-
+                        if (!seg) seg = segmentMap.get(`${to}-${from}`);
                         if (seg) routeSegments.push(seg);
                     }
 
                     return {
-                        direction_id: dirId,
+                        direction_id: repTrip.direction_id,
                         stops: stops.map((s: any) => ({
                             stop_id: s.stop_id,
                             stop_name: s.stop_name,
@@ -127,7 +136,7 @@ export default async function routesRoutes(fastify: FastifyInstance) {
                         })),
                         segments: routeSegments
                     };
-                }).filter(Boolean); // Remove nulls (directions with no trips)
+                });
 
                 return {
                     ...route,
@@ -330,11 +339,22 @@ export default async function routesRoutes(fastify: FastifyInstance) {
         const { direction_id } = request.query as { direction_id?: string };
 
         const dir = direction_id ? parseInt(direction_id) : 0;
-        const trip_id = `t_${id}_${dir}`;
+        let trip_id = `t_${id}_${dir}`; // Default pattern trip ID
 
         try {
-            // Get stop times ordered by stop_sequence
-            const stopTimes = db.prepare('SELECT stop_id FROM stop_times WHERE trip_id = ? ORDER BY stop_sequence ASC').all(trip_id) as { stop_id: string }[];
+            // 1. Try to find the specific pattern trip first
+            let stopTimes = db.prepare('SELECT stop_id FROM stop_times WHERE trip_id = ? ORDER BY stop_sequence ASC').all(trip_id) as { stop_id: string }[];
+
+            // 2. If no pattern trip found, look for ANY trip in this route/direction
+            // This supports imported GTFS data where trip_ids are arbitrary
+            if (!stopTimes || stopTimes.length === 0) {
+                const anyTrip = db.prepare('SELECT trip_id FROM trips WHERE route_id = ? AND direction_id = ? LIMIT 1').get(id, dir) as { trip_id: string };
+
+                if (anyTrip) {
+                    trip_id = anyTrip.trip_id;
+                    stopTimes = db.prepare('SELECT stop_id FROM stop_times WHERE trip_id = ? ORDER BY stop_sequence ASC').all(trip_id) as { stop_id: string }[];
+                }
+            }
 
             if (!stopTimes || stopTimes.length === 0) {
                 return { ordered_stop_ids: [] };

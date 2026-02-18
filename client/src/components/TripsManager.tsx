@@ -424,15 +424,86 @@ const TripsManager: React.FC<TripsManagerProps> = ({ route, onClose }) => {
             return timeA.localeCompare(timeB);
         });
 
-    // Scroll to the last edited trip if it exists (and was potentially reordered)
-    useEffect(() => {
-        if (lastEditedTripId) {
-            const element = document.getElementById(`trip-col-${lastEditedTripId}`);
-            if (element) {
-                element.scrollIntoView({ behavior: 'smooth', inline: 'center', block: 'nearest' });
+    // Identify Duplicates (Trips with same start time)
+    const duplicateTripIds = React.useMemo(() => {
+        const timeMap = new Map<string, string[]>();
+        displayedTrips.forEach(t => {
+            const startTime = GetStopTime(t, stops[0]?.stop_id);
+            if (!startTime) return;
+            const existing = timeMap.get(startTime) || [];
+            timeMap.set(startTime, [...existing, t.trip_id]);
+        });
+
+        const duplicates = new Set<string>();
+        timeMap.forEach(ids => {
+            if (ids.length > 1) {
+                ids.forEach(id => duplicates.add(id));
             }
+        });
+        return duplicates;
+    }, [displayedTrips, stops]);
+
+    // --- Context Menu Logic ---
+    const [contextMenu, setContextMenu] = useState<{ x: number, y: number, tripId: string, stopId: string } | null>(null);
+
+    useEffect(() => {
+        const handleClick = () => setContextMenu(null);
+        window.addEventListener('click', handleClick);
+        return () => window.removeEventListener('click', handleClick);
+    }, []);
+
+    const handleContextMenu = (e: React.MouseEvent, tripId: string, stopId: string) => {
+        e.preventDefault();
+        setContextMenu({ x: e.clientX, y: e.clientY, tripId, stopId });
+    };
+
+    const handleClearTime = () => {
+        if (!contextMenu) return;
+        handleStopTimeChange(contextMenu.tripId, contextMenu.stopId, 'arrival', '');
+        setContextMenu(null);
+    };
+
+    const handleRestoreTime = () => {
+        if (!contextMenu) return;
+        const { tripId, stopId } = contextMenu;
+
+        const trip = trips.find(t => t.trip_id === tripId);
+        if (!trip) return;
+
+        const stopIndex = stops.findIndex(s => s.stop_id === stopId);
+        if (stopIndex <= 0) return; // Cannot restore first stop based on previous
+
+        // Find nearest previous stop with time
+        let prevStopIndex = stopIndex - 1;
+        let prevTime = '';
+
+        while (prevStopIndex >= 0) {
+            const t = GetStopTime(trip, stops[prevStopIndex].stop_id);
+            if (t) {
+                prevTime = t;
+                break;
+            }
+            prevStopIndex--;
         }
-    }, [displayedTrips, lastEditedTripId]);
+
+        if (!prevTime) {
+            alert("Cannot restore: No previous time found to calculate from.");
+            return;
+        }
+
+        // Calculate travel time from that previous stop to current
+        let accumulatedSeconds = 0;
+        for (let i = prevStopIndex; i < stopIndex; i++) {
+            const fromId = stops[i].stop_id;
+            const toId = stops[i + 1].stop_id;
+            const seg = segments.find(s => s.start_node_id === fromId && s.end_node_id === toId);
+            accumulatedSeconds += (seg?.travel_time || 0);
+        }
+
+        const newTime = addSeconds(prevTime, accumulatedSeconds);
+        handleStopTimeChange(tripId, stopId, 'arrival', newTime);
+        setContextMenu(null);
+    };
 
     return (
         <div className="fixed inset-0 bg-white dark:bg-gray-900 z-50 flex flex-col animate-in slide-in-from-bottom duration-300">
@@ -569,24 +640,34 @@ const TripsManager: React.FC<TripsManagerProps> = ({ route, onClose }) => {
                                     </th>
 
                                     {/* Trip Columns Headers */}
-                                    {displayedTrips.map((trip) => (
-                                        <th key={trip.trip_id} id={`trip-col-${trip.trip_id}`} className="min-w-[120px] border-b border-r border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800 p-2 relative group">
-                                            <div className="flex flex-col gap-2 items-center">
-                                                <div className="flex justify-between items-center w-full px-2">
-                                                    <span className="text-xs font-mono font-bold text-gray-600 dark:text-gray-300">
-                                                        {trip.trip_id}
-                                                    </span>
-                                                    <button
-                                                        onClick={() => handleDeleteTrip(trip.trip_id)}
-                                                        className="text-gray-400 hover:text-red-500 opacity-0 group-hover:opacity-100 transition-opacity"
-                                                        title="Delete Trip"
-                                                    >
-                                                        <Trash2 size={14} />
-                                                    </button>
+                                    {displayedTrips.map((trip) => {
+                                        const isDuplicate = duplicateTripIds.has(trip.trip_id);
+                                        return (
+                                            <th key={trip.trip_id} id={`trip-col-${trip.trip_id}`} className={clsx(
+                                                "min-w-[120px] border-b border-r border-gray-200 dark:border-gray-700 p-2 relative group",
+                                                isDuplicate ? "bg-red-50 dark:bg-red-900/20" : "bg-gray-50 dark:bg-gray-800"
+                                            )}>
+                                                <div className="flex flex-col gap-2 items-center">
+                                                    <div className="flex justify-between items-center w-full px-2">
+                                                        <span className={clsx(
+                                                            "text-xs font-mono font-bold flex items-center gap-1",
+                                                            isDuplicate ? "text-red-600 dark:text-red-400" : "text-gray-600 dark:text-gray-300"
+                                                        )} title={isDuplicate ? "Duplicate Trip (Same Start Time)" : ""}>
+                                                            {isDuplicate && <AlertCircle size={12} />}
+                                                            {trip.trip_id}
+                                                        </span>
+                                                        <button
+                                                            onClick={() => handleDeleteTrip(trip.trip_id)}
+                                                            className="text-gray-400 hover:text-red-500 opacity-0 group-hover:opacity-100 transition-opacity"
+                                                            title="Delete Trip"
+                                                        >
+                                                            <Trash2 size={14} />
+                                                        </button>
+                                                    </div>
                                                 </div>
-                                            </div>
-                                        </th>
-                                    ))}
+                                            </th>
+                                        )
+                                    })}
 
                                     {/* Add Trip Column Placeholder */}
                                     <th className="min-w-[100px] border-b border-gray-200 dark:border-gray-700 bg-gray-50/50 p-4 text-center">
@@ -620,11 +701,12 @@ const TripsManager: React.FC<TripsManagerProps> = ({ route, onClose }) => {
                                             <td key={`${trip.trip_id}-${stop.stop_id}`} className="border-r border-b border-gray-100 dark:border-gray-700/50 p-1 text-center">
                                                 <input
                                                     type="text"
-                                                    className="w-full text-center py-2 text-sm bg-transparent outline-none focus:bg-blue-50 focus:text-blue-700 font-mono placeholder:text-gray-200 transition-colors text-gray-700 dark:text-gray-300"
+                                                    className="w-full text-center py-2 text-sm bg-transparent outline-none focus:bg-blue-50 focus:text-blue-700 font-mono placeholder:text-gray-200 transition-colors text-gray-700 dark:text-gray-300 cursor-context-menu"
                                                     placeholder="--:--"
                                                     value={GetStopTime(trip, stop.stop_id)}
                                                     onChange={(e) => handleStopTimeChange(trip.trip_id, stop.stop_id, 'arrival', e.target.value)}
                                                     onBlur={(e) => handleStopTimeChange(trip.trip_id, stop.stop_id, 'arrival', formatTimeInput(e.target.value))}
+                                                    onContextMenu={(e) => handleContextMenu(e, trip.trip_id, stop.stop_id)}
                                                 />
                                             </td>
                                         ))}
@@ -638,6 +720,28 @@ const TripsManager: React.FC<TripsManagerProps> = ({ route, onClose }) => {
                     </div>
                 )}
             </div>
+
+            {/* Context Menu */}
+            {contextMenu && (
+                <div
+                    className="fixed bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg shadow-xl z-[100] py-1 min-w-[160px] animate-in fade-in zoom-in-95 duration-100"
+                    style={{ top: contextMenu.y, left: contextMenu.x }}
+                    onClick={(e) => e.stopPropagation()}
+                >
+                    <button
+                        onClick={handleRestoreTime}
+                        className="w-full text-left px-4 py-2 text-sm text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-700 flex items-center gap-2"
+                    >
+                        <Clock size={14} className="text-blue-500" /> Restore Time
+                    </button>
+                    <button
+                        onClick={handleClearTime}
+                        className="w-full text-left px-4 py-2 text-sm text-red-600 hover:bg-red-50 dark:hover:bg-red-900/20 flex items-center gap-2"
+                    >
+                        <Trash2 size={14} /> Clear Time (Skip)
+                    </button>
+                </div>
+            )}
 
             <AutoTripsModal
                 isOpen={isAutoModalOpen}
