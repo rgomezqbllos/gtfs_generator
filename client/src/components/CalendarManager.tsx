@@ -25,7 +25,7 @@ const DAYS = [
     { key: 'sunday', label: 'S' }
 ];
 
-const API_URL = 'http://localhost:3000/api';
+import { API_URL } from '../config';
 
 const CalendarManager: React.FC<{ onClose: () => void }> = ({ onClose }) => {
     const [calendars, setCalendars] = useState<Calendar[]>([]);

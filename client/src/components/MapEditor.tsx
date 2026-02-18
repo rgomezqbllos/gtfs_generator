@@ -1,7 +1,7 @@
 import * as React from 'react';
 import Map, { Marker, type MapLayerMouseEvent, Source, Layer } from 'react-map-gl/maplibre';
 import 'maplibre-gl/dist/maplibre-gl.css';
-import type { Stop, Segment, Route } from '../types';
+import type { Stop, Route } from '../types'; // Removed Segment
 import { MapPin } from 'lucide-react';
 import { clsx } from 'clsx';
 import RouteDetailsPanel from './RouteDetailsPanel';
@@ -19,7 +19,7 @@ import CalendarManager from './CalendarManager';
 import TripsManager from './TripsManager';
 import EmptySegmentsManager from './EmptySegmentsManager';
 
-const API_URL = 'http://localhost:3000/api';
+import { API_URL } from '../config';
 
 const MapEditor: React.FC = () => {
     const { mode, setMode, selectedElementId, selectedElementType, selectElement, clearSelection, activePanel, setActivePanel, pickingState } = useEditor();
@@ -28,7 +28,7 @@ const MapEditor: React.FC = () => {
     const { theme } = useTheme();
 
     const [stops, setStops] = React.useState<Stop[]>([]);
-    const [segments, setSegments] = React.useState<Segment[]>([]);
+    const [segments, setSegments] = React.useState<any[]>([]); // Changed to any[]
 
     // Derived state for selection details
     const viewingStop = React.useMemo(() =>
@@ -38,6 +38,11 @@ const MapEditor: React.FC = () => {
     const viewingSegment = React.useMemo(() =>
         selectedElementType === 'segment' ? segments.find(s => s.segment_id === selectedElementId) || null : null,
         [selectedElementType, selectedElementId, segments]);
+
+    // Segment Creation State - Moved up to avoid ReferenceError
+    const [segmentStartNode, setSegmentStartNode] = React.useState<string | null>(null);
+    const [cursorLoc, setCursorLoc] = React.useState<{ lat: number; lon: number } | null>(null);
+    const [isHovering, setIsHovering] = React.useState(false); // New hover state
 
     // const [selectedStops, setSelectedStops] = React.useState<string[]>([]); // For future connecting nodes feature
     const [loading, setLoading] = React.useState(false);
@@ -70,7 +75,7 @@ const MapEditor: React.FC = () => {
     const [routesStructure, setRoutesStructure] = React.useState<any[]>([]);
     const [activeFilters, setActiveFilters] = React.useState<FilterState | null>(null);
     const [filteredStops, setFilteredStops] = React.useState<Stop[] | null>(null); // null means no filter
-    const [filteredSegments, setFilteredSegments] = React.useState<Segment[] | null>(null);
+    const [filteredSegments, setFilteredSegments] = React.useState<any[] | null>(null);
     const [filterEmpty, setFilterEmpty] = React.useState(false);
 
     const fetchRouteStructure = React.useCallback(async () => {
@@ -83,7 +88,7 @@ const MapEditor: React.FC = () => {
         }
     }, []);
 
-    const applyFilters = React.useCallback((filters: FilterState, allStops: Stop[], allSegments: Segment[], structure: any[]) => {
+    const applyFilters = React.useCallback((filters: FilterState, allStops: Stop[], allSegments: any[], structure: any[]) => {
         // Check if any filter is active
         const hasRouteFilter = filters.selectedRoutes.length > 0;
         const hasDirFilter = filters.selectedDirections.length > 0;
@@ -269,11 +274,13 @@ const MapEditor: React.FC = () => {
                 setIsCreatingStop(false);
                 setNewStopCoords(null);
             } else {
-                alert('Failed to create stop');
+                const errData = await res.json().catch(() => ({}));
+                console.error('Stop creation failed:', res.status, errData);
+                alert(`Failed to create stop: ${errData.error || res.statusText || 'Unknown error'}`);
             }
         } catch (err) {
             console.error(err);
-            alert('Error creating stop');
+            alert(`Error creating stop: ${err instanceof Error ? err.message : 'Network/Code Error'}`);
         }
     };
 
@@ -289,7 +296,7 @@ const MapEditor: React.FC = () => {
             const features = event.features || [];
             const segmentFeature = features.find(f => f.layer.id === 'segments-layer');
             if (segmentFeature && segmentFeature.properties) {
-                const seg = segmentFeature.properties as Segment;
+                const seg = segmentFeature.properties as any;
                 if (seg.segment_id && pickingState.onPick) {
                     pickingState.onPick(seg.segment_id);
                 }
@@ -313,7 +320,7 @@ const MapEditor: React.FC = () => {
         if (activeRoute) {
             const segmentFeature = features.find(f => f.layer.id === 'segments-layer');
             if (segmentFeature && segmentFeature.properties) {
-                const seg = segmentFeature.properties as Segment;
+                const seg = segmentFeature.properties as any;
                 if (!seg.start_node_id || !seg.end_node_id) return;
 
                 const lastStopId = pathStops[pathStops.length - 1];
@@ -339,7 +346,7 @@ const MapEditor: React.FC = () => {
             const segmentFeature = features.find(f => f.layer.id === 'segments-layer');
 
             if (segmentFeature && segmentFeature.properties) {
-                const seg = segmentFeature.properties as Segment;
+                const seg = segmentFeature.properties as any;
                 // Ensure we have the ID to identify it
                 if (seg.segment_id) {
                     selectElement('segment', seg.segment_id);
@@ -357,10 +364,33 @@ const MapEditor: React.FC = () => {
             setIsCreatingStop(true);
             // Do NOT immediately create. Open Modal.
         }
-    }, [mode, pickingState, activeRoute, pathStops, selectElement, clearSelection]);
+    }, [mode, pickingState, activeRoute, pathStops, selectElement, clearSelection, segmentStartNode]);
 
-    // Segment Creation State
-    const [segmentStartNode, setSegmentStartNode] = React.useState<string | null>(null);
+
+
+    const handleMouseMove = React.useCallback((e: MapLayerMouseEvent) => {
+        if (segmentStartNode) {
+            setCursorLoc({ lat: e.lngLat.lat, lon: e.lngLat.lng });
+        }
+    }, [segmentStartNode]);
+
+    const rubberBandGeoJSON = React.useMemo(() => {
+        if (!segmentStartNode || !cursorLoc) return null;
+        const startStop = stops.find(s => s.stop_id === segmentStartNode);
+        if (!startStop) return null;
+
+        return {
+            type: 'Feature',
+            geometry: {
+                type: 'LineString',
+                coordinates: [
+                    [startStop.stop_lon, startStop.stop_lat],
+                    [cursorLoc.lon, cursorLoc.lat]
+                ]
+            },
+            properties: {}
+        } as const;
+    }, [segmentStartNode, cursorLoc, stops]);
 
     const handleStopClick = async (stop: Stop) => {
         // Path Editing Mode
@@ -394,6 +424,7 @@ const MapEditor: React.FC = () => {
                         const newSegment = await res.json();
                         setSegments(prev => [...prev, newSegment]);
                         setSegmentStartNode(null); // Reset to allow next segment
+                        setCursorLoc(null);
                         // Optional: Toast "Segment Created"
                     } else {
                         alert("Failed to create segment");
@@ -476,7 +507,7 @@ const MapEditor: React.FC = () => {
         return;
     };
 
-    const handleSegmentUpdate = (updatedSegment: Segment) => {
+    const handleSegmentUpdate = (updatedSegment: any) => {
         setSegments(prev => prev.map(s => {
             if (s.segment_id === updatedSegment.segment_id) {
                 return { ...s, ...updatedSegment };
@@ -616,6 +647,7 @@ const MapEditor: React.FC = () => {
                 e.preventDefault();
                 setMode('idle');
                 setSegmentStartNode(null);
+                setCursorLoc(null);
             }}
         >
             {/* Map Controls */}
@@ -628,6 +660,7 @@ const MapEditor: React.FC = () => {
             <Map
                 {...viewState}
                 onMove={handleMapMove}
+                onMouseMove={handleMouseMove}
                 onLoad={(evt) => setMapBounds(evt.target.getBounds())}
                 style={mapContainerStyle}
                 mapStyle={{
@@ -651,9 +684,11 @@ const MapEditor: React.FC = () => {
                         }
                     ]
                 }}
+                onMouseEnter={() => setIsHovering(true)}
+                onMouseLeave={() => setIsHovering(false)}
                 onClick={handleMapClick}
                 interactiveLayerIds={['segments-layer', 'stops-layer-circle']}
-                cursor={mode === 'add_stop' ? 'crosshair' : pickingState.isActive ? 'pointer' : 'grab'}
+                cursor={mode === 'add_stop' ? 'crosshair' : (pickingState.isActive || isHovering) ? 'pointer' : 'grab'}
             >
                 {/* Default NavigationControl Removed */}
 
@@ -714,6 +749,23 @@ const MapEditor: React.FC = () => {
                     />
                 </Source>
 
+                {/* Rubber Band Line for Segment Creation */}
+                {rubberBandGeoJSON && (
+                    <Source id="rubber-band-source" type="geojson" data={rubberBandGeoJSON as any}>
+                        <Layer
+                            id="rubber-band-layer"
+                            type="line"
+                            layout={{ 'line-join': 'round', 'line-cap': 'round' }}
+                            paint={{
+                                'line-color': mode === 'add_segment' ? '#4a90e2' : '#64748b',
+                                'line-width': 3,
+                                'line-dasharray': [2, 2],
+                                'line-opacity': 0.7
+                            }}
+                        />
+                    </Source>
+                )}
+
                 {/* Stops Markers */}
                 {/* Stops Layer (WebGL) */}
                 {/* Stops Layer (WebGL) */}
@@ -732,16 +784,23 @@ const MapEditor: React.FC = () => {
                             'circle-radius': [
                                 'case',
                                 ['==', ['get', 'stop_id'], viewingStop?.stop_id || ''],
-                                8,
-                                6
+                                10,
+                                // Larger radius during segment creation for easier clicking
+                                (mode === 'add_segment' || mode === 'add_empty_segment') ? 9 : 6
                             ],
                             'circle-color': [
                                 'case',
                                 ['==', ['get', 'node_type'], 'parking'], '#000000',
                                 ['==', ['get', 'stop_id'], viewingStop?.stop_id || ''], '#2563eb', // Blue for selected
-                                '#dc2626' // Red for default
+                                ['==', ['get', 'stop_id'], segmentStartNode || ''], '#10b981', // Emerald 500 for segment start
+                                // Bright Cyan/Turquoise for available stops during segment creation
+                                (mode === 'add_segment' || mode === 'add_empty_segment') ? '#06b6d4' : '#dc2626'
                             ],
-                            'circle-stroke-width': 2,
+                            'circle-stroke-width': [
+                                'case',
+                                ['==', ['get', 'stop_id'], segmentStartNode || ''], 4,
+                                (mode === 'add_segment' || mode === 'add_empty_segment') ? 3 : 2
+                            ],
                             'circle-stroke-color': '#ffffff'
                         }}
                     />

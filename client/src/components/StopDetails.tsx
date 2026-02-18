@@ -2,6 +2,7 @@ import * as React from 'react';
 import type { Stop } from '../types';
 import { X, Save, Trash2, MapPin } from 'lucide-react';
 import ConfirmModal from './ConfirmModal';
+import { API_URL } from '../config';
 
 interface StopDetailsProps {
     stop: Stop;
@@ -23,7 +24,7 @@ const StopDetails: React.FC<StopDetailsProps> = ({ stop, onClose, onUpdate, onDe
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
         try {
-            const res = await fetch(`http://localhost:3000/api/stops/${stop.stop_id}`, {
+            const res = await fetch(`${API_URL}/stops/${stop.stop_id}`, {
                 method: 'PUT',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify(formData)

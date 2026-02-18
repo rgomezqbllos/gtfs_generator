@@ -13,7 +13,7 @@ interface Agency {
     agency_email?: string;
 }
 
-const API_URL = 'http://localhost:3000/api';
+import { API_URL } from '../config';
 
 const AgencyManager: React.FC = () => {
     const [agencies, setAgencies] = useState<Agency[]>([]);

@@ -510,6 +510,7 @@ async function processGtfsImport(taskId: string, filePath: string, filters: { se
         // Generate Segments for Visualization
         if (finalValidTrips.size > 0 && entries.has('stop_times.txt')) {
             await generateSegments(taskId, finalValidTrips);
+            await analyzeTimeSlots(taskId, finalValidTrips);
         }
 
         const completionTask = importTasks.get(taskId);
@@ -698,8 +699,143 @@ function processStream(stream: Readable, batch: any[], batchSize: number, flush:
     });
 }
 
+
 function timeToSeconds(timeStr: string): number {
     if (!timeStr) return 0;
     const [h, m, s] = timeStr.split(':').map(Number);
     return (h || 0) * 3600 + (m || 0) * 60 + (s || 0);
 }
+
+function secondsToTime(totalSeconds: number): string {
+    const h = Math.floor(totalSeconds / 3600);
+    const m = Math.floor((totalSeconds % 3600) / 60);
+    const s = totalSeconds % 60;
+    const pad = (n: number) => n.toString().padStart(2, '0');
+    return `${pad(h)}:${pad(m)}:${pad(s)}`;
+}
+
+async function analyzeTimeSlots(taskId: string, tripIds: Set<string>) {
+    const updateStatus = (msg: string) => {
+        const task = importTasks.get(taskId);
+        if (task) task.message = msg;
+    };
+
+    updateStatus("Analyzing Segment Time Slots...");
+    console.log(`Analyzing time slots for ${tripIds.size} trips...`);
+
+    const tripIdArray = Array.from(tripIds);
+    if (tripIdArray.length === 0) return;
+
+    // 1. Load Segments Lookup (StartNode-EndNode -> SegmentId)
+    // We need to know which segment corresponds to a stop pair
+    const segments = db.prepare('SELECT segment_id, start_node_id, end_node_id FROM segments').all() as any[];
+    const segmentMap = new Map<string, string>(); // "start-end" -> segment_id
+    segments.forEach(s => {
+        segmentMap.set(`${s.start_node_id}-${s.end_node_id}`, s.segment_id);
+    });
+
+    // 2. Fetch all stop times for these trips
+    // We do this in chunks to avoid variable limit
+    const chunkSize = 500;
+
+    // We will store events per segment: SegmentId -> List of { time: number, duration: number }
+    const segmentEvents = new Map<string, { time: number, duration: number }[]>();
+
+    for (let i = 0; i < tripIdArray.length; i += chunkSize) {
+        const chunk = tripIdArray.slice(i, i + chunkSize);
+        const placeholders = chunk.map(() => '?').join(',');
+
+        const rows = db.prepare(`
+            SELECT st.trip_id, st.stop_id, st.stop_sequence, st.arrival_time, st.departure_time
+            FROM stop_times st
+            WHERE st.trip_id IN (${placeholders})
+            ORDER BY st.trip_id, st.stop_sequence
+        `).all(...chunk) as any[];
+
+        // Group by Trip
+        const tripsMap = new Map<string, any[]>();
+        rows.forEach(r => {
+            if (!tripsMap.has(r.trip_id)) tripsMap.set(r.trip_id, []);
+            tripsMap.get(r.trip_id)!.push(r);
+        });
+
+        // Process Trips
+        for (const [tid, stops] of tripsMap) {
+            for (let j = 0; j < stops.length - 1; j++) {
+                const from = stops[j];
+                const to = stops[j + 1];
+                const key = `${from.stop_id}-${to.stop_id}`;
+                const segId = segmentMap.get(key);
+
+                if (segId && from.departure_time && to.arrival_time) {
+                    const startSec = timeToSeconds(from.departure_time);
+                    const endSec = timeToSeconds(to.arrival_time);
+                    let travelTime = endSec - startSec;
+                    if (travelTime < 0) travelTime = 0; // Should not happen with valid GTFS
+
+                    if (!segmentEvents.has(segId)) {
+                        segmentEvents.set(segId, []);
+                    }
+                    segmentEvents.get(segId)!.push({
+                        time: startSec,
+                        duration: travelTime
+                    });
+                }
+            }
+        }
+    }
+
+    // 3. Generate Slots for each Segment
+    const insertSlot = db.prepare(`
+        INSERT INTO segment_time_slots (id, segment_id, start_time, end_time, travel_time)
+        VALUES (?, ?, ?, ?, ?)
+    `);
+
+    const transaction = db.transaction(() => {
+        for (const [segId, events] of segmentEvents) {
+            if (events.length === 0) continue;
+
+            // Sort by time
+            events.sort((a, b) => a.time - b.time);
+
+            // RLE (Run Length Encoding) logic
+            // We want to group continuous trips with SAME duration.
+            // Using a simple greedy approach:
+            // A slot starts at the time of the first trip in the group.
+            // It ends at the time of the *next* trip that has a DIFFERENT duration (or end of list).
+
+            let currentStart = events[0].time;
+            let currentDuration = events[0].duration;
+
+            for (let k = 1; k < events.length; k++) {
+                const e = events[k];
+                if (e.duration !== currentDuration) {
+                    // Close current slot
+                    // Slot is from currentStart to e.time
+                    insertSlot.run(uuidv4(), segId, secondsToTime(currentStart), secondsToTime(e.time), currentDuration);
+
+                    // Start new slot
+                    currentStart = e.time;
+                    currentDuration = e.duration;
+                }
+            }
+
+            // Close final slot
+            // To what time? The user example said "to the next time where it changes".
+            // Since there is no next change, we can extend it a bit or just cap it at the last trip time.
+            // Let's cap it at last trip time + travel time??
+            // Or just allow it to be valid "forever" (start_time -> 24:00+).
+            // For now, let's just use the last event time as the "start" of the last slot, 
+            // and maybe give it a theoretical generic end like 30 hours?
+            // Actually, if we just set End to currentStart + 1 hour (arbitrary) it might look weird.
+            // Let's set it to the max time found in this specific segment's events + 1 hour to cover stragglers?
+            // Or simpler: just use 30:00:00 (end of operational day usually).
+
+            insertSlot.run(uuidv4(), segId, secondsToTime(currentStart), "36:00:00", currentDuration);
+        }
+    });
+
+    transaction();
+    console.log(`Generated time slots for ${segmentEvents.size} segments.`);
+}
+

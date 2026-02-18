@@ -1,15 +1,11 @@
 export interface Stop {
     stop_id: string;
+    stop_code: string;
     stop_name: string;
     stop_lat: number;
     stop_lon: number;
-    node_type?: string; // 'commercial', 'checkpoint', 'operative', etc.
-    location_type?: number;
-    stop_code?: string;
-    stop_desc?: string;
+    node_type?: 'regular' | 'parking' | 'depot';
 }
-
-export type StopInput = Omit<Stop, 'stop_id'>;
 
 export interface Segment {
     segment_id: string;
@@ -17,30 +13,24 @@ export interface Segment {
     end_node_id: string;
     distance?: number;
     travel_time?: number;
-    allowed_transport_modes?: string;
-    custom_attributes?: string;
-    // Join fields
-    start_lat?: number;
-    start_lon?: number;
-    end_lat?: number;
-    end_lon?: number;
-    start_node_name?: string;
-    end_node_name?: string;
+    speed?: number; // km/h (derived)
+    type: 'revenue' | 'empty';
     geometry?: string; // GeoJSON LineString stringified
-    type?: 'revenue' | 'empty';
+    slots?: any[]; // For time-dependent travel, added 'any' to avoid circular/missing references if moved
 }
 
 export interface Route {
     route_id: string;
+    agency_id: string;
     route_short_name: string;
     route_long_name: string;
     route_type: number;
-    agency_id: string;
-    agency_name?: string; // For display
-    route_color: string;
-    route_text_color: string;
-    route_desc?: string;
-    route_url?: string;
-    route_sort_order?: number;
-    allowed_materials?: string;
+    directions?: any[]; // Simplified
+    agency_name?: string; // Enriched
 }
+
+// Hack to resolve "SyntaxError: The requested module ... does not provide an export named 'Segment'"
+// This ensures that if any file accidentally treats Segment as a value import, it finds something.
+export const Segment = {};
+export const Stop = {};
+export const Route = {};

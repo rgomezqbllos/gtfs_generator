@@ -22,6 +22,7 @@ build/
 
 # OSRM Data (Large files)
 server/osrm-data/
+osrm-data/
 
 # Logs
 npm-debug.log*

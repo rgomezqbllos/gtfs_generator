@@ -12,6 +12,6 @@ console.log("Checking segments count...");
 const segmentsCount = db.prepare("SELECT count(*) as count FROM segments").get() as { count: number };
 console.log("Segments:", segmentsCount.count);
 
-console.log("Checking recent segments...");
-const segments = db.prepare("SELECT * FROM segments LIMIT 5").all();
-console.log(segments);
+console.log("Checking stops schema...");
+const stopsColumns = db.prepare("PRAGMA table_info(stops)").all();
+console.log("Stops Columns:", stopsColumns);

@@ -5,7 +5,8 @@ import { clsx } from 'clsx';
 import Draggable from './UI/Draggable';
 import { useEditor } from '../context/EditorContext';
 
-const API_URL = 'http://localhost:3000/api';
+import { API_URL } from '../config';
+import TimeSlotsManager from './TimeSlotsManager';
 
 interface RouteDetailsPanelProps {
     route: Route;
@@ -32,6 +33,7 @@ const RouteDetailsPanel: React.FC<RouteDetailsPanelProps> = ({ route, onClose, o
     const [allSegments, setAllSegments] = React.useState<Segment[]>([]);
     const [loading, setLoading] = React.useState(true);
     const [isEditing, setIsEditing] = React.useState(false);
+    const [showTimeSlots, setShowTimeSlots] = React.useState(false); // New State
 
     // Add Segment State
     const [isAdding, setIsAdding] = React.useState<'prepend' | 'append' | null>(null);
@@ -459,23 +461,27 @@ const RouteDetailsPanel: React.FC<RouteDetailsPanelProps> = ({ route, onClose, o
                 {/* Tabs */}
                 <div className="flex p-1 bg-gray-200 dark:bg-gray-700/50 rounded-lg">
                     <button
-                        onClick={() => { setActiveTab(0); setIsAdding(null); }}
+                        onClick={() => { if (!isEditing) { setActiveTab(0); setIsAdding(null); } }}
+                        disabled={isEditing}
                         className={clsx(
                             "flex-1 py-2 text-sm font-bold rounded-md transition-all",
                             activeTab === 0
                                 ? "bg-white dark:bg-gray-800 text-blue-600 dark:text-blue-400 shadow-sm"
-                                : "text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-200"
+                                : "text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-200",
+                            isEditing && "opacity-50 cursor-not-allowed"
                         )}
                     >
                         Sentido Ida
                     </button>
                     <button
-                        onClick={() => { setActiveTab(1); setIsAdding(null); }}
+                        onClick={() => { if (!isEditing) { setActiveTab(1); setIsAdding(null); } }}
+                        disabled={isEditing}
                         className={clsx(
                             "flex-1 py-2 text-sm font-bold rounded-md transition-all",
                             activeTab === 1
                                 ? "bg-white dark:bg-gray-800 text-blue-600 dark:text-blue-400 shadow-sm"
-                                : "text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-200"
+                                : "text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-200",
+                            isEditing && "opacity-50 cursor-not-allowed"
                         )}
                     >
                         Sentido Vuelta
@@ -486,16 +492,29 @@ const RouteDetailsPanel: React.FC<RouteDetailsPanelProps> = ({ route, onClose, o
             {/* Actions Bar */}
             <div className="px-6 py-3 bg-white dark:bg-gray-900 border-b border-gray-100 dark:border-gray-800 flex justify-center">
                 <button
-                    onClick={() => { setIsEditing(!isEditing); setIsAdding(null); }}
+                    onClick={() => {
+                        if (isEditing) {
+                            // Cancel / Discard
+                            if (confirm('Discard unsaved changes?')) {
+                                setIsEditing(false);
+                                setIsAdding(null);
+                                fetchData(); // Revert to server state
+                            }
+                        } else {
+                            // Start Editing
+                            setIsEditing(true);
+                            setIsAdding(null);
+                        }
+                    }}
                     className={clsx(
                         "w-full py-2.5 rounded-xl border-2 border-dashed font-bold text-sm flex items-center justify-center gap-2 transition-all",
                         isEditing
-                            ? "border-blue-500 bg-blue-50 text-blue-600 dark:bg-blue-900/20 dark:text-blue-400"
+                            ? "border-red-300 bg-red-50 text-red-600 dark:bg-red-900/20 dark:text-red-400 dark:border-red-800 hover:bg-red-100 dark:hover:bg-red-900/40"
                             : "border-gray-300 dark:border-gray-700 text-gray-500 hover:border-blue-400 hover:text-blue-500"
                     )}
                 >
-                    <Edit2 size={16} />
-                    {isEditing ? 'Done Editing' : 'Edit Direction / Add Segment'}
+                    {isEditing ? <Trash2 size={16} /> : <Edit2 size={16} />}
+                    {isEditing ? 'Discard Changes' : 'Edit Direction / Add Segment'}
                 </button>
             </div>
 
@@ -737,13 +756,28 @@ const RouteDetailsPanel: React.FC<RouteDetailsPanelProps> = ({ route, onClose, o
                     Go to Trips
                 </button>
                 <button
-                    onClick={onOpenCalendar}
+                    onClick={() => setShowTimeSlots(true)}
                     className="flex items-center justify-center gap-2 py-3 rounded-xl border border-gray-200 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-800 text-gray-600 dark:text-gray-300 text-xs font-bold uppercase transition-colors"
+                >
+                    <Clock size={16} />
+                    Go to Times
+                </button>
+                <button
+                    onClick={onOpenCalendar}
+                    className="flex items-center justify-center gap-2 py-3 rounded-xl border border-gray-200 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-800 text-gray-600 dark:text-gray-300 text-xs font-bold uppercase transition-colors col-span-2"
                 >
                     <Calendar size={16} />
                     Go to Calendar
                 </button>
             </div>
+
+            {showTimeSlots && (
+                <TimeSlotsManager
+                    route={route}
+                    onClose={() => setShowTimeSlots(false)}
+                />
+            )}
+
             {isEditing && (
                 <div className="absolute bottom-4 left-4 right-4 animate-in slide-in-from-bottom-2 fade-in">
                     <button

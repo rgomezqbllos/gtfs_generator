@@ -3,6 +3,7 @@ import type { Segment, Stop } from '../types';
 import { Trash2, ArrowRightLeft, Clock, Ruler } from 'lucide-react';
 import ConfirmModal from './ConfirmModal';
 import Draggable from './UI/Draggable';
+import { API_URL } from '../config';
 
 interface SegmentDetailsProps {
     segment: Segment;
@@ -44,7 +45,7 @@ const SegmentDetails: React.FC<SegmentDetailsProps> = ({ segment, stops, onClose
             const finalDistance = Number(distance);
             const finalTimeSeconds = Number(timeMinutes) * 60;
 
-            const res = await fetch(`http://localhost:3000/api/segments/${segment.segment_id}`, {
+            const res = await fetch(`${API_URL}/segments/${segment.segment_id}`, {
                 method: 'PUT',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({

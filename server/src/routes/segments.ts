@@ -178,4 +178,52 @@ export default async function segmentsRoutes(fastify: FastifyInstance) {
 
         return { message: 'Segment deleted' };
     });
+
+    // --- TIME SLOTS ENDPOINTS ---
+
+    // GET slots for a segment
+    fastify.get('/segments/:id/slots', async (request, reply) => {
+        const { id } = request.params as { id: string };
+        const slots = db.prepare('SELECT * FROM segment_time_slots WHERE segment_id = ? ORDER BY start_time').all(id);
+        return slots;
+    });
+
+    // POST (Create) a slot
+    fastify.post('/segments/:id/slots', async (request, reply) => {
+        const { id } = request.params as { id: string };
+        const body = request.body as { start_time: string; end_time: string; travel_time: number };
+        const { start_time, end_time, travel_time } = body;
+
+        if (!start_time || !end_time || travel_time === undefined) {
+            return reply.code(400).send({ error: 'Missing required fields' });
+        }
+
+        // Validate format HH:MM:SS
+        const timeRegex = /^\d{2}:\d{2}:\d{2}$/;
+        if (!timeRegex.test(start_time) || !timeRegex.test(end_time)) {
+            return reply.code(400).send({ error: 'Invalid time format. Use HH:MM:SS' });
+        }
+
+        const slotId = randomUUID();
+        try {
+            const stmt = db.prepare(`
+                INSERT INTO segment_time_slots (id, segment_id, start_time, end_time, travel_time)
+                VALUES (?, ?, ?, ?, ?)
+            `);
+            stmt.run(slotId, id, start_time, end_time, travel_time);
+            return { id: slotId, segment_id: id, ...body };
+        } catch (err) {
+            request.log.error(err);
+            return reply.code(500).send({ error: 'Failed to create slot' });
+        }
+    });
+
+    // DELETE a slot
+    fastify.delete('/segments/slots/:slotId', async (request, reply) => {
+        const { slotId } = request.params as { slotId: string };
+        const stmt = db.prepare('DELETE FROM segment_time_slots WHERE id = ?');
+        const result = stmt.run(slotId);
+        if (result.changes === 0) return reply.code(404).send({ error: 'Slot not found' });
+        return { message: 'Slot deleted' };
+    });
 }

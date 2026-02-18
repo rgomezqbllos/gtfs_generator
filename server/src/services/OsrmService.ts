@@ -10,7 +10,12 @@ import { URL } from 'url';
 const execAsync = promisify(exec);
 
 // Configuration
-const DATA_DIR = path.resolve(__dirname, '../../osrm-data');
+const DATA_DIR = path.resolve(__dirname, '../../../osrm-data');
+console.log('OSRM SERVICE: Resolved DATA_DIR:', DATA_DIR);
+
+// ... (inside class)
+
+
 const CONTAINER_NAME = 'gtfs-osrm-server';
 const PORT = 5001;
 
@@ -283,7 +288,7 @@ class OsrmService {
             // 3. Process Data
             const osrmName = filename.replace('.osm.pbf', '');
             const osrmPath = path.join(DATA_DIR, `${osrmName}.osrm`);
-            const volume = `${DATA_DIR}:/data`;
+            const volume = `${DATA_DIR.replace(/\\/g, '/')}:/data`;
 
             // Setup OSRM if not already extracted
             if (!fs.existsSync(osrmPath)) {

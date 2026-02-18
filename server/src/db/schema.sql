@@ -113,3 +113,12 @@ CREATE TABLE IF NOT EXISTS segments (
     FOREIGN KEY(start_node_id) REFERENCES stops(stop_id),
     FOREIGN KEY(end_node_id) REFERENCES stops(stop_id)
 );
+
+CREATE TABLE IF NOT EXISTS segment_time_slots (
+    id TEXT PRIMARY KEY,
+    segment_id TEXT NOT NULL,
+    start_time TEXT NOT NULL, -- HH:MM:SS
+    end_time TEXT NOT NULL,   -- HH:MM:SS
+    travel_time INTEGER NOT NULL, -- seconds
+    FOREIGN KEY(segment_id) REFERENCES segments(segment_id) ON DELETE CASCADE
+);

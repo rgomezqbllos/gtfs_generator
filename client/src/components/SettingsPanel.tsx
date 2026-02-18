@@ -16,7 +16,7 @@ interface SettingsPanelProps {
     };
 }
 
-const API_URL = 'http://localhost:3000/api';
+import { API_URL } from '../config';
 
 const SettingsPanel: React.FC<SettingsPanelProps> = ({ onClose, currentViewState }) => {
     const { defaultLocation, setDefaultLocation } = useSettings();

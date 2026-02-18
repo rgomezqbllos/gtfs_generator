@@ -6,7 +6,7 @@ import ConfirmModal from './ConfirmModal';
 import RouteCreationModal from './RouteCreationModal';
 import TripsManager from './TripsManager';
 
-const API_URL = 'http://localhost:3000/api';
+import { API_URL } from '../config';
 
 interface RouteCatalogProps {
     onOpenMap: () => void;

@@ -65,8 +65,9 @@ server.get('/ping', async (request, reply) => {
 
 const start = async () => {
     try {
-        await server.listen({ port: 3000, host: '0.0.0.0' });
-        console.log('Server running at http://localhost:3000');
+        const port = Number(process.env.PORT) || 3001;
+        await server.listen({ port, host: '0.0.0.0' });
+        console.log(`Server running at http://localhost:${port}`);
     } catch (err) {
         server.log.error(err);
         process.exit(1);

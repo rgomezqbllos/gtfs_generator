@@ -10,7 +10,7 @@ interface RouteCreationModalProps {
     routeToEdit?: Route | null;
 }
 
-const API_URL = 'http://localhost:3000/api';
+import { API_URL } from '../config';
 
 const ROUTE_TYPES = [
     { value: 0, label: 'Tram / Streetcar' },

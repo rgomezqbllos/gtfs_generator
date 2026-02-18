@@ -18,7 +18,7 @@ interface StatusInfo {
     activeRegion?: string;
 }
 
-const API_URL = 'http://localhost:3000/api';
+import { API_URL } from '../config';
 
 const MapManager: React.FC = () => {
     const [maps, setMaps] = useState<MapInfo[]>([]);

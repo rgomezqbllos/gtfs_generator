@@ -33,11 +33,14 @@ export default async function stopsRoutes(fastify: FastifyInstance) {
 
     // CREATE stop
     fastify.post('/stops', async (request, reply) => {
+        console.log('Received POST /stops request');
         const body = request.body as StopBody;
+        console.log('Body:', body);
         const { stop_name, stop_lat, stop_lon, node_type, location_type } = body;
         let { stop_code } = body;
 
         if (!stop_name || stop_lat === undefined || stop_lon === undefined) {
+            console.error('Missing required fields');
             return reply.code(400).send({ error: 'Missing required fields' });
         }
 
@@ -48,14 +51,20 @@ export default async function stopsRoutes(fastify: FastifyInstance) {
             stop_code = `STOP_${stop_id.substring(0, 6).toUpperCase()}`;
         }
 
-        const stmt = db.prepare(`
-      INSERT INTO stops (stop_id, stop_code, stop_name, stop_lat, stop_lon, node_type, location_type)
-      VALUES (?, ?, ?, ?, ?, ?, ?)
-    `);
+        try {
+            const stmt = db.prepare(`
+          INSERT INTO stops (stop_id, stop_code, stop_name, stop_lat, stop_lon, node_type, location_type)
+          VALUES (?, ?, ?, ?, ?, ?, ?)
+        `);
 
-        stmt.run(stop_id, stop_code, stop_name, stop_lat, stop_lon, node_type || 'regular', location_type || 0);
+            stmt.run(stop_id, stop_code, stop_name, stop_lat, stop_lon, node_type || 'regular', location_type || 0);
 
-        return { stop_id, stop_code, ...body };
+            console.log('Stop created successfully:', stop_id);
+            return { stop_id, stop_code, ...body };
+        } catch (error) {
+            console.error('Error inserting stop:', error);
+            return reply.code(500).send({ error: 'Database insert failed' });
+        }
     });
 
     // UPDATE stop

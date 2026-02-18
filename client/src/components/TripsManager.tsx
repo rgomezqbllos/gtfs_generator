@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { X, Plus, Save, Trash2, Clock, AlertCircle, Wand2, CheckCircle } from 'lucide-react';
+import { X, Plus, Save, Trash2, Clock, AlertCircle, Wand2, CheckCircle, RefreshCw } from 'lucide-react';
 import type { Route } from '../types';
 import { clsx } from 'clsx';
 import AutoTripsModal, { type AutoTripsConfig } from './AutoTripsModal';
@@ -40,7 +40,7 @@ interface Stop {
     stop_code?: string;
 }
 
-const API_URL = 'http://localhost:3000/api';
+import { API_URL } from '../config';
 
 const TripsManager: React.FC<TripsManagerProps> = ({ route, onClose }) => {
     const [direction, setDirection] = useState<number>(0);
@@ -92,6 +92,20 @@ const TripsManager: React.FC<TripsManagerProps> = ({ route, onClose }) => {
             const segmentsRes = await fetch(`${API_URL}/segments`);
             const segmentsData = await segmentsRes.json();
             setSegments(segmentsData);
+
+            // Fetch time slots for all segments (inefficient n+1 but works for now)
+            // Ideally backend would provide a bulk endpoint
+            const slotsMap: any[] = [];
+            await Promise.all(segmentsData.map(async (seg: any) => {
+                try {
+                    const res = await fetch(`${API_URL}/segments/${seg.segment_id}/slots`);
+                    const slots = await res.json();
+                    if (Array.isArray(slots)) {
+                        slotsMap.push(...slots);
+                    }
+                } catch (e) { console.error(e); }
+            }));
+            setSegmentSlots(slotsMap);
 
             // Map ordered IDs to full stop objects
             const orderedStops = (pathData.ordered_stop_ids || []).map((id: string) =>
@@ -145,6 +159,7 @@ const TripsManager: React.FC<TripsManagerProps> = ({ route, onClose }) => {
     };
 
     const [segments, setSegments] = useState<any[]>([]);
+    const [segmentSlots, setSegmentSlots] = useState<any[]>([]); // cache for time slots
 
     const addSeconds = (timeStr: string, seconds: number) => {
         if (!timeStr) return '';
@@ -193,9 +208,25 @@ const TripsManager: React.FC<TripsManagerProps> = ({ route, onClose }) => {
                         continue;
                     }
                     const prevStop = stops[i - 1];
+
                     const segment = segments.find(s => s.start_node_id === prevStop.stop_id && s.end_node_id === stop.stop_id);
-                    if (segment && segment.travel_time) {
-                        currentTime = addSeconds(currentTime, segment.travel_time);
+                    if (segment) {
+                        let travelTime = segment.travel_time || 0;
+
+                        // Check for time slot
+                        // We need the arrival time at the START of the segment (which is departure from prevStop)
+                        // If we are propagating, currentTime holds the arrival at prevStop (assuming immediate departure)
+                        const activeSlot = segmentSlots.find(slot =>
+                            slot.segment_id === segment.segment_id &&
+                            currentTime >= slot.start_time &&
+                            currentTime < slot.end_time
+                        );
+
+                        if (activeSlot) {
+                            travelTime = activeSlot.travel_time;
+                        }
+
+                        currentTime = addSeconds(currentTime, travelTime);
                     }
                     const existing = timeMap.get(stop.stop_id);
                     if (existing) {
@@ -274,8 +305,20 @@ const TripsManager: React.FC<TripsManagerProps> = ({ route, onClose }) => {
             if (i > 0) {
                 const prevStop = stops[i - 1];
                 const segment = segments.find(s => s.start_node_id === prevStop.stop_id && s.end_node_id === stop.stop_id);
-                if (segment && segment.travel_time) {
-                    currentTime = addSeconds(currentTime, segment.travel_time);
+                if (segment) {
+                    let travelTime = segment.travel_time || 0;
+                    // Check for slot based on currentTime (arrival at prev stop)
+                    const activeSlot = segmentSlots.find(slot =>
+                        slot.segment_id === segment.segment_id &&
+                        currentTime >= slot.start_time &&
+                        currentTime < slot.end_time
+                    );
+
+                    if (activeSlot) {
+                        travelTime = activeSlot.travel_time;
+                    }
+
+                    currentTime = addSeconds(currentTime, travelTime);
                 }
             }
 
@@ -410,6 +453,29 @@ const TripsManager: React.FC<TripsManagerProps> = ({ route, onClose }) => {
         } finally {
             setIsClearing(false);
         }
+    };
+
+    const handleUpdateTravelTimes = () => {
+        if (!confirm("This will recalculate all stop times for the displayed trips based on the LATEST segment travel times.\n\nThe start time of each trip will be preserved.\n\nContinue?")) return;
+
+        let updatedCount = 0;
+        const updatedTrips = trips.map(trip => {
+            // Only update trips for the current service and direction
+            if (trip.service_id !== selectedServiceId || trip.trip_id === `t_${route.route_id}_${direction}`) return trip;
+
+            const firstStopTime = GetStopTime(trip, stops[0]?.stop_id);
+            if (!firstStopTime) return trip; // Skip invalid trips
+
+            // Regenerate times using the current segments data
+            const newStopTimes = generateStopTimesForTrip(trip.trip_id, firstStopTime);
+
+            updatedCount++;
+            return { ...trip, stop_times: newStopTimes };
+        });
+
+        setTrips(updatedTrips);
+        setSuccessMessage(`Updated times for ${updatedCount} trips! don't forget to save.`);
+        setTimeout(() => setSuccessMessage(null), 3000);
     };
 
     // Track last edited trip to maintain focus if reordered
@@ -584,6 +650,14 @@ const TripsManager: React.FC<TripsManagerProps> = ({ route, onClose }) => {
                         disabled={isClearing}
                     >
                         {isClearing ? <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-red-600" /> : <Trash2 size={20} />}
+                    </button>
+
+                    <button
+                        onClick={handleUpdateTravelTimes}
+                        className="flex items-center gap-2 px-4 py-2 bg-orange-500 text-white rounded-lg hover:bg-orange-600 transition-colors font-medium shadow-sm"
+                        title="Recalculate all times based on current segment speeds"
+                    >
+                        <RefreshCw size={18} /> Update Times
                     </button>
 
                     <button
