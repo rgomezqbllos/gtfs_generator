@@ -2,11 +2,6 @@ FROM node:18-alpine AS builder
 
 WORKDIR /app
 
-# Copy root package
-COPY package.json ./
-
-# Install dependencies based on root package structure (monorepo-ish)
-# We need to copy everything to build
 COPY . .
 
 # Install and Build Client
@@ -24,23 +19,20 @@ FROM node:18-alpine
 
 WORKDIR /app
 
-# Copy server built files
+# Copy server build output + manifests
 COPY --from=builder /app/server/dist ./server/dist
 COPY --from=builder /app/server/package.json ./server/package.json
-COPY --from=builder /app/server/src/db/schema.sql ./server/dist/db/schema.sql
+COPY --from=builder /app/server/package-lock.json ./server/package-lock.json
 
-# Copy client built files to public/static folder in server (we need to configure server to serve this)
-# OR we can just keep them separate. The prompt says "instructions for docker". 
-# Easiest is running backend and frontend separately or serving static.
-# Let's serve static from backend for a single container solution.
-COPY --from=builder /app/client/dist ./server/public
+# Copy frontend build output where the server expects it: ../../client/dist
+COPY --from=builder /app/client/dist ./client/dist
 
 # Install production dependencies for server
 WORKDIR /app/server
-RUN npm install --production
+RUN npm ci --omit=dev
 
 # Expose port
-EXPOSE 3000
+EXPOSE 3001
 
 # Start server
 CMD ["node", "dist/server.js"]

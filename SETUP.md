@@ -2,7 +2,7 @@
 
 ## Prerequisites
 - **Node.js**: v18 or higher.
-- **Docker**: Required for OSRM (routing engine).
+- **Docker**: Optional (required only if you want OSRM local).
 - **Git**: For version control.
 
 ## Environment Variables
@@ -12,8 +12,8 @@ The application supports the following environment variables. You can create a `
 | Variable | Descirption | Default |
 | :--- | :--- | :--- |
 | `PORT` | The port the backend server runs on. | `3001` |
-| `OSRM_PORT` | The port the OSRM Docker container listens on. | `5001` |
-| `OSRM_CONTAINER_NAME` | Name of the OSRM Docker container. | `gtfs-osrm-server` |
+| `OSRM_API_URL` | OSRM base URL for routing. | `https://router.project-osrm.org/route/v1/driving` |
+| `DB_PATH` | Path to the SQLite database file. | `server/gtfs.db` |
 
 ### Client (`client/.env`)
 | Variable | Description | Default |
@@ -25,46 +25,34 @@ The application supports the following environment variables. You can create a `
 ## Development
 To run the application in development mode (hot-reloading):
 
-1.  **Start the Server**:
+1.  **Install dependencies**:
     ```bash
-    cd server
-    npm install
-    npm run dev
+    npm run install:all
     ```
-    *Server runs on http://localhost:3001*
 
-2.  **Start the Client**:
+2.  **(Optional) Start OSRM locally**:
     ```bash
-    cd client
-    npm install
-    npm run dev
+    npm run osrm:setup -- bogota
     ```
-    *Client runs on http://localhost:5173*
 
-    > The client automatically proxies API requests to the server.
+3.  **Start the app**:
+    ```bash
+    npm start
+    ```
+
+    *Backend runs on http://localhost:3001 and Vite on http://localhost:5173*
 
 ## Production / Deployment
 To deploy the application to a new machine or environment:
 
-1.  **Build the Frontend**:
+1.  **Build client + server**:
     ```bash
-    cd client
-    npm install
-    npm run build
-    ```
-    This creates a `dist` folder in `client/`.
-
-2.  **Setup the Server**:
-    ```bash
-    cd server
-    npm install
     npm run build
     ```
 
-3.  **Run the Application**:
+2.  **Run the application**:
     ```bash
-    # From server directory
-    npm start
+    npm run start:prod
     ```
     
     The server will now:

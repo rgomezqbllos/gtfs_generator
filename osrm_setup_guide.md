@@ -12,24 +12,23 @@ He configurado un script automatizado para gestionar tu servidor OSRM local. Est
 Para configurar y ejecutar OSRM para una ciudad específica, simplemente ejecuta el siguiente comando en la terminal:
 
 ```bash
-npm run osrm:setup <ciudad>
+# Desde la raíz del repo
+npm run osrm:setup -- <ciudad>
+
+# (Alternativa) desde la carpeta server/
+# npm run osrm:setup <ciudad>
 ```
 
 **Ciudades Disponibles:**
 *   `bogota` (Colombia)
-*   `medellin`
-*   `cali`
-*   `buenos-aires`
-*   `cuiaba`
-*   `mexico-city`
-*   `montreal`
-*   `new-york`
-*   `sao-paulo`
 *   `santiago`
+*   `chile`
+*   `buenos-aires`
+*   `mexico-city`
 
 ### Ejemplo:
 ```bash
-npm run osrm:setup bogota
+npm run osrm:setup -- bogota
 ```
 
 El script automáticamente:

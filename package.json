@@ -3,11 +3,12 @@
     "version": "1.0.0",
     "description": "GTFS Generator Tool",
     "scripts": {
-        "start": "concurrently \"npm run start:osrm\" \"npm run start:server\" \"npm run start:client\"",
-        "start:client": "cd client && npm run dev",
-        "start:server": "cd server && npm run dev",
-        "start:osrm": "cd server && npm run osrm:setup",
-        "install:all": "npm install && cd client && npm install && cd server && npm install"
+        "dev": "concurrently \"npm --prefix server run dev\" \"npm --prefix client run dev\"",
+        "start": "npm run dev",
+        "build": "npm --prefix client run build && npm --prefix server run build",
+        "start:prod": "npm --prefix server run start",
+        "osrm:setup": "npm --prefix server run osrm:setup --",
+        "install:all": "npm install && npm --prefix client install && npm --prefix server install"
     },
     "devDependencies": {
         "concurrently": "^9.2.1"

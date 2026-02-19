@@ -1,150 +1,124 @@
 # GTFS Generator
 
-Una herramienta web completa para generar, editar y exportar archivos GTFS (General Transit Feed Specification). Diseñada para facilitar la creación de rutas de transporte público, paradas y horarios, con visualización de mapas y cálculo de rutas automático.
+Aplicación web para generar, editar e importar/exportar feeds **GTFS** (General Transit Feed Specification) con editor de mapa, gestor de segmentos y horarios, y cálculo de rutas/tiempos vía **OSRM**.
 
-## Características Principales
+## Quickstart (desde cero)
 
-*   **Editor de Mapas Interactivo**: Crea y mueve paradas (nodos) directamente sobre el mapa.
-*   **Gestión de Segmentos**:
-    *   Conecta paradas para crear tramos (segmentos).
-    *   **Cálculo Automático**: Distancia y tiempo de viaje calculados automáticamente usando OSRM (Open Source Routing Machine).
-    *   **Segmentos Vacíos (Deadheads)**: Soporte para tramos sin pasajeros (cocheras a inicio de ruta) con exportación CSV.
-*   **Gestión de Rutas**:
-    *   Editor visual de recorridos (unir segmentos).
-    *   Soporte para múltiples agencias y tipos de ruta.
-*   **Importación Avanzada GTFS**:
-    *   **Selección Granular**: Elige qué Agencias, Rutas y Servicios importar.
-    *   **Filtrado Estricto**: Solo importa paradas y segmentos utilizados, optimizando la base de datos.
-    *   **Cálculo de Tiempos**: Estima tiempos de viaje automáticamente basado en datos GTFS y geometría.
-*   **Editor de Horarios (Timetable)**:
-    *   **Alertas de Duplicados**: Detecta visualmente viajes superpuestos.
-    *   **Edición Manual Rápida**: Click derecho para "Saltar Parada" (Skip) o "Restaurar Tiempo" (Auto-cálculo).
-    *   **Generación Automática**: Crea viajes masivos basados en frecuencia y tiempo de viaje.
-*   **Optimización de Rendimiento**:
-    *   **Renderizado WebGL**: Mapa optimizado capaz de visualizar miles de paradas a 60FPS.
-    *   **Importación por Streaming**: Procesa archivos GTFS grandes sin saturar la memoria.
-*   **Tipos de Parada Personalizados**: Soporte visual para paradas regulares, estaciones, parkings, etc.
-*   **Persistencia Local**: Base de datos SQLite local (`gtfs.db`) que guarda todo tu progreso.
-*   **Exportación GTFS**: Genera archivos `.zip` válidos y compatibles con el estándar GTFS.
-
----
-
-## Prerrequisitos
-
-Antes de instalar, asegúrate de tener instalado el siguiente software en tu sistema:
-
-1.  **Node.js** (Versión 18 o superior)
-    *   [Descargar Node.js](https://nodejs.org/)
-2.  **Docker Desktop** (Requerido para el motor de mapas OSRM)
-    *   [Descargar Docker](https://www.docker.com/products/docker-desktop/)
-    *   *Nota*: Asegúrate de que Docker esté ejecutándose antes de usar la herramienta.
-
----
-
-## Instalación
-
-### 1. Clonar el Repositorio
-
-Descarga el código fuente a tu máquina local.
+Requisitos: **Node.js 18+**, **Git**, y **Docker** (solo si vas a usar OSRM local).
 
 ```bash
 git clone <url-del-repositorio>
-cd GTFS_Generator
-```
-
-### 2. Instalar Dependencias
-
-Ejecuta el siguiente comando en la raíz del proyecto para instalar las librerías necesarias tanto para el cliente (frontend) como para el servidor (backend).
-
-**En macOS / Linux / Windows (PowerShell):**
-
-```bash
+cd gtfs_generator
 npm run install:all
 ```
 
-*Si el comando anterior falla, puedes instalar manualmente:*
-
+Terminal 1 (opcional, OSRM local para tu ciudad):
 ```bash
-# Raíz
-npm install
-
-# Cliente
-cd client
-npm install
-cd ..
-
-# Servidor
-cd server
-npm install
-cd ..
+npm run osrm:setup -- bogota
 ```
 
----
-
-## Configuración del Mapa (OSRM)
-
-Para que el cálculo automático de rutas funcione, necesitas descargar y configurar el mapa de tu región. La herramienta incluye un script automatizado para esto.
-
-**Importante**: Docker debe estar corriendo.
-
-1.  Dirígete a la carpeta del servidor:
-    ```bash
-    cd server
-    ```
-
-2.  Ejecuta el script de configuración indicando tu ciudad o región (ej. `bogota`, `colombia`):
-    ```bash
-    npm run osrm:setup bogota
-    ```
-    *Este comando descargará los datos del mapa (OpenStreetMap), procesará el grafo de rutas y levantará un contenedor de Docker con el servidor OSRM.*
-
-3.  Vuelve a la raíz del proyecto:
-    ```bash
-    cd ..
-    ```
-
----
-
-## Ejecución
-
-Para iniciar la aplicación, ejecuta el siguiente comando desde la raíz del proyecto:
-
+Terminal 2 (dev: API + frontend con hot-reload):
 ```bash
 npm start
 ```
 
-Este comando iniciará simultáneamente:
-*   **Backend (API)**: `http://localhost:3000`
-*   **Frontend (App)**: `http://localhost:5173`
+- Frontend (Vite): `http://localhost:5173`
+- Backend/API: `http://localhost:3001` (por defecto)
 
-Automáticamente se abrirá tu navegador predeterminado en `http://localhost:5173`.
+## Características
 
----
+- Editor de mapa interactivo (paradas/nodos)
+- Segmentos con distancia/tiempo calculado vía OSRM + soporte “deadheads”
+- Editor visual de rutas (recorridos)
+- Importación GTFS selectiva (agencias/rutas/servicios) + filtrado estricto
+- Editor de horarios (detección de duplicados, skip/auto-cálculo)
+- Rendimiento: WebGL + importación por streaming
+- Persistencia local en SQLite (`server/gtfs.db` por defecto)
+- Exportación a `.zip` GTFS
 
-## Guía de Uso Rápida
+## Prerrequisitos por sistema operativo
 
-1.  **Crear Paradas**:
-    *   Selecciona "Stops" en el menú lateral.
-    *   Cambia al modo "Add Stop" (icono `+`).
-    *   Haz clic en el mapa para colocar paradas.
-    *   Edita los detalles (nombre, tipo) haciendo clic en la parada creada.
+- **Windows 10/11**
+  - Instala Node.js 18+ desde `https://nodejs.org/`
+  - Instala Docker Desktop (Linux containers). En algunas máquinas requiere WSL2
+  - Git: `winget install Git.Git`
+- **macOS**
+  - Node.js 18+ (por ejemplo con Homebrew) y Docker Desktop
+  - Git suele venir instalado; si no, `xcode-select --install`
+- **Linux**
+  - Node.js 18+ (NodeSource / tu distro), Docker Engine (si usas OSRM local) y Git
 
-2.  **Crear Segmentos (Tramos)**:
-    *   Selecciona "Segments".
-    *   Modo "Revenue" (Tramos comerciales): Une dos paradas para crear un camino. OSRM calculará la ruta real por calle.
-    *   Modo "Empty" (Tramos vacíos): Une dos paradas para conexiones internas (línea punteada).
+## Configuración (variables de entorno)
 
-3.  **Crear Rutas**:
-    *   Selecciona "Routes".
-    *   Crea una nueva ruta y define sus propiedades (nombre, color).
-    *   Entra a "Edit Path" y selecciona los segmentos en orden secuencial para construir el recorrido.
+El servidor carga variables desde `server/.env` (opcional). Ejemplo:
 
-4.  **Exportar**:
-    *   Usa el botón de descarga en el menú lateral para generar el archivo `gtfs.zip` final.
+```env
+PORT=3001
+OSRM_API_URL=http://localhost:5001/route/v1/driving
+DB_PATH=./gtfs.db
+```
 
----
+- `PORT`: puerto del backend (default `3001`)
+- `OSRM_API_URL`: endpoint OSRM. Si no lo defines, usa el OSRM público (`https://router.project-osrm.org/...`)
+- `DB_PATH`: ruta del SQLite (default: `server/gtfs.db`). Útil para Docker/volúmenes
 
-## Solución de Problemas
+## OSRM local (recomendado en redes corporativas)
 
-*   **Error de Mapa/OSRM**: Si las rutas no se calculan (líneas rectas), verifica que el contenedor de Docker esté corriendo (`docker ps`) y que hayas ejecutado el setup (`npm run osrm:setup`).
-*   **Base de Datos**: Si deseas reiniciar el proyecto desde cero, puedes borrar el archivo `server/gtfs.db`. Se creará uno nuevo automáticamente al reiniciar el servidor.
+El script descarga datos de OpenStreetMap (PBF), los procesa y levanta un contenedor OSRM escuchando en `http://localhost:5001`.
+
+```bash
+npm run osrm:setup -- bogota
+```
+
+Ciudades/regiones disponibles (ver `server/scripts/osrm_manager.ts`): `bogota`, `santiago`, `chile`, `buenos-aires`, `mexico-city`.
+
+Notas:
+- La primera vez puede tardar varios minutos y ocupar bastante disco en `osrm-data/`.
+- Si cambias de ciudad, el script detiene el contenedor anterior y levanta el nuevo.
+
+## Desarrollo (hot reload)
+
+1) (Opcional) OSRM local:
+```bash
+npm run osrm:setup -- bogota
+```
+
+2) App en desarrollo (Vite + API):
+```bash
+npm start
+```
+
+En dev, el frontend proxya `/api` hacia `http://localhost:3001` (ver `client/vite.config.ts`).
+
+## Producción (sin Docker)
+
+Compila frontend + backend y ejecuta el servidor (sirve el frontend estático):
+
+```bash
+npm run build
+npm run start:prod
+```
+
+Accede en `http://localhost:3001` (o el `PORT` que definas).
+
+## Producción con Docker (opcional)
+
+El `Dockerfile` construye cliente+servidor y ejecuta el backend sirviendo `client/dist`.
+
+```bash
+docker compose up --build
+```
+
+- App: `http://localhost:3001`
+- La base de datos persiste en `./gtfs_data/` (vía `DB_PATH`)
+
+> OSRM local **no** se levanta automáticamente con `docker compose` porque requiere elegir ciudad/región y preprocesar el mapa. Puedes ejecutarlo en tu host con `npm run osrm:setup -- <ciudad>`.
+
+## Reset de datos
+
+- Borra `server/gtfs.db` (y `server/gtfs.db-wal`, `server/gtfs.db-shm` si existen) con el servidor apagado.
+
+## Troubleshooting
+
+- Si ves líneas rectas o tiempos “raros”, revisa `OSRM_API_URL` y que el contenedor OSRM esté arriba (`docker ps`).
+- Si el download de Geofabrik está bloqueado, el script te pedirá descargar manualmente el `.osm.pbf` y dejarlo en `osrm-data/`.

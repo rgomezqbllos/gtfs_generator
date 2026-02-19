@@ -2,8 +2,12 @@ import Database from 'better-sqlite3';
 import fs from 'fs';
 import path from 'path';
 
-const dbPath = path.resolve(__dirname, '../../gtfs.db');
+const defaultDbPath = path.resolve(__dirname, '../../gtfs.db');
+const dbPath = process.env.DB_PATH ? path.resolve(process.env.DB_PATH) : defaultDbPath;
 const schemaPath = path.resolve(__dirname, 'schema.sql');
+
+// Ensure parent folder exists when DB_PATH points outside the repo tree (e.g. Docker volume).
+fs.mkdirSync(path.dirname(dbPath), { recursive: true });
 
 const db = new Database(dbPath, { verbose: console.log });
 db.pragma('journal_mode = WAL');
