@@ -16,8 +16,8 @@ console.log('OSRM SERVICE: Resolved DATA_DIR:', DATA_DIR);
 // ... (inside class)
 
 
-const CONTAINER_NAME = 'gtfs-osrm-server';
-const PORT = 5001;
+const CONTAINER_NAME = process.env.OSRM_CONTAINER_NAME || 'gtfs-osrm-server';
+const PORT = Number(process.env.OSRM_PORT) || 5001;
 
 interface RegionInfo {
     name: string;
@@ -214,7 +214,7 @@ class OsrmService {
         return { message: `Map files for ${regionKey} deleted` };
     }
 
-    async downloadAndSetup(regionKey: string, customUrl?: string, customName?: string) {
+    async downloadAndSetup(regionKey: string, customUrl?: string, customName?: string, force: boolean = false) {
         if (currentStatus.status === 'downloading' || currentStatus.status === 'processing') {
             throw new Error('A process is already running');
         }
@@ -248,25 +248,23 @@ class OsrmService {
         }
 
         const pbfPath = path.join(DATA_DIR, filename);
-
         // Update active region tracking
-        // For custom maps, key is filename if not in REGIONS
         const activeKey = customUrl ? filename : regionKey;
 
-        this.runSetupProcess(activeKey, url, filename, pbfPath, mirrors);
+        this.runSetupProcess(activeKey, url, filename, pbfPath, mirrors, force);
 
         return { message: 'Setup process started' };
     }
 
     // --- Private Process Logic ---
 
-    private async runSetupProcess(regionKey: string, url: string, filename: string, pbfPath: string, mirrors: string[]) {
+    private async runSetupProcess(regionKey: string, url: string, filename: string, pbfPath: string, mirrors: string[], force: boolean) {
         try {
             if (!fs.existsSync(DATA_DIR)) fs.mkdirSync(DATA_DIR, { recursive: true });
 
             // 1. Download
             let shouldDownload = true;
-            if (fs.existsSync(pbfPath)) {
+            if (!force && fs.existsSync(pbfPath)) {
                 const stats = fs.statSync(pbfPath);
                 if (stats.size > 1000000) { // arbitrary > 1MB
                     console.log(`File ${filename} exists (${(stats.size / 1024 / 1024).toFixed(1)}MB). Skipping download.`);

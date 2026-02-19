@@ -6,26 +6,58 @@ export default async function adminRoutes(fastify: FastifyInstance) {
     // RESET DATABASE
     fastify.post('/admin/reset', async (request, reply) => {
         try {
-            const resetTransaction = db.transaction(() => {
-                // Delete in order of dependencies
-                db.prepare('DELETE FROM stop_times').run();
-                db.prepare('DELETE FROM trips').run();
-                db.prepare('DELETE FROM shapes').run();
-                db.prepare('DELETE FROM segments').run();
-                db.prepare('DELETE FROM routes').run();
-                db.prepare('DELETE FROM stops').run();
-                // Calendar and Agency might be preserved or reset? User said "restore entire database to avoid garbage"
-                // Let's clear calendar too. Agency usually is static but let's assume we keep Agency for config? 
-                // "arrancar un proyecto desde cero" -> usually keeps agency info but clears operational data.
-                db.prepare('DELETE FROM calendar').run();
-                // Also clear agencies as users can create them
-                db.prepare('DELETE FROM agency').run();
-            });
+            console.log('Starting full database reset...');
+            const startTime = Date.now();
 
-            resetTransaction();
-            return { message: 'Database reset successful' };
+            // Perform deletion in a single transaction for atomicity and speed
+            db.transaction(() => {
+                // Disable foreign keys temporarily for faster bulk deletion
+                db.pragma('foreign_keys = OFF');
+
+                // Delete all data from all tables
+                const tables = [
+                    'segment_time_slots',
+                    'stop_times',
+                    'trips',
+                    'shapes',
+                    'segments',
+                    'routes',
+                    'stops',
+                    'calendar',
+                    'agency'
+                ];
+
+                for (const table of tables) {
+                    db.prepare(`DELETE FROM ${table}`).run();
+                }
+
+                // Reset auto-increment sequences (only if the table exists)
+                // We use try/catch because sqlite_sequence only exists if at least 
+                // one table has used AUTOINCREMENT.
+                try {
+                    db.prepare("DELETE FROM sqlite_sequence").run();
+                } catch (e) {
+                    // Ignore error if table doesn't exist
+                }
+
+                // Re-enable foreign keys
+                db.pragma('foreign_keys = ON');
+            })();
+
+            // VACUUM must be run outside of a transaction
+            // It reclaims unused space and defragments the database file
+            console.log('Reclaiming disk space (VACUUM)...');
+            db.pragma('vacuum');
+
+            const duration = ((Date.now() - startTime) / 1000).toFixed(2);
+            console.log(`Database reset completed successfully in ${duration}s`);
+
+            return {
+                message: 'Database reset successful',
+                duration: `${duration}s`
+            };
         } catch (error) {
-            console.error('Reset failed', error);
+            console.error('Reset failed:', error);
             return reply.code(500).send({ error: 'Failed to reset database' });
         }
     });

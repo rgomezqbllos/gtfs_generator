@@ -10,15 +10,24 @@ interface ImportModalProps {
 
 import { API_URL } from '../config';
 
+// Interfaces
 interface RouteMetadata {
     route_id: string;
     short_name: string;
     long_name: string;
+    agency_id: string;
+    agency_name: string;
+    route_type: string | number;
 }
 
 interface ServiceMetadata {
     service_id: string;
     routes: RouteMetadata[];
+}
+
+interface AgencyMetadata {
+    id: string;
+    name: string;
 }
 
 const ImportModal: React.FC<ImportModalProps> = ({ isOpen, onClose }) => {
@@ -31,7 +40,14 @@ const ImportModal: React.FC<ImportModalProps> = ({ isOpen, onClose }) => {
     const [tempFileId, setTempFileId] = React.useState<string | null>(null);
 
     // Data State
-    const [scanData, setScanData] = React.useState<ServiceMetadata[]>([]);
+    const [services, setServices] = React.useState<ServiceMetadata[]>([]);
+    const [agencies, setAgencies] = React.useState<AgencyMetadata[]>([]);
+    const [routeTypes, setRouteTypes] = React.useState<string[]>([]);
+
+    // Filter State
+    const [selectedAgencyIds, setSelectedAgencyIds] = React.useState<Set<string>>(new Set());
+    const [selectedRouteTypes, setSelectedRouteTypes] = React.useState<Set<string>>(new Set());
+
     const [selectedPairs, setSelectedPairs] = React.useState<Set<string>>(new Set()); // "serviceId|routeId"
     const [expandedServices, setExpandedServices] = React.useState<Set<string>>(new Set());
 
@@ -50,9 +66,13 @@ const ImportModal: React.FC<ImportModalProps> = ({ isOpen, onClose }) => {
             setProgress(0);
             setMessage('');
             setResult(null);
-            setScanData([]);
+            setServices([]);
+            setAgencies([]);
+            setRouteTypes([]);
             setTempFileId(null);
             setSelectedPairs(new Set());
+            setSelectedAgencyIds(new Set());
+            setSelectedRouteTypes(new Set());
         }
     }, [isOpen]);
 
@@ -94,17 +114,41 @@ const ImportModal: React.FC<ImportModalProps> = ({ isOpen, onClose }) => {
             if (!res.ok) throw new Error('Scan failed');
 
             const data = await res.json();
+            console.log('Scan result:', data);
             setTempFileId(data.tempFileId);
-            setScanData(data.metadata);
+
+            // Handle new metadata structure
+            // Fallback for old API response (array) vs new object
+            let loadedServices: ServiceMetadata[] = [];
+            let loadedAgencies: AgencyMetadata[] = [];
+            let loadedTypes: string[] = [];
+
+            if (Array.isArray(data.metadata)) {
+                console.log('Metadata is array (Old Format)');
+                loadedServices = data.metadata;
+            } else {
+                console.log('Metadata is object (New Format)', data.metadata);
+                loadedServices = data.metadata.services;
+                loadedAgencies = data.metadata.agencies || [];
+                loadedTypes = data.metadata.routeTypes || [];
+            }
+
+            setServices(loadedServices);
+            setAgencies(loadedAgencies);
+            setRouteTypes(loadedTypes);
+
+            // Select all filters by default
+            setSelectedAgencyIds(new Set(loadedAgencies.map(a => a.id)));
+            setSelectedRouteTypes(new Set(loadedTypes));
 
             // Pre-select all pairs
             const allPairs = new Set<string>();
-            data.metadata.forEach((s: ServiceMetadata) => {
+            loadedServices.forEach((s) => {
                 s.routes.forEach(r => allPairs.add(`${s.service_id}|${r.route_id}`));
             });
             setSelectedPairs(allPairs);
 
-            setExpandedServices(new Set(data.metadata.slice(0, 1).map((s: any) => s.service_id))); // Expand first
+            setExpandedServices(new Set(loadedServices.slice(0, 1).map((s) => s.service_id))); // Expand first
 
             setStep('select');
         } catch (err: any) {
@@ -112,6 +156,32 @@ const ImportModal: React.FC<ImportModalProps> = ({ isOpen, onClose }) => {
             setStep('upload');
         }
     };
+
+    // --- Filtering Logic ---
+    const getFilteredServices = () => {
+        return services.map(service => {
+            // Filter routes within service
+            const filteredRoutes = service.routes.filter(r => {
+                // Check Agency Filter
+                // Note: If no agencies returned (old API), allow all
+                if (agencies.length > 0 && !selectedAgencyIds.has(r.agency_id)) return false;
+
+                // Check Mode Filter
+                if (routeTypes.length > 0 && !selectedRouteTypes.has(String(r.route_type))) return false;
+
+                return true;
+            });
+
+            if (filteredRoutes.length === 0) return null;
+
+            return {
+                ...service,
+                routes: filteredRoutes
+            };
+        }).filter(Boolean) as ServiceMetadata[];
+    };
+
+    const filteredServices = getFilteredServices();
 
     // --- Step 2: Selection Helpers ---
     const toggleService = (serviceId: string, routes: RouteMetadata[]) => {
@@ -148,6 +218,38 @@ const ImportModal: React.FC<ImportModalProps> = ({ isOpen, onClose }) => {
         if (newExpanded.has(serviceId)) newExpanded.delete(serviceId);
         else newExpanded.add(serviceId);
         setExpandedServices(newExpanded);
+    };
+
+    const toggleFilterAgency = (id: string) => {
+        const next = new Set(selectedAgencyIds);
+        if (next.has(id)) next.delete(id);
+        else next.add(id);
+        setSelectedAgencyIds(next);
+    };
+
+    const toggleFilterType = (type: string) => {
+        const next = new Set(selectedRouteTypes);
+        if (next.has(type)) next.delete(type);
+        else next.add(type);
+        setSelectedRouteTypes(next);
+    };
+
+    const getRouteTypeName = (type: string | number) => {
+        if (type === undefined || type === null) return 'Unknown Type';
+        const typeStr = String(type);
+        const map: Record<string, string> = {
+            '0': 'Tram/Light Rail (0)',
+            '1': 'Subway (1)',
+            '2': 'Rail (2)',
+            '3': 'Bus (3)',
+            '4': 'Ferry (4)',
+            '5': 'Cable Tram (5)',
+            '6': 'Aerial Lift (6)',
+            '7': 'Funicular (7)',
+            '11': 'Trolleybus (11)',
+            '12': 'Monorail (12)'
+        };
+        return map[typeStr] || `Type ${typeStr}`;
     };
 
     // --- Step 3: Execute Import ---
@@ -270,18 +372,120 @@ const ImportModal: React.FC<ImportModalProps> = ({ isOpen, onClose }) => {
                     {/* Step 2: Select */}
                     {step === 'select' && (
                         <div className="space-y-4">
+
+                            {/* Filters */}
+                            {(agencies.length > 0 || routeTypes.length > 0) && (
+                                <div className="bg-white dark:bg-gray-800 p-4 rounded-xl border border-gray-200 dark:border-gray-700 shadow-sm space-y-4">
+                                    <div className="flex items-center gap-2 mb-2">
+                                        <div className="p-1.5 bg-blue-100 dark:bg-blue-900/30 text-blue-600 rounded-md">
+                                            <Upload size={16} />
+                                        </div>
+                                        <h3 className="text-sm font-bold text-gray-900 dark:text-gray-100">Filter Data</h3>
+                                    </div>
+
+                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                                        {/* Agencies Filter */}
+                                        {agencies.length > 0 && (
+                                            <div className="space-y-2">
+                                                <div className="flex justify-between items-center">
+                                                    <p className="text-xs font-bold text-gray-500 uppercase tracking-wider">Agencies</p>
+                                                    <div className="flex gap-2">
+                                                        <button
+                                                            onClick={() => setSelectedAgencyIds(new Set(agencies.map(a => a.id)))}
+                                                            className="text-[10px] font-medium text-blue-600 hover:text-blue-700 bg-blue-50 dark:bg-blue-900/20 px-2 py-0.5 rounded transition-colors"
+                                                        >
+                                                            All
+                                                        </button>
+                                                        <button
+                                                            onClick={() => setSelectedAgencyIds(new Set())}
+                                                            className="text-[10px] font-medium text-gray-500 hover:text-gray-700 bg-gray-100 dark:bg-gray-800 px-2 py-0.5 rounded transition-colors"
+                                                        >
+                                                            None
+                                                        </button>
+                                                    </div>
+                                                </div>
+                                                <div className="max-h-32 overflow-y-auto space-y-1 pr-2 custom-scrollbar border border-gray-100 dark:border-gray-700 rounded-lg p-2 bg-gray-50/50 dark:bg-gray-800/50">
+                                                    {agencies.map(a => (
+                                                        <div key={a.id} className="flex items-start gap-2 hover:bg-gray-100 dark:hover:bg-gray-700/50 p-1 rounded cursor-pointer" onClick={() => toggleFilterAgency(a.id)}>
+                                                            <div className={clsx(
+                                                                "mt-0.5 w-4 h-4 rounded border flex items-center justify-center transition-colors flex-shrink-0",
+                                                                selectedAgencyIds.has(a.id)
+                                                                    ? "bg-blue-600 border-blue-600"
+                                                                    : "bg-white dark:bg-gray-800 border-gray-300 dark:border-gray-600"
+                                                            )}>
+                                                                {selectedAgencyIds.has(a.id) && <Check size={12} className="text-white" />}
+                                                            </div>
+                                                            <span className={clsx("text-xs break-all", selectedAgencyIds.has(a.id) ? "text-gray-900 dark:text-gray-200 font-medium" : "text-gray-500")}>
+                                                                {a.name}
+                                                            </span>
+                                                        </div>
+                                                    ))}
+                                                </div>
+                                            </div>
+                                        )}
+
+                                        {/* Route Types Filter */}
+                                        {routeTypes.length > 0 && (
+                                            <div className="space-y-2">
+                                                <div className="flex justify-between items-center">
+                                                    <p className="text-xs font-bold text-gray-500 uppercase tracking-wider">Transport Modes</p>
+                                                    <div className="flex gap-2">
+                                                        <button
+                                                            onClick={() => setSelectedRouteTypes(new Set(routeTypes))}
+                                                            className="text-[10px] font-medium text-blue-600 hover:text-blue-700 bg-blue-50 dark:bg-blue-900/20 px-2 py-0.5 rounded transition-colors"
+                                                        >
+                                                            All
+                                                        </button>
+                                                        <button
+                                                            onClick={() => setSelectedRouteTypes(new Set())}
+                                                            className="text-[10px] font-medium text-gray-500 hover:text-gray-700 bg-gray-100 dark:bg-gray-800 px-2 py-0.5 rounded transition-colors"
+                                                        >
+                                                            None
+                                                        </button>
+                                                    </div>
+                                                </div>
+                                                <div className="max-h-32 overflow-y-auto space-y-1 pr-2 custom-scrollbar border border-gray-100 dark:border-gray-700 rounded-lg p-2 bg-gray-50/50 dark:bg-gray-800/50">
+                                                    {routeTypes.map(t => (
+                                                        <div key={t} className="flex items-center gap-2 hover:bg-gray-100 dark:hover:bg-gray-700/50 p-1 rounded cursor-pointer" onClick={() => toggleFilterType(t)}>
+                                                            <div className={clsx(
+                                                                "w-4 h-4 rounded border flex items-center justify-center transition-colors flex-shrink-0",
+                                                                selectedRouteTypes.has(t)
+                                                                    ? "bg-purple-600 border-purple-600"
+                                                                    : "bg-white dark:bg-gray-800 border-gray-300 dark:border-gray-600"
+                                                            )}>
+                                                                {selectedRouteTypes.has(t) && <Check size={12} className="text-white" />}
+                                                            </div>
+                                                            <span className={clsx("text-xs", selectedRouteTypes.has(t) ? "text-gray-900 dark:text-gray-200 font-medium" : "text-gray-500")}>
+                                                                {getRouteTypeName(String(t))}
+                                                            </span>
+                                                        </div>
+                                                    ))}
+                                                </div>
+                                            </div>
+                                        )}
+                                    </div>
+                                </div>
+                            )}
+
                             <div className="flex justify-between items-center mb-2">
-                                <span className="text-sm font-medium text-gray-500">{selectedPairs.size} items selected</span>
+                                <span className="text-sm font-medium text-gray-500">
+                                    {Array.from(selectedPairs).filter(p => {
+                                        // Only count visible ones ?? Or keep total?
+                                        // Currently calculating based on total selection
+                                        return true;
+                                    }).length} items selected
+                                </span>
                                 <div className="flex gap-2">
                                     <button
                                         onClick={() => {
                                             const allPairs = new Set<string>();
-                                            scanData.forEach(s => s.routes.forEach(r => allPairs.add(`${s.service_id}|${r.route_id}`)));
+                                            // Only select visible (filtered)
+                                            filteredServices.forEach(s => s.routes.forEach(r => allPairs.add(`${s.service_id}|${r.route_id}`)));
                                             setSelectedPairs(allPairs);
                                         }}
                                         className="text-xs text-blue-600 hover:underline"
                                     >
-                                        Select All
+                                        Select All Visible
                                     </button>
                                     <button
                                         onClick={() => setSelectedPairs(new Set())}
@@ -293,7 +497,12 @@ const ImportModal: React.FC<ImportModalProps> = ({ isOpen, onClose }) => {
                             </div>
 
                             <div className="border border-gray-200 dark:border-gray-700 rounded-xl overflow-hidden">
-                                {scanData.map(service => {
+                                {filteredServices.length === 0 && (
+                                    <div className="p-8 text-center text-gray-500">
+                                        No routes match the selected filters.
+                                    </div>
+                                )}
+                                {filteredServices.map(service => {
                                     const isExpanded = expandedServices.has(service.service_id);
 
                                     // Check selection state for this service
@@ -346,6 +555,12 @@ const ImportModal: React.FC<ImportModalProps> = ({ isOpen, onClose }) => {
                                                                     <div className="flex items-center gap-2">
                                                                         <span className="font-bold text-sm text-gray-800 dark:text-gray-200 bg-gray-100 dark:bg-gray-700 px-1.5 rounded">{route.short_name || route.route_id}</span>
                                                                         <span className="text-sm text-gray-600 dark:text-gray-400 truncate max-w-[300px]">{route.long_name}</span>
+                                                                    </div>
+                                                                    <div className="flex gap-2 mt-1">
+                                                                        {route.agency_name && (
+                                                                            <span className="text-[10px] text-gray-500 bg-gray-100 dark:bg-gray-700 px-1 rounded">{route.agency_name}</span>
+                                                                        )}
+                                                                        <span className="text-[10px] text-gray-500 bg-gray-100 dark:bg-gray-700 px-1 rounded">{getRouteTypeName(String(route.route_type))}</span>
                                                                     </div>
                                                                 </div>
                                                             </div>

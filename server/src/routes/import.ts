@@ -102,18 +102,33 @@ export default async function importRoutes(fastify: FastifyInstance) {
 // Helper to Scan
 async function scanGtfsMetadata(filePath: string) {
     const services = new Map<string, Set<string>>(); // service_id -> Set<route_id>
-    const routes = new Map<string, any>(); // route_id -> { short_name, long_name }
+    const routes = new Map<string, any>(); // route_id -> { short_name, long_name, agency_id, route_type }
+    const agencies = new Map<string, string>(); // agency_id -> agency_name
 
     return new Promise((resolve, reject) => {
+
         yauzl.open(filePath, { lazyEntries: true }, (err, zipfile) => {
             if (err || !zipfile) return reject(err);
 
-            // We need to read trips.txt and routes.txt
-            const entriesToRead = new Set(['trips.txt', 'routes.txt']);
-            let pending = 2; // rudimentary countdown
-
             zipfile.on('entry', (entry) => {
-                if (entry.fileName === 'trips.txt') {
+                const onStreamError = (err: any) => {
+                    console.error(`Error reading ${entry.fileName}:`, err);
+                    reject(err);
+                };
+
+                if (entry.fileName === 'agency.txt') {
+                    zipfile.openReadStream(entry, (err, stream) => {
+                        if (err) return reject(err);
+                        stream!.pipe(csv())
+                            .on('data', (data) => {
+                                // Default agency_id if missing? GTFS spec says optional if only one agency.
+                                const aid = data.agency_id || 'default_agency';
+                                agencies.set(aid, data.agency_name);
+                            })
+                            .on('error', onStreamError)
+                            .on('end', () => zipfile.readEntry());
+                    });
+                } else if (entry.fileName === 'trips.txt') {
                     zipfile.openReadStream(entry, (err, stream) => {
                         if (err) return reject(err);
                         stream!.pipe(csv())
@@ -123,11 +138,8 @@ async function scanGtfsMetadata(filePath: string) {
                                 }
                                 services.get(data.service_id)!.add(data.route_id);
                             })
-                            .on('end', () => {
-                                pending--;
-                                if (pending === 0) finish();
-                                else zipfile.readEntry();
-                            });
+                            .on('error', onStreamError)
+                            .on('end', () => zipfile.readEntry());
                     });
                 } else if (entry.fileName === 'routes.txt') {
                     zipfile.openReadStream(entry, (err, stream) => {
@@ -136,14 +148,13 @@ async function scanGtfsMetadata(filePath: string) {
                             .on('data', (data) => {
                                 routes.set(data.route_id, {
                                     short_name: data.route_short_name,
-                                    long_name: data.route_long_name
+                                    long_name: data.route_long_name,
+                                    agency_id: data.agency_id || 'default_agency', // Capture agency
+                                    route_type: data.route_type // Capture type
                                 });
                             })
-                            .on('end', () => {
-                                pending--;
-                                if (pending === 0) finish();
-                                else zipfile.readEntry();
-                            });
+                            .on('error', onStreamError)
+                            .on('end', () => zipfile.readEntry());
                     });
                 } else {
                     zipfile.readEntry();
@@ -151,31 +162,54 @@ async function scanGtfsMetadata(filePath: string) {
             });
 
             zipfile.on('end', () => {
-                // If we reach end but pending > 0, it means files were missing
-                if (pending > 0) finish();
+                finish();
             });
 
             zipfile.readEntry();
-
-            function finish() {
-                // Format for frontend
-                const result: any[] = [];
-                services.forEach((routeIds, serviceId) => {
-                    const localRoutes = Array.from(routeIds).map(rid => ({
-                        route_id: rid,
-                        ...routes.get(rid)
-                    })).filter(r => r.short_name || r.long_name); // Only return known routes
-
-                    if (localRoutes.length > 0) {
-                        result.push({
-                            service_id: serviceId,
-                            routes: localRoutes
-                        });
-                    }
-                });
-                resolve(result);
-            }
         });
+
+        function finish() {
+            // Format for frontend
+            const resultServices: any[] = [];
+
+            // Collect used route types and agencies for filters
+            const usedRouteTypes = new Set<string>();
+            const usedAgencies = new Set<string>();
+
+            services.forEach((routeIds, serviceId) => {
+                const localRoutes = Array.from(routeIds).map(rid => {
+                    const r = routes.get(rid);
+                    if (!r) return null;
+
+                    usedRouteTypes.add(String(r.route_type));
+                    usedAgencies.add(r.agency_id);
+                    // Ensure agency name is available (fallback to ID or default)
+                    const agencyName = agencies.get(r.agency_id) || (agencies.size === 1 ? Array.from(agencies.values())[0] : r.agency_id);
+
+                    return {
+                        route_id: rid,
+                        ...r,
+                        agency_name: agencyName
+                    };
+                }).filter(r => r && (r.short_name || r.long_name));
+
+                if (localRoutes.length > 0) {
+                    resultServices.push({
+                        service_id: serviceId,
+                        routes: localRoutes
+                    });
+                }
+            });
+
+            const response = {
+                services: resultServices,
+                agencies: Array.from(usedAgencies).map(id => ({ id, name: agencies.get(id) || id })),
+                routeTypes: Array.from(usedRouteTypes).sort()
+            };
+            console.log('Scan finished. Returning metadata:', JSON.stringify(response, null, 2));
+
+            resolve(response);
+        }
     });
 }
 
@@ -338,16 +372,68 @@ async function processGtfsImport(taskId: string, filePath: string, filters: { se
 
         // --- IMPORT PHASE ---
 
-        // Agency
+        // Routes (Moved up to collect Agency IDs)
+        const skippedRoutes: string[] = [];
+        const ignoredRoutes: string[] = []; // Invalid ones
+        const usedAgencyIds = new Set<string>();
+
+        if (entries.has('routes.txt')) {
+            updateStatus(30, "Importing Routes...");
+            const check = db.prepare('SELECT route_id FROM routes WHERE route_id = ?');
+            const insert = db.prepare(`INSERT INTO routes (route_id, agency_id, route_short_name, route_long_name, route_desc, route_type, route_url, route_color, route_text_color) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`);
+
+            const stream = await readEntryStream(filePath, 'routes.txt');
+
+            const rows: any[] = [];
+            await new Promise<void>((resolve, reject) => {
+                stream.pipe(csv())
+                    .on('data', (r) => rows.push(r))
+                    .on('end', () => {
+                        db.transaction(() => {
+                            rows.forEach(r => {
+                                // Filter by Selection
+                                // Strictly rely on validRouteIds which was built from the accepted trips.
+                                if (!validRouteIds.has(r.route_id)) {
+                                    return;
+                                }
+
+                                usedAgencyIds.add(r.agency_id || 'default_agency');
+
+                                if (check.get(r.route_id)) {
+                                    skippedRoutes.push(`${r.route_short_name || r.route_id} (Duplicate)`);
+                                    return;
+                                }
+                                insert.run(
+                                    r.route_id, r.agency_id, r.route_short_name, r.route_long_name, r.route_desc, r.route_type, r.route_url, r.route_color, r.route_text_color
+                                );
+                            });
+                        })();
+                        resolve();
+                    })
+                    .on('error', reject);
+            });
+        }
+
+        // Agency (Now filtered)
         if (entries.has('agency.txt')) {
-            updateStatus(20, "Importing Agencies...");
+            updateStatus(45, "Importing Agencies...");
             const insert = db.prepare(`INSERT OR IGNORE INTO agency (agency_id, agency_name, agency_url, agency_timezone, agency_lang, agency_phone, agency_email) VALUES (?, ?, ?, ?, ?, ?, ?)`);
             const stream = await readEntryStream(filePath, 'agency.txt');
             const batch: any[] = [];
             const flush = db.transaction((rows: any[]) => {
-                rows.forEach(r => insert.run(
-                    r.agency_id || uuidv4(), r.agency_name, r.agency_url, r.agency_timezone, r.agency_lang, r.agency_phone, r.agency_email
-                ));
+                rows.forEach(r => {
+                    const aid = r.agency_id || 'default_agency';
+                    // Only import if used by one of the selected routes
+                    // If no routes used it, skip. 
+                    // Exception: If routes didn't specify agency_id (rare/invalid), we might miss default?
+                    // But we defaulting to 'default_agency' above.
+
+                    if (usedAgencyIds.size > 0 && !usedAgencyIds.has(aid)) return;
+
+                    insert.run(
+                        aid, r.agency_name, r.agency_url, r.agency_timezone, r.agency_lang, r.agency_phone, r.agency_email
+                    );
+                });
             });
             await processStream(stream, batch, 100, flush);
         }
@@ -369,59 +455,6 @@ async function processGtfsImport(taskId: string, filePath: string, filters: { se
                 });
             });
             await processStream(stream, batch, 2000, flush);
-        }
-
-        // Routes
-        const skippedRoutes: string[] = [];
-        const ignoredRoutes: string[] = []; // Invalid ones
-
-        if (entries.has('routes.txt')) {
-            updateStatus(45, "Importing Routes...");
-            const check = db.prepare('SELECT route_id FROM routes WHERE route_id = ?');
-            const insert = db.prepare(`INSERT INTO routes (route_id, agency_id, route_short_name, route_long_name, route_desc, route_type, route_url, route_color, route_text_color) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`);
-
-            const stream = await readEntryStream(filePath, 'routes.txt');
-
-            const rows: any[] = [];
-            await new Promise<void>((resolve, reject) => {
-                stream.pipe(csv())
-                    .on('data', (r) => rows.push(r))
-                    .on('end', () => {
-                        db.transaction(() => {
-                            rows.forEach(r => {
-                                // Filter by Selection
-                                // Note: We only import routes that have at least one valid trip (validRouteIds).
-                                // This assumes we calculated validRouteIds correctly based on the allowedPairs above.
-                                if (!filters.routes.has(r.route_id) && !validRouteIds.has(r.route_id)) return;
-
-                                // Actually, filters.routes.has check is too loose if allowedPairs is used.
-                                // We should strictly rely on validRouteIds which was built from the accepted trips.
-                                if (!validRouteIds.has(r.route_id)) {
-                                    // If user didn't even select it in routes set?
-                                    // If granular import: validRouteIds matches user intent.
-                                    // If ignoredRoutes logic:
-                                    // It might be in 'filters.routes' but have no valid trips (e.g. S-R2 where R2 has no trips in S).
-                                    // Wait, validRouteIds ONLY contains routes that have trips that passed the filter.
-
-                                    // If the route was in the zip but has no selected trips, we skip it.
-                                    // Should we report it as 'ignored'? Only if it was in the user's "selectedRoutes" list?
-                                    // For now, let's just skip it silently if it's not in validRouteIds, UNLESS validRouteIds logic excluded it but it was "Selected"?
-                                    return;
-                                }
-
-                                if (check.get(r.route_id)) {
-                                    skippedRoutes.push(`${r.route_short_name || r.route_id} (Duplicate)`);
-                                    return;
-                                }
-                                insert.run(
-                                    r.route_id, r.agency_id, r.route_short_name, r.route_long_name, r.route_desc, r.route_type, r.route_url, r.route_color, r.route_text_color
-                                );
-                            });
-                        })();
-                        resolve();
-                    })
-                    .on('error', reject);
-            });
         }
 
         // Calendar

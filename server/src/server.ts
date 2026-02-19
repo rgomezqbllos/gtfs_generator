@@ -35,9 +35,21 @@ server.register(fastifyMultipart, {
 });
 
 // Serve static files (Frontend)
+const DIST_PATH = path.join(__dirname, '../../client/dist');
+console.log('Serving static files from:', DIST_PATH);
+
+// Serve static files (Frontend)
 server.register(fastifyStatic, {
-    root: path.join(__dirname, '../public'),
+    root: DIST_PATH,
     prefix: '/', // optional: default '/'
+});
+
+// IMPORTANT: Catch-all for SPA (return index.html for non-API routes)
+server.setNotFoundHandler(async (request, reply) => {
+    if (request.raw.url && request.raw.url.startsWith('/api')) {
+        return reply.code(404).send({ error: 'API endpoint not found' });
+    }
+    return reply.sendFile('index.html');
 });
 
 server.register(stopsRoutes, { prefix: '/api' });
