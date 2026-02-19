@@ -122,3 +122,11 @@ CREATE TABLE IF NOT EXISTS segment_time_slots (
     travel_time INTEGER NOT NULL, -- seconds
     FOREIGN KEY(segment_id) REFERENCES segments(segment_id) ON DELETE CASCADE
 );
+
+CREATE TABLE IF NOT EXISTS route_parkings (
+    route_id TEXT NOT NULL,
+    stop_id TEXT NOT NULL,
+    PRIMARY KEY(route_id, stop_id),
+    FOREIGN KEY(route_id) REFERENCES routes(route_id) ON DELETE CASCADE,
+    FOREIGN KEY(stop_id) REFERENCES stops(stop_id)
+);

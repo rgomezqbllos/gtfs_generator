@@ -58,12 +58,14 @@ const formatTimeInput = (val: string): string | null => {
 };
 
 // Convert HH:MM:SS to seconds
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
 const timeToSeconds = (timeStr: string): number => {
     const [h, m, s] = timeStr.split(':').map(Number);
     return (h || 0) * 3600 + (m || 0) * 60 + (s || 0);
 };
 
 // Convert seconds to HH:MM:SS
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
 const secondsToTime = (totalSeconds: number): string => {
     const h = Math.floor(totalSeconds / 3600);
     const m = Math.floor((totalSeconds % 3600) / 60);
@@ -103,54 +105,35 @@ const TimeSlotEditorModal: React.FC<TimeSlotEditorModalProps> = ({ isOpen, onClo
             const lastSlot = slots[slots.length - 1];
             setStartTime(lastSlot.end_time);
 
-            // Auto-calculate end time based on current duration
-            const startSec = timeToSeconds(lastSlot.end_time);
-            const durationSec = travelTimeMinutes * 60;
-            setEndTime(secondsToTime(startSec + durationSec));
+            // Do NOT auto-calculate end time or duration based on previous slots.
+            // Let the user define the window.
+            // setEndTime(secondsToTime(startSec + durationSec));
         } else {
             // First slot starts at 04:00:00 usually? Or 00:00:00. Let's stick to 00:00:00 default or current 'startTime' state if user edited it.
             // If it's pure init, maybe 04:00:00 is a better GTFS start, but let's leave 00:00:00.
         }
     }, [slots]); // Only run when list changes
 
-    // Logic: If Start updates -> Update End based on Duration
+    // Logic: Just format Start Time
     const handleStartTimeBlur = () => {
         const formatted = formatTimeInput(startTime);
         if (formatted) {
             setStartTime(formatted);
-            const startSec = timeToSeconds(formatted);
-            const durationSec = travelTimeMinutes * 60;
-            setEndTime(secondsToTime(startSec + durationSec));
         }
     };
 
-    // Logic: If End updates -> Update Duration
+    // Logic: Just format End Time
     const handleEndTimeBlur = () => {
         const formatted = formatTimeInput(endTime);
         if (formatted) {
             setEndTime(formatted);
-            const startSec = timeToSeconds(startTime);
-            const endSec = timeToSeconds(formatted);
-
-            if (endSec > startSec) {
-                const diffMin = Math.round((endSec - startSec) / 60);
-                setTravelTimeMinutes(diffMin);
-            } else {
-                // If end is before start, maybe user meant next day? 
-                // For now, let's just warn or let them fix it.
-                // Or auto-fix if it's small? No, safer to just invalid.
-            }
         }
     };
 
-    // Logic: If Duration updates -> Update End based on Start
+    // Logic: Just update Duration
     const handleDurationChange = (e: React.ChangeEvent<HTMLInputElement>) => {
         const val = parseInt(e.target.value) || 0;
         setTravelTimeMinutes(val);
-
-        const startSec = timeToSeconds(startTime);
-        const durationSec = val * 60;
-        setEndTime(secondsToTime(startSec + durationSec));
     };
 
 

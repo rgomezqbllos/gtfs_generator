@@ -1,32 +1,25 @@
 import * as React from 'react';
 import { useEditor } from '../context/EditorContext';
-import { Plus, ArrowRight, Clock, Ruler, GripHorizontal, Download } from 'lucide-react';
+import { Plus, ArrowRight, Clock, Ruler, GripHorizontal, Download, Wand2, X } from 'lucide-react';
 import type { Segment, Stop } from '../types';
 import { clsx } from 'clsx';
+import { API_URL } from '../config';
 
 interface EmptySegmentsManagerProps {
     onClose: () => void;
     segments: Segment[];
     stops: Stop[];
+    routesStructure: any[];
+    onRefresh: () => void;
 }
 
-const EmptySegmentsManager: React.FC<EmptySegmentsManagerProps> = ({ onClose, segments, stops }) => {
+const EmptySegmentsManager: React.FC<EmptySegmentsManagerProps> = ({ onClose, segments, stops, routesStructure, onRefresh }) => {
     const { mode, setMode, selectElement } = useEditor();
-    // const [segments, setSegments] = React.useState<Segment[]>([]); // Props
-    // const [stops, setStops] = React.useState<Stop[]>([]); // Props
-    // const [loading, setLoading] = React.useState(true); // Props
     const [isAdding, setIsAdding] = React.useState(false);
-
-    // Fetch Data
-    /* 
-    React.useEffect(() => {
-       // Old fetch logic removed
-    }, []);
-    */
+    const [isGenerating, setIsGenerating] = React.useState(false);
 
     React.useEffect(() => {
         if (mode === 'idle' && isAdding) {
-            // User finished adding or cancelled
             setIsAdding(false);
         }
     }, [mode, isAdding]);
@@ -41,6 +34,100 @@ const EmptySegmentsManager: React.FC<EmptySegmentsManagerProps> = ({ onClose, se
     };
 
     const getStopName = (id: string) => stops.find(s => s.stop_id === id)?.stop_name || id;
+
+    const handleAutoConnect = async () => {
+        if (!confirm("This will automatically create empty segments (deadheads) connecting:\n1. Route terminals (A->B, B->A)\n2. Route terminals to associated Parkings (if any)\n\nContinue?")) return;
+
+        setIsGenerating(true);
+        try {
+            const newSegments: { start: string, end: string }[] = [];
+
+            // 1. Identify required connections from Route Structure
+            routesStructure.forEach(route => {
+                const parkings = route.parkings || [];
+
+                route.directions.forEach((dir: any) => {
+                    if (dir.stops && dir.stops.length >= 2) {
+                        const firstStopId = dir.stops[0].stop_id;
+                        const lastStopId = dir.stops[dir.stops.length - 1].stop_id;
+
+                        // Check validity
+                        if (firstStopId === lastStopId) return;
+
+                        // Standard Return Trip (A->B, B->A)
+                        newSegments.push({ start: firstStopId, end: lastStopId });
+                        newSegments.push({ start: lastStopId, end: firstStopId });
+
+                        // Parking Connections
+                        // Connect Start/End to/from each parking
+                        parkings.forEach((parkingId: string) => {
+                            if (parkingId === firstStopId || parkingId === lastStopId) return;
+
+                            // Start <-> Parking
+                            newSegments.push({ start: firstStopId, end: parkingId });
+                            newSegments.push({ start: parkingId, end: firstStopId });
+
+                            // End <-> Parking
+                            newSegments.push({ start: lastStopId, end: parkingId });
+                            newSegments.push({ start: parkingId, end: lastStopId });
+                        });
+                    }
+                });
+            });
+
+            // 2. Filter out existing segments (empty OR revenue)
+            const uniqueSegments = new Set<string>();
+            const segmentsToCreate: { start: string, end: string }[] = [];
+
+            // Existing signatures (we verify against IDs)
+            // Note: We only have access to 'segments' prop which usually contains ALL segments if passed correctly 
+            // or filtered. In MapEditor, we passed `segments.filter(s => s.type === 'empty')`.
+            // So we might duplicate if a REVENUE segment exists.
+            // Ideally we should check against ALL segments, but to be safe and simple, 
+            // duplicates of revenue segments as empty segments might be acceptable (different purpose).
+            // However, to avoid spam, let's at least check against known empty segments.
+
+            const existingSig = new Set(segments.map(s => `${s.start_node_id}-${s.end_node_id}`));
+
+            newSegments.forEach(pair => {
+                const sig = `${pair.start}-${pair.end}`;
+                if (existingSig.has(sig)) return;
+                if (uniqueSegments.has(sig)) return;
+                uniqueSegments.add(sig);
+                segmentsToCreate.push(pair);
+            });
+
+            if (segmentsToCreate.length === 0) {
+                alert("No new connections needed.");
+                return;
+            }
+
+            // 3. Create them
+            let createdCount = 0;
+
+            for (const pair of segmentsToCreate) {
+                await fetch(`${API_URL}/segments`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        start_node_id: pair.start,
+                        end_node_id: pair.end,
+                        type: 'empty'
+                    })
+                });
+                createdCount++;
+            }
+
+            onRefresh();
+            alert(`Created ${createdCount} empty segments.`);
+
+        } catch (err) {
+            console.error(err);
+            alert("Failed to generate segments.");
+        } finally {
+            setIsGenerating(false);
+        }
+    };
 
     const handleExportCSV = () => {
         if (segments.length === 0) return;
@@ -77,7 +164,7 @@ const EmptySegmentsManager: React.FC<EmptySegmentsManagerProps> = ({ onClose, se
     };
 
     return (
-        <div className="absolute left-20 top-0 h-full w-96 bg-white dark:bg-gray-900 shadow-2xl z-30 flex flex-col border-r border-gray-200 dark:border-gray-800 animate-in slide-in-from-left duration-200">
+        <div className="absolute left-20 top-0 h-full w-96 bg-white dark:bg-gray-900 shadow-2xl z-50 flex flex-col border-r border-gray-200 dark:border-gray-800 animate-in slide-in-from-left duration-200">
             {/* Header */}
             <div className="p-5 border-b border-gray-100 dark:border-gray-800 flex justify-between items-center bg-gray-50/50 dark:bg-gray-900/50 backdrop-blur-sm">
                 <div>
@@ -98,16 +185,35 @@ const EmptySegmentsManager: React.FC<EmptySegmentsManagerProps> = ({ onClose, se
                         <Download size={20} />
                     </button>
                     <button
-                        onClick={onClose}
-                        className="p-2 hover:bg-gray-200 dark:hover:bg-gray-800 rounded-lg text-gray-500 transition-colors"
+                        onClick={(e) => {
+                            e.stopPropagation();
+                            onClose();
+                        }}
+                        type="button"
+                        className="p-2 hover:bg-gray-200 dark:hover:bg-gray-800 rounded-lg text-gray-500 transition-colors hover:text-red-500"
                     >
-                        ✕
+                        <X size={20} />
                     </button>
                 </div>
             </div>
 
             {/* Actions */}
-            <div className="p-4 border-b border-gray-100 dark:border-gray-800 bg-white dark:bg-gray-900">
+            <div className="p-4 border-b border-gray-100 dark:border-gray-800 bg-white dark:bg-gray-900 flex flex-col gap-3">
+                <button
+                    onClick={handleAutoConnect}
+                    disabled={isGenerating}
+                    className="w-full flex items-center justify-center gap-2 py-2 px-4 rounded-xl font-semibold transition-all shadow-sm bg-purple-600 text-white hover:bg-purple-700 disabled:opacity-50"
+                >
+                    {isGenerating ? (
+                        <>Generating...</>
+                    ) : (
+                        <>
+                            <Wand2 size={18} />
+                            Auto Connect Routes
+                        </>
+                    )}
+                </button>
+
                 <button
                     onClick={handleAddClick}
                     className={clsx(
@@ -127,7 +233,7 @@ const EmptySegmentsManager: React.FC<EmptySegmentsManagerProps> = ({ onClose, se
                     )}
                 </button>
                 {mode === 'add_empty_segment' && (
-                    <p className="text-xs text-center mt-2 text-indigo-600 dark:text-indigo-400 font-medium">
+                    <p className="text-xs text-center mt-1 text-indigo-600 dark:text-indigo-400 font-medium">
                         Click two stops on map to connect
                     </p>
                 )}

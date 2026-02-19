@@ -896,13 +896,8 @@ const MapEditor: React.FC = () => {
                 />
             )}
 
-            {activePanel === 'empty_segments' && (
-                <EmptySegmentsManager
-                    onClose={() => setActivePanel('none')}
-                    segments={segments.filter(s => s.type === 'empty')}
-                    stops={stops}
-                />
-            )}
+
+
 
 
 
@@ -916,6 +911,19 @@ const MapEditor: React.FC = () => {
                     />
                 </div>
             </div>
+
+            {activePanel === 'empty_segments' && (
+                <EmptySegmentsManager
+                    onClose={() => {
+                        setActivePanel('none');
+                        setMode('idle');
+                    }}
+                    segments={segments.filter(s => s.type === 'empty')}
+                    stops={stops}
+                    routesStructure={routesStructure}
+                    onRefresh={fetchData}
+                />
+            )}
 
             {/* Empty State Warning */}
             {filterEmpty && (

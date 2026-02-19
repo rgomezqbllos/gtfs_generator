@@ -92,6 +92,7 @@ export default async function exportRoutes(fastify: FastifyInstance) {
                     SELECT * FROM trips 
                     WHERE route_id IN (${routePh}) 
                     AND service_id IN (${servicePh})
+                    AND trip_id NOT LIKE 't_%'
                 `).all(...finalRouteIds, ...finalServiceIds);
             }
 

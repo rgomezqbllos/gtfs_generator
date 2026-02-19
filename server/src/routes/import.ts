@@ -831,17 +831,33 @@ async function analyzeTimeSlots(taskId: string, tripIds: Set<string>) {
             // Sort by time
             events.sort((a, b) => a.time - b.time);
 
+            // Filter duplicates: Keep only MAX duration for same start time
+            const uniqueEventsMap = new Map<number, number>();
+            for (const e of events) {
+                const existing = uniqueEventsMap.get(e.time);
+                if (!existing || e.duration > existing) {
+                    uniqueEventsMap.set(e.time, e.duration);
+                }
+            }
+
+            // Convert back to sorted array
+            const uniqueEvents = Array.from(uniqueEventsMap.entries())
+                .map(([time, duration]) => ({ time, duration }))
+                .sort((a, b) => a.time - b.time);
+
+            if (uniqueEvents.length === 0) continue;
+
             // RLE (Run Length Encoding) logic
             // We want to group continuous trips with SAME duration.
             // Using a simple greedy approach:
             // A slot starts at the time of the first trip in the group.
             // It ends at the time of the *next* trip that has a DIFFERENT duration (or end of list).
 
-            let currentStart = events[0].time;
-            let currentDuration = events[0].duration;
+            let currentStart = uniqueEvents[0].time;
+            let currentDuration = uniqueEvents[0].duration;
 
-            for (let k = 1; k < events.length; k++) {
-                const e = events[k];
+            for (let k = 1; k < uniqueEvents.length; k++) {
+                const e = uniqueEvents[k];
                 if (e.duration !== currentDuration) {
                     // Close current slot
                     // Slot is from currentStart to e.time

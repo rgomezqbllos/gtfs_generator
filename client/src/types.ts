@@ -25,8 +25,14 @@ export interface Route {
     route_short_name: string;
     route_long_name: string;
     route_type: number;
+    route_color?: string;
+    route_text_color?: string;
+    route_desc?: string;
+    route_url?: string;
+    route_sort_order?: number;
     directions?: any[]; // Simplified
     agency_name?: string; // Enriched
+    parkings?: string[]; // Associated parking stop IDs
 }
 
 // Hack to resolve "SyntaxError: The requested module ... does not provide an export named 'Segment'"

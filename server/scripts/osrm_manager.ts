@@ -6,6 +6,10 @@ import https from 'https';
 import http from 'http';
 
 import { fileURLToPath } from 'url';
+import dotenv from 'dotenv';
+
+// Load environment variables from .env file
+dotenv.config();
 
 // --- Configuration ---
 const __filename = fileURLToPath(import.meta.url);
@@ -27,10 +31,26 @@ const REGIONS: Record<string, RegionInfo> = {
         url: 'https://download.geofabrik.de/south-america/colombia-latest.osm.pbf',
         mirrors: [
             'https://download.bbbike.org/osm/bbbike/Bogota/Bogota.osm.pbf',
-            'https://osm-internal.download.geofabrik.de/south-america/colombia-latest.osm.pbf'
         ]
     },
-    // ... others
+    'santiago': {
+        url: 'https://download.geofabrik.de/south-america/chile-latest.osm.pbf',
+        mirrors: [
+            'https://download.bbbike.org/osm/bbbike/Santiago/Santiago.osm.pbf'
+        ]
+    },
+    'chile': {
+        url: 'https://download.geofabrik.de/south-america/chile-latest.osm.pbf',
+        mirrors: []
+    },
+    'buenos-aires': {
+        url: 'https://download.geofabrik.de/south-america/argentina-latest.osm.pbf',
+        mirrors: []
+    },
+    'mexico-city': {
+        url: 'https://download.geofabrik.de/north-america/mexico-latest.osm.pbf',
+        mirrors: []
+    }
 };
 
 // Fallback: If Geofabrik is blocked, we might need manual download or a different source.
@@ -150,7 +170,7 @@ function ensureDir(dir: string) {
 }
 
 async function main() {
-    const regionKey = process.argv[2]?.toLowerCase();
+    const regionKey = (process.argv[2] || process.env.OSRM_CITY || '').toLowerCase();
 
     if (!regionKey || !REGIONS[regionKey]) {
         console.error(`

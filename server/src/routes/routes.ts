@@ -15,6 +15,7 @@ interface RouteBody {
     allowed_materials?: string; // Custom field
     agency_name?: string;
     agency_id?: string; // Added
+    parkings?: string[]; // Added
 }
 
 export default async function routesRoutes(fastify: FastifyInstance) {
@@ -26,7 +27,23 @@ export default async function routesRoutes(fastify: FastifyInstance) {
             FROM routes r
             LEFT JOIN agency a ON r.agency_id = a.agency_id
         `);
-        return stmt.all();
+        const routes = stmt.all() as any[];
+
+        // Fetch parkings for each route
+        // Could be done with a join/group_concat or individual queries. 
+        // For simplicity and array structure, let's fetch all parkings and map them.
+        const allParkings = db.prepare('SELECT route_id, stop_id FROM route_parkings').all() as { route_id: string, stop_id: string }[];
+
+        const parkingsMap = new Map<string, string[]>();
+        allParkings.forEach(p => {
+            if (!parkingsMap.has(p.route_id)) parkingsMap.set(p.route_id, []);
+            parkingsMap.get(p.route_id)!.push(p.stop_id);
+        });
+
+        return routes.map(r => ({
+            ...r,
+            parkings: parkingsMap.get(r.route_id) || []
+        }));
     });
 
     // GET route by id
@@ -111,7 +128,15 @@ export default async function routesRoutes(fastify: FastifyInstance) {
                 segmentMap.set(`${seg.start_node_id}-${seg.end_node_id}`, seg);
             });
 
-            // 5. Assemble Structure
+            // 5. Fetch Parkings
+            const allParkings = db.prepare('SELECT route_id, stop_id FROM route_parkings').all() as { route_id: string, stop_id: string }[];
+            const parkingsMap = new Map<string, string[]>();
+            allParkings.forEach(p => {
+                if (!parkingsMap.has(p.route_id)) parkingsMap.set(p.route_id, []);
+                parkingsMap.get(p.route_id)!.push(p.stop_id);
+            });
+
+            // 6. Assemble Structure
             const structure = routes.map(route => {
                 const routeTrips = tripsByRoute.get(route.route_id) || [];
 
@@ -140,7 +165,8 @@ export default async function routesRoutes(fastify: FastifyInstance) {
 
                 return {
                     ...route,
-                    directions
+                    directions,
+                    parkings: parkingsMap.get(route.route_id) || []
                 };
             });
 
@@ -182,28 +208,40 @@ export default async function routesRoutes(fastify: FastifyInstance) {
             }
         }
 
-        const stmt = db.prepare(`
-      INSERT INTO routes (
-          route_id, route_short_name, route_long_name, route_type, 
-          route_color, route_text_color, route_desc, route_url, route_sort_order,
-          allowed_materials, agency_id
-      )
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-    `);
+        const insertTransaction = db.transaction(() => {
+            const stmt = db.prepare(`
+                INSERT INTO routes (
+                    route_id, route_short_name, route_long_name, route_type, 
+                    route_color, route_text_color, route_desc, route_url, route_sort_order,
+                    allowed_materials, agency_id
+                )
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            `);
 
-        stmt.run(
-            route_id,
-            route_short_name || '',
-            route_long_name || '',
-            route_type,
-            route_color || '000000',
-            route_text_color || 'FFFFFF',
-            route_desc || null,
-            route_url || null,
-            route_sort_order || null,
-            allowed_materials || '',
-            agency_id_to_use
-        );
+            stmt.run(
+                route_id,
+                route_short_name || '',
+                route_long_name || '',
+                route_type,
+                route_color || '000000',
+                route_text_color || 'FFFFFF',
+                route_desc || null,
+                route_url || null,
+                route_sort_order || null,
+                allowed_materials || '',
+                agency_id_to_use
+            );
+
+            // Save Parkings
+            if (body.parkings && Array.isArray(body.parkings)) {
+                const insertParking = db.prepare('INSERT INTO route_parkings (route_id, stop_id) VALUES (?, ?)');
+                for (const stopId of body.parkings) {
+                    insertParking.run(route_id, stopId);
+                }
+            }
+        });
+
+        insertTransaction();
 
         return { route_id, ...body };
     });
@@ -247,35 +285,55 @@ export default async function routesRoutes(fastify: FastifyInstance) {
                 }
             }
 
-            // 2. Update Route
-            const stmt = db.prepare(`
-                UPDATE routes SET
-                    route_short_name = COALESCE(?, route_short_name),
-                    route_long_name = COALESCE(?, route_long_name),
-                    route_type = COALESCE(?, route_type),
-                    route_color = COALESCE(?, route_color),
-                    route_text_color = COALESCE(?, route_text_color),
-                    route_desc = COALESCE(?, route_desc),
-                    route_url = COALESCE(?, route_url),
-                    route_sort_order = COALESCE(?, route_sort_order),
-                    allowed_materials = COALESCE(?, allowed_materials),
-                    agency_id = ?
-                WHERE route_id = ?
-            `);
+            // 2. Update Route Transaction
+            const updateTransaction = db.transaction(() => {
+                const stmt = db.prepare(`
+                    UPDATE routes SET
+                        route_short_name = COALESCE(?, route_short_name),
+                        route_long_name = COALESCE(?, route_long_name),
+                        route_type = COALESCE(?, route_type),
+                        route_color = COALESCE(?, route_color),
+                        route_text_color = COALESCE(?, route_text_color),
+                        route_desc = COALESCE(?, route_desc),
+                        route_url = COALESCE(?, route_url),
+                        route_sort_order = COALESCE(?, route_sort_order),
+                        allowed_materials = COALESCE(?, allowed_materials),
+                        agency_id = ?
+                    WHERE route_id = ?
+                `);
 
-            stmt.run(
-                route_short_name,
-                route_long_name,
-                route_type,
-                route_color,
-                route_text_color,
-                route_desc,
-                route_url,
-                route_sort_order,
-                allowed_materials,
-                agency_id_to_use,
-                id
-            );
+                stmt.run(
+                    route_short_name,
+                    route_long_name,
+                    route_type,
+                    route_color,
+                    route_text_color,
+                    route_desc,
+                    route_url,
+                    route_sort_order,
+                    allowed_materials,
+                    agency_id_to_use,
+                    id
+                );
+
+                // Update Parkings
+                // If parkings is explicitly provided (even if empty array), update. 
+                // If undefined, maybe keep existing? Assuming provided means full replace.
+                if (body.parkings !== undefined) {
+                    // Delete existing
+                    db.prepare('DELETE FROM route_parkings WHERE route_id = ?').run(id);
+
+                    // Insert new
+                    if (Array.isArray(body.parkings)) {
+                        const insertParking = db.prepare('INSERT INTO route_parkings (route_id, stop_id) VALUES (?, ?)');
+                        for (const stopId of body.parkings) {
+                            insertParking.run(id, stopId);
+                        }
+                    }
+                }
+            });
+
+            updateTransaction();
 
             return { message: 'Route updated', route_id: id };
 

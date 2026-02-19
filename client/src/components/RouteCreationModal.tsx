@@ -43,10 +43,12 @@ const RouteCreationModal: React.FC<RouteCreationModalProps> = ({ isOpen, onClose
     const [loading, setLoading] = React.useState(false);
     const [activeTab, setActiveTab] = React.useState<'basic' | 'advanced'>('basic');
     const [agencies, setAgencies] = React.useState<{ agency_id: string; agency_name: string }[]>([]);
+    const [parkingStops, setParkingStops] = React.useState<{ stop_id: string; stop_name: string }[]>([]);
 
     React.useEffect(() => {
         if (isOpen) {
             fetchAgencies();
+            fetchParkingStops();
             if (routeToEdit) {
                 setFormData(routeToEdit);
             } else {
@@ -61,7 +63,8 @@ const RouteCreationModal: React.FC<RouteCreationModalProps> = ({ isOpen, onClose
                     agency_id: '',
                     route_desc: '',
                     route_url: '',
-                    route_sort_order: undefined
+                    route_sort_order: undefined,
+                    parkings: []
                 });
             }
             setActiveTab('basic');
@@ -77,6 +80,23 @@ const RouteCreationModal: React.FC<RouteCreationModalProps> = ({ isOpen, onClose
             }
         } catch (err) {
             console.error('Failed to fetch agencies', err);
+        }
+    };
+
+    const fetchParkingStops = async () => {
+        try {
+            const res = await fetch(`${API_URL}/stops`); // Assuming GET /stops returns all stops
+            if (res.ok) {
+                const data = await res.json();
+                // Filter for parkings
+                // Check if API returns array directly or inside object, assuming array based on usage elsewhere
+                const stops = Array.isArray(data) ? data : [];
+                // Filter where node_type is 'parking'
+                const parkings = stops.filter((s: any) => s.node_type === 'parking');
+                setParkingStops(parkings);
+            }
+        } catch (err) {
+            console.error('Failed to fetch parking stops', err);
         }
     };
 
@@ -309,6 +329,37 @@ const RouteCreationModal: React.FC<RouteCreationModalProps> = ({ isOpen, onClose
                                     value={formData.route_desc || ''}
                                     onChange={e => setFormData({ ...formData, route_desc: e.target.value })}
                                 />
+                            </div>
+
+                            {/* Associated Parkings */}
+                            <div>
+                                <label className="block text-xs font-bold text-gray-500 uppercase mb-1.5">Associated Parkings</label>
+                                <div className="p-3 bg-gray-50 dark:bg-gray-800 border-gray-200 dark:border-gray-700 rounded-lg max-h-40 overflow-y-auto space-y-2">
+                                    {parkingStops.length === 0 ? (
+                                        <div className="text-xs text-gray-400 italic">No parking nodes found. Create stops with type "Parking" first.</div>
+                                    ) : (
+                                        parkingStops.map(stop => (
+                                            <label key={stop.stop_id} className="flex items-center gap-2 cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-700/50 p-1.5 rounded transition-colors">
+                                                <input
+                                                    type="checkbox"
+                                                    className="rounded border-gray-300 text-blue-600 focus:ring-blue-500 w-4 h-4"
+                                                    checked={formData.parkings?.includes(stop.stop_id) || false}
+                                                    onChange={(e) => {
+                                                        const currentParkings = formData.parkings || [];
+                                                        let newParkings;
+                                                        if (e.target.checked) {
+                                                            newParkings = [...currentParkings, stop.stop_id];
+                                                        } else {
+                                                            newParkings = currentParkings.filter(id => id !== stop.stop_id);
+                                                        }
+                                                        setFormData({ ...formData, parkings: newParkings });
+                                                    }}
+                                                />
+                                                <span className="text-sm text-gray-700 dark:text-gray-200">{stop.stop_name}</span>
+                                            </label>
+                                        ))
+                                    )}
+                                </div>
                             </div>
                         </div>
                     )}
