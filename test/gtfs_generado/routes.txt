@@ -1,0 +1,2 @@
+route_id,agency_id,route_short_name,route_long_name,route_desc,route_type,route_url,route_color,route_text_color,route_sort_order,allowed_materials
+a8097c86-f29d-4c11-af1e-bbebeb1c672e,0cbb1bbf-b613-40de-b3e0-aae11b8c7a3e,203,Santa Cândida / Capão Raso,,3,,1337ec,FFFFFF,,

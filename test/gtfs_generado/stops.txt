@@ -1,0 +1,14 @@
+stop_id,stop_code,stop_name,stop_desc,stop_lat,stop_lon,zone_id,stop_url,location_type,parent_station,stop_timezone,wheelchair_boarding,level_id,platform_code,node_type
+178c3d7a-05d2-4a95-bcda-0bec759ac138,100107,Estação Central,,-25.43,-49.268,,,0,,,,,,commercial
+2a131324-2fe5-45c6-8919-d9969b77c8cb,100110,Estação Tubo Silva Jardim,,-25.45,-49.2885,,,0,,,,,,commercial
+56d121f2-45d8-4662-babe-3bbbf57f9c2e,100112,Terminal Portão,,-25.476,-49.2925,,,0,,,,,,commercial
+58ae01fb-d6b1-4483-ba2b-c47f784d4af4,100105,Estação Tubo Antônio Cavalcanti,,-25.405,-49.263,,,0,,,,,,commercial
+5b4bb621-acb7-43a4-bfd4-0dea568fb78e,100102,Estação Tubo Fernando de Noronha,,-25.367,-49.238,,,0,,,,,,commercial
+7c14aa31-929b-4df2-9868-4499aaf59b38,100101,Terminal Santa Cândida,,-25.3582,-49.2319,,,0,,,,,,commercial
+b3f57d38-3f59-4be0-bd94-96af7a1b6071,100106,Estação Tubo Passeio Público,,-25.4245,-49.2685,,,0,,,,,,commercial
+d01a7399-869b-4213-bb58-56ecb0bbc1b9,100113,Terminal Capão Raso,,-25.5035,-49.294,,,0,,,,,,commercial
+e1c92a48-fc14-44e3-9b7f-367e12aa7e25,100111,Estação Tubo Água Verde,,-25.46,-49.294,,,0,,,,,,commercial
+e65b385f-e53f-4f30-85eb-f3c3697b5af4,100104,Estação Tubo Holanda,,-25.397,-49.259,,,0,,,,,,commercial
+e6fdf34d-0547-4abf-972f-175f2d9286e1,100109,Estação Tubo Bento Viana,,-25.445,-49.285,,,0,,,,,,commercial
+f1fb0445-a677-4c90-8980-57bda49e2381,100108,Praça Rui Barbosa,,-25.435,-49.274,,,0,,,,,,commercial
+f904da4e-76a9-4714-9a57-9c8e9295170f,100103,Terminal Boa Vista,,-25.3855,-49.2515,,,0,,,,,,commercial

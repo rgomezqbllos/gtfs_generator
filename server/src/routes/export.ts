@@ -125,6 +125,7 @@ export default async function exportRoutes(fastify: FastifyInstance) {
                 const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
                 return R * c;
             };
+            const toKm3 = (meters: number) => Number((meters / 1000).toFixed(3));
 
             const tripStopTimesMap = new Map<string, any[]>();
             stopTimes.forEach(st => {
@@ -192,14 +193,11 @@ export default async function exportRoutes(fastify: FastifyInstance) {
                             distTraveled += d;
                         }
 
-                        if (distTraveled <= previousDistTraveled) {
-                            distTraveled = previousDistTraveled + 0.001;
-                        }
+                        st.shape_dist_traveled = toKm3(distTraveled);
 
-                        st.shape_dist_traveled = Number(distTraveled.toFixed(4));
-
+                        // Keep strictly increasing values after 3-decimal rounding.
                         if (st.shape_dist_traveled <= previousDistTraveled) {
-                            st.shape_dist_traveled = Number((previousDistTraveled + 0.001).toFixed(4));
+                            st.shape_dist_traveled = Number((previousDistTraveled + 0.001).toFixed(3));
                         }
 
                         previousDistTraveled = st.shape_dist_traveled;
@@ -260,7 +258,7 @@ export default async function exportRoutes(fastify: FastifyInstance) {
                             shape_pt_lat: firstStop.stop_lat,
                             shape_pt_lon: firstStop.stop_lon,
                             shape_pt_sequence: seq++,
-                            shape_dist_traveled: Number(distTraveled.toFixed(4))
+                            shape_dist_traveled: toKm3(distTraveled)
                         });
                     }
 
@@ -389,7 +387,7 @@ export default async function exportRoutes(fastify: FastifyInstance) {
                             shape_pt_lat: Number(stop.stop_lat.toFixed(6)),
                             shape_pt_lon: Number(stop.stop_lon.toFixed(6)),
                             shape_pt_sequence: idx + 1, // 1-based sequence
-                            shape_dist_traveled: Number(distTraveled.toFixed(2))
+                            shape_dist_traveled: toKm3(distTraveled)
                         });
 
                         lastLat = stop.stop_lat;
