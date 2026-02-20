@@ -160,9 +160,8 @@ function parseDistanceValue(raw: unknown): number | null {
 function normalizeDistanceToKm3(raw: unknown): number | null {
     const value = parseDistanceValue(raw);
     if (value === null || value < 0) return null;
-    // Heuristic: very large cumulative values are likely meters from source GTFS.
-    const km = value >= 1000 ? value / 1000 : value;
-    return Number(km.toFixed(3));
+    // GTFS standard: shape_dist_traveled is interpreted as meters on input.
+    return Number((value / 1000).toFixed(3));
 }
 
 // Helper to Scan
