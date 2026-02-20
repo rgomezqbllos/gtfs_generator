@@ -38,6 +38,15 @@ export function initDB() {
             console.log('Migrated: Added route_text_color to routes');
         }
 
+        // Stops Migration
+        const stopColumns = db.pragma('table_info(stops)') as { name: string }[];
+        const stopColumnNames = stopColumns.map(c => c.name);
+        if (!stopColumnNames.includes('node_type')) {
+            db.prepare('ALTER TABLE stops ADD COLUMN node_type TEXT').run();
+            console.log('Migrated: Added node_type to stops');
+        }
+
+
         // Segments Migration
         const segmentColumns = db.pragma('table_info(segments)') as { name: string }[];
         const segmentColumnNames = segmentColumns.map(c => c.name);

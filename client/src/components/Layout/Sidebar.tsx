@@ -11,7 +11,8 @@ import {
     Sun,
     Moon,
     Download,
-    Upload
+    Upload,
+    Database
 } from 'lucide-react';
 import { clsx } from 'clsx';
 import ExportModal from '../ExportModal';
@@ -82,6 +83,13 @@ const Sidebar: React.FC = () => {
             icon: Settings,
             active: activePanel === 'settings',
             onClick: () => setActivePanel(activePanel === 'settings' ? 'none' : 'settings')
+        },
+        {
+            id: 'external_load',
+            label: 'External Load',
+            icon: Database,
+            active: activePanel === 'external_load',
+            onClick: () => setActivePanel(activePanel === 'external_load' ? 'none' : 'external_load')
         }
     ];
 

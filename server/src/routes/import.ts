@@ -87,6 +87,44 @@ export default async function importRoutes(fastify: FastifyInstance) {
         return reply.send({ taskId });
     });
 
+    // 3. STRUCTURED IMPORT (CSV)
+    fastify.post('/gtfs/structured', async (request, reply) => {
+        const parts = request.parts();
+
+        const stopsRows: any[] = [];
+        const routesRows: any[] = [];
+        const itinerariesRows: any[] = [];
+
+        try {
+            for await (const part of parts) {
+                if (part.type === 'file') {
+                    const buffer = await part.toBuffer();
+                    const content = buffer.toString('utf-8');
+                    const rows = await parseCsvContent(content);
+
+                    if (part.fieldname === 'stops') stopsRows.push(...rows);
+                    if (part.fieldname === 'routes') routesRows.push(...rows);
+                    if (part.fieldname === 'itineraries') itinerariesRows.push(...rows);
+                }
+            }
+
+            const { StructuredImportService } = await import('../services/structuredImportService');
+            const service = new StructuredImportService();
+            service.processAll(stopsRows, routesRows, itinerariesRows);
+
+            const errors = service.getErrors();
+            if (errors.length > 0) {
+                return reply.code(400).send({ success: false, errors });
+            }
+
+            return reply.send({ success: true, message: 'Import successful' });
+
+        } catch (err: any) {
+            request.log.error(err);
+            return reply.code(500).send({ error: err.message });
+        }
+    });
+
     // Legacy/Direct Import (Keep for backward compatibility if needed, or remove)
     // For now, let's keep the specialized status endpoint
     fastify.get('/gtfs/import/status/:taskId', async (request, reply) => {
@@ -96,6 +134,18 @@ export default async function importRoutes(fastify: FastifyInstance) {
             return reply.code(404).send({ error: 'Task not found' });
         }
         return reply.send(task);
+    });
+}
+
+// Helper to parse CSV string
+function parseCsvContent(content: string): Promise<any[]> {
+    return new Promise((resolve, reject) => {
+        const results: any[] = [];
+        const stream = Readable.from([content]);
+        stream.pipe(csv())
+            .on('data', (data) => results.push(data))
+            .on('end', () => resolve(results))
+            .on('error', reject);
     });
 }
 

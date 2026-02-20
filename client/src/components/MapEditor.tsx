@@ -18,6 +18,7 @@ import { useSettings } from '../context/SettingsContext';
 import CalendarManager from './CalendarManager';
 import TripsManager from './TripsManager';
 import EmptySegmentsManager from './EmptySegmentsManager';
+import ExternalLoadPanel from './ExternalLoadPanel';
 
 import { API_URL } from '../config';
 
@@ -896,10 +897,11 @@ const MapEditor: React.FC = () => {
                 />
             )}
 
-
-
-
-
+            {activePanel === 'external_load' && (
+                <ExternalLoadPanel
+                    onClose={() => setActivePanel('none')}
+                />
+            )}
 
             {/* Filter Panel - Integrated Layout */}
             <div className="absolute top-4 left-16 z-20 pointer-events-none flex flex-col items-start gap-4 h-[calc(100vh-2rem)]">
