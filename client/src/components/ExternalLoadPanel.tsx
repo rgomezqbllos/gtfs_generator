@@ -4,9 +4,10 @@ import { API_URL } from '../config';
 
 interface ExternalLoadPanelProps {
     onClose: () => void;
+    onImportSuccess?: () => void | Promise<void>;
 }
 
-const ExternalLoadPanel: React.FC<ExternalLoadPanelProps> = ({ onClose }) => {
+const ExternalLoadPanel: React.FC<ExternalLoadPanelProps> = ({ onClose, onImportSuccess }) => {
     const [files, setFiles] = useState<{
         stops: File | null;
         routes: File | null;
@@ -60,6 +61,9 @@ const ExternalLoadPanel: React.FC<ExternalLoadPanelProps> = ({ onClose }) => {
             if (res.ok && data.success) {
                 setStatus('success');
                 setMessage(data.message || "Import completed successfully!");
+                if (onImportSuccess) {
+                    await onImportSuccess();
+                }
                 // Clear files? Maybe not, so user sees what they sent.
             } else {
                 setStatus('error');

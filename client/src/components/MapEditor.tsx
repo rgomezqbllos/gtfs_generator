@@ -900,6 +900,9 @@ const MapEditor: React.FC = () => {
             {activePanel === 'external_load' && (
                 <ExternalLoadPanel
                     onClose={() => setActivePanel('none')}
+                    onImportSuccess={async () => {
+                        await Promise.all([fetchData(), fetchRouteStructure()]);
+                    }}
                 />
             )}
 

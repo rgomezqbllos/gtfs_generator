@@ -495,21 +495,65 @@ export class StructuredImportService {
             VALUES (?, 1, 1, 1, 1, 1, 1, 1, ?, ?)
         `);
 
-        // Track unique service_ids to avoid duplicate inserts
-        const processedServiceIds = new Set<string>();
         const today = new Date().toISOString().slice(0, 10).replace(/-/g, ''); // YYYYMMDD
         const nextYear = new Date(new Date().setFullYear(new Date().getFullYear() + 1)).toISOString().slice(0, 10).replace(/-/g, '');
 
-        const tx = db.transaction(() => {
-            itineraries.forEach((it, idx) => {
-                // Normalize keys
-                Object.keys(it).forEach(k => {
-                    const lower = k.toLowerCase().trim();
-                    if (lower !== k) {
-                        it[lower] = it[k];
-                        // delete it[k]; // keep for safety
-                    }
+        const hasServiceIdColumn = itineraries.length === 0 || Object.keys(itineraries[0]).some((key) => {
+            const normalizedKey = key.toLowerCase().trim();
+            return normalizedKey === 'service_id' || normalizedKey === 'serviceid';
+        });
+
+        if (!hasServiceIdColumn) {
+            this.errors.push({
+                row: 1,
+                file: 'itineraries',
+                message: 'Missing required column service_id'
+            });
+            return;
+        }
+
+        const normalizedItineraries = itineraries.map((it, idx) => {
+            const normalized: any = {};
+            Object.keys(it).forEach((k) => {
+                normalized[k.toLowerCase().trim()] = it[k];
+            });
+
+            const serviceId = String(normalized.service_id || normalized.serviceid || '').trim();
+            if (!serviceId) {
+                this.errors.push({
+                    row: idx + 2,
+                    file: 'itineraries',
+                    message: 'Missing required field service_id'
                 });
+            }
+
+            return {
+                rowNumber: idx + 2,
+                data: normalized,
+                serviceId
+            };
+        });
+
+        const uniqueServiceIds = Array.from(
+            new Set(
+                normalizedItineraries
+                    .filter((row) => row.serviceId.length > 0)
+                    .map((row) => row.serviceId)
+            )
+        );
+
+        const calendarTx = db.transaction(() => {
+            uniqueServiceIds.forEach((serviceId) => {
+                insertCalendar.run(serviceId, today, nextYear);
+            });
+        });
+        calendarTx();
+
+        const tx = db.transaction(() => {
+            normalizedItineraries.forEach((itRow) => {
+                const it = itRow.data;
+                const rowNumber = itRow.rowNumber;
+                const serviceId = itRow.serviceId;
 
                 // Map columns
                 const eventType = (it.event !== undefined) ? String(it.event) : (it.event_type || '');
@@ -523,29 +567,24 @@ export class StructuredImportService {
                 // Generate Trip ID
                 const cleanStart = startTimeStr ? startTimeStr.replace(/:/g, '').replace(/\./g, '') : '000000';
                 const tripId = it.trip_id || `T_${busStr}_${cleanStart}`;
-                const serviceId = String(it.service_id || it.serviceid || 'WEEKDAY').trim();
 
-                // Create Calendar entry if new service_id
-                if (!processedServiceIds.has(serviceId)) {
-                    insertCalendar.run(serviceId, today, nextYear);
-                    processedServiceIds.add(serviceId);
-                }
+                if (!serviceId) return;
 
                 if (!tripId || !startTimeStr || !fromRef || !toRef) {
-                    this.errors.push({ row: idx + 2, file: 'itineraries', message: 'Missing fields (need start, origin, destiny)' });
+                    this.errors.push({ row: rowNumber, file: 'itineraries', message: 'Missing fields (need start, origin, destiny)' });
                     return;
                 }
 
                 if (eventType === '1') {
                     // REVENUE
                     if (!routeId) {
-                        this.errors.push({ row: idx + 2, file: 'itineraries', message: 'Missing route_id for revenue trip' });
+                        this.errors.push({ row: rowNumber, file: 'itineraries', message: 'Missing route_id for revenue trip' });
                         return;
                     }
 
                     const patterns = routePatterns.get(routeId); // Already trimmed string
                     if (!patterns || patterns.length === 0) {
-                        this.errors.push({ row: idx + 2, file: 'itineraries', message: `Route ${routeId} not defined` });
+                        this.errors.push({ row: rowNumber, file: 'itineraries', message: `Route ${routeId} not defined` });
                         return;
                     }
 
@@ -594,7 +633,7 @@ export class StructuredImportService {
                     }
 
                     if (!bestPattern) {
-                        this.errors.push({ row: idx + 2, file: 'itineraries', message: `Stops ${fromRef}->${toRef} not found in Route ${routeId}` });
+                        this.errors.push({ row: rowNumber, file: 'itineraries', message: `Stops ${fromRef}->${toRef} not found in Route ${routeId}` });
                         return;
                     }
 
@@ -668,7 +707,7 @@ export class StructuredImportService {
                         );
                     });
 
-                } else if (it.event_type === '0' || it.event === '0' || it.event === 0) {
+                } else if (eventType === '0') {
                     // DEADHEAD matches
                     const ref1 = String(fromRef).trim();
                     const ref2 = String(toRef).trim();
@@ -676,7 +715,7 @@ export class StructuredImportService {
                     const toId = stopCodeToId.get(ref2);
 
                     if (!fromId || !toId) {
-                        this.errors.push({ row: idx + 2, file: 'itineraries', message: `Unknown stops for deadhead: ${fromRef} -> ${toRef}` });
+                        this.errors.push({ row: rowNumber, file: 'itineraries', message: `Unknown stops for deadhead: ${fromRef} -> ${toRef}` });
                         return;
                     }
 
