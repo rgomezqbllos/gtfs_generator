@@ -149,6 +149,22 @@ function parseCsvContent(content: string): Promise<any[]> {
     });
 }
 
+function parseDistanceValue(raw: unknown): number | null {
+    if (raw === null || raw === undefined) return null;
+    const normalized = String(raw).trim().replace(',', '.');
+    if (!normalized) return null;
+    const parsed = Number.parseFloat(normalized);
+    return Number.isFinite(parsed) ? parsed : null;
+}
+
+function normalizeDistanceToKm3(raw: unknown): number | null {
+    const value = parseDistanceValue(raw);
+    if (value === null || value < 0) return null;
+    // Heuristic: very large cumulative values are likely meters from source GTFS.
+    const km = value >= 1000 ? value / 1000 : value;
+    return Number(km.toFixed(3));
+}
+
 // Helper to Scan
 async function scanGtfsMetadata(filePath: string) {
     const services = new Map<string, Set<string>>(); // service_id -> Set<route_id>
@@ -566,8 +582,9 @@ async function processGtfsImport(taskId: string, filePath: string, filters: { se
             const flush = db.transaction((rows: any[]) => {
                 rows.forEach(st => {
                     if (finalValidTrips.has(st.trip_id)) {
+                        const shapeDistKm = normalizeDistanceToKm3(st.shape_dist_traveled);
                         insert.run(
-                            st.trip_id, st.arrival_time, st.departure_time, st.stop_id, st.stop_sequence, st.stop_headsign, st.pickup_type, st.drop_off_type, st.shape_dist_traveled, st.timepoint
+                            st.trip_id, st.arrival_time, st.departure_time, st.stop_id, st.stop_sequence, st.stop_headsign, st.pickup_type, st.drop_off_type, shapeDistKm, st.timepoint
                         );
                     }
                 });
@@ -584,7 +601,7 @@ async function processGtfsImport(taskId: string, filePath: string, filters: { se
             const batch: any[] = [];
             const flush = db.transaction((rows: any[]) => {
                 rows.forEach(s => insert.run(
-                    s.shape_id, s.shape_pt_lat, s.shape_pt_lon, s.shape_pt_sequence, s.shape_dist_traveled
+                    s.shape_id, s.shape_pt_lat, s.shape_pt_lon, s.shape_pt_sequence, normalizeDistanceToKm3(s.shape_dist_traveled)
                 ));
             });
             await processStream(stream, batch, 5000, flush);
@@ -713,7 +730,7 @@ async function generateSegments(taskId: string, tripIds: Set<string>) {
 
                     // 1. Try shape_dist_traveled
                     if (from.shape_dist_traveled != null && to.shape_dist_traveled != null) {
-                        dist = to.shape_dist_traveled - from.shape_dist_traveled;
+                        dist = (to.shape_dist_traveled - from.shape_dist_traveled) * 1000;
                     }
 
                     // 2. Geometry from Shapes
@@ -937,4 +954,3 @@ async function analyzeTimeSlots(taskId: string, tripIds: Set<string>) {
     transaction();
     console.log(`Generated time slots for ${segmentEvents.size} segments.`);
 }
-

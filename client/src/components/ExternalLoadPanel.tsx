@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Upload, FileText, AlertCircle, CheckCircle, X } from 'lucide-react';
+import { Upload, FileText, AlertCircle, CheckCircle, X, Download } from 'lucide-react';
 import { API_URL } from '../config';
 
 interface ExternalLoadPanelProps {
@@ -21,6 +21,45 @@ const ExternalLoadPanel: React.FC<ExternalLoadPanelProps> = ({ onClose, onImport
     const [status, setStatus] = useState<'idle' | 'uploading' | 'success' | 'error'>('idle');
     const [message, setMessage] = useState<string>('');
     const [errors, setErrors] = useState<any[]>([]);
+
+    const templates: Record<'stops' | 'routes' | 'itineraries', { fileName: string; content: string }> = {
+        stops: {
+            fileName: 'Paradas_plantilla.csv',
+            content: [
+                'stop_code,stop_name,latitude,longitude,Type',
+                'S001,Terminal Centro,-25.4284,-49.2733,Comercial',
+                'S002,Parada Norte,-25.4210,-49.2655,Comercial'
+            ].join('\n')
+        },
+        routes: {
+            fileName: 'Rutas_plantilla.csv',
+            content: [
+                'route_id,route_name,direction,sequence,stop_code,accumulate_distance',
+                '101,Linea Centro-Norte,0,1,S001,0.000',
+                '101,Linea Centro-Norte,0,2,S002,1.275'
+            ].join('\n')
+        },
+        itineraries: {
+            fileName: 'Itinerario_plantilla.csv',
+            content: [
+                'service_id,trip_id,event_type,route_id,start_time,end_time,from_stop,to_stop,direction,bus',
+                'WKD,T_101_080000,1,101,08:00:00,08:12:00,S001,S002,0,BUS01'
+            ].join('\n')
+        }
+    };
+
+    const handleDownloadTemplate = (type: 'stops' | 'routes' | 'itineraries') => {
+        const template = templates[type];
+        const blob = new Blob([template.content], { type: 'text/csv;charset=utf-8;' });
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement('a');
+        link.href = url;
+        link.download = template.fileName;
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        URL.revokeObjectURL(url);
+    };
 
     const handleFileChange = (type: keyof typeof files) => (e: React.ChangeEvent<HTMLInputElement>) => {
         if (e.target.files && e.target.files[0]) {
@@ -101,15 +140,28 @@ const ExternalLoadPanel: React.FC<ExternalLoadPanelProps> = ({ onClose, onImport
                 <p className="text-sm text-gray-600 dark:text-gray-400">
                     Upload structured CSV files to build your network.
                 </p>
+                <p className="text-xs text-amber-700 dark:text-amber-300 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded-lg px-3 py-2">
+                    Distance format rule: always in km with up to 3 decimals, using a dot separator (example: 1.275).
+                </p>
 
                 {/* File Inputs */}
                 <div className="space-y-4">
 
                     {/* Stops */}
                     <div className="space-y-2">
-                        <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">
-                            Stops (Paradas.csv)
-                        </label>
+                        <div className="flex items-center justify-between gap-2">
+                            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">
+                                Stops (Paradas.csv)
+                            </label>
+                            <button
+                                type="button"
+                                onClick={() => handleDownloadTemplate('stops')}
+                                className="inline-flex items-center gap-1 text-xs px-2 py-1 rounded border border-blue-300 text-blue-700 hover:bg-blue-50 dark:border-blue-700 dark:text-blue-300 dark:hover:bg-blue-900/20"
+                            >
+                                <Download size={14} />
+                                Download template
+                            </button>
+                        </div>
                         <div className={`border-2 border-dashed rounded-lg p-3 flex flex-col items-center justify-center transition-colors ${files.stops ? 'border-green-500 bg-green-50 dark:bg-green-900/10' : 'border-gray-300 dark:border-gray-700 hover:border-blue-400'}`}>
                             <input
                                 type="file"
@@ -137,9 +189,19 @@ const ExternalLoadPanel: React.FC<ExternalLoadPanelProps> = ({ onClose, onImport
 
                     {/* Routes */}
                     <div className="space-y-2">
-                        <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">
-                            Routes (Rutas.csv)
-                        </label>
+                        <div className="flex items-center justify-between gap-2">
+                            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">
+                                Routes (Rutas.csv)
+                            </label>
+                            <button
+                                type="button"
+                                onClick={() => handleDownloadTemplate('routes')}
+                                className="inline-flex items-center gap-1 text-xs px-2 py-1 rounded border border-blue-300 text-blue-700 hover:bg-blue-50 dark:border-blue-700 dark:text-blue-300 dark:hover:bg-blue-900/20"
+                            >
+                                <Download size={14} />
+                                Download template
+                            </button>
+                        </div>
                         <div className={`border-2 border-dashed rounded-lg p-3 flex flex-col items-center justify-center transition-colors ${files.routes ? 'border-green-500 bg-green-50 dark:bg-green-900/10' : 'border-gray-300 dark:border-gray-700 hover:border-blue-400'}`}>
                             <input
                                 type="file"
@@ -167,9 +229,19 @@ const ExternalLoadPanel: React.FC<ExternalLoadPanelProps> = ({ onClose, onImport
 
                     {/* Itineraries */}
                     <div className="space-y-2">
-                        <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">
-                            Itineraries (Itinerario.csv)
-                        </label>
+                        <div className="flex items-center justify-between gap-2">
+                            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">
+                                Itineraries (Itinerario.csv)
+                            </label>
+                            <button
+                                type="button"
+                                onClick={() => handleDownloadTemplate('itineraries')}
+                                className="inline-flex items-center gap-1 text-xs px-2 py-1 rounded border border-blue-300 text-blue-700 hover:bg-blue-50 dark:border-blue-700 dark:text-blue-300 dark:hover:bg-blue-900/20"
+                            >
+                                <Download size={14} />
+                                Download template
+                            </button>
+                        </div>
                         <div className={`border-2 border-dashed rounded-lg p-3 flex flex-col items-center justify-center transition-colors ${files.itineraries ? 'border-green-500 bg-green-50 dark:bg-green-900/10' : 'border-gray-300 dark:border-gray-700 hover:border-blue-400'}`}>
                             <input
                                 type="file"

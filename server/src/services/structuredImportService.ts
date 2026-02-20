@@ -82,6 +82,24 @@ export class StructuredImportService {
         return R * c;
     }
 
+    private parseNumber(raw: unknown): number {
+        if (raw === null || raw === undefined) return NaN;
+        const normalized = String(raw).trim().replace(',', '.');
+        if (!normalized) return NaN;
+        const parsed = Number.parseFloat(normalized);
+        return Number.isFinite(parsed) ? parsed : NaN;
+    }
+
+    private toKm3(meters: number): number {
+        return Number((meters / 1000).toFixed(3));
+    }
+
+    private normalizeKm3(raw: unknown): number {
+        const parsed = this.parseNumber(raw);
+        if (!Number.isFinite(parsed) || parsed < 0) return 0;
+        return Number(parsed.toFixed(3));
+    }
+
     private distributeDurationByDistance(segmentDistances: number[], totalDuration: number): number[] {
         const count = segmentDistances.length;
         if (count === 0 || totalDuration <= 0) return segmentDistances.map(() => 0);
@@ -342,19 +360,17 @@ export class StructuredImportService {
 
                         // Calculate Distance
                         let dist = 0;
-                        const d1 = parseFloat(r1.distance || r1.accumulate_distance || '0');
-                        const d2 = parseFloat(r2.distance || r2.accumulate_distance || '0');
+                        const acc1Km = this.parseNumber(r1.accumulate_distance);
+                        const acc2Km = this.parseNumber(r2.accumulate_distance);
+                        const segmentKm = this.parseNumber(r2.distance);
 
-                        if (r2.accumulate_distance && r1.accumulate_distance) {
-                            // Delta
-                            dist = Math.abs(d2 - d1);
-                            // If 0, try lat/lon
+                        if (Number.isFinite(acc1Km) && Number.isFinite(acc2Km)) {
+                            dist = Math.abs(acc2Km - acc1Km) * 1000;
                             if (dist <= 0) dist = this.getDistMeters(fromStop.stop_lat, fromStop.stop_lon, toStop.stop_lat, toStop.stop_lon);
+                        } else if (Number.isFinite(segmentKm) && segmentKm > 0) {
+                            dist = segmentKm * 1000;
                         } else {
-                            // "distance" column might be delta or accum. 
-                            // If it's small, it's delta.
-                            if (d2 > 0) dist = d2;
-                            else dist = this.getDistMeters(fromStop.stop_lat, fromStop.stop_lon, toStop.stop_lat, toStop.stop_lon);
+                            dist = this.getDistMeters(fromStop.stop_lat, fromStop.stop_lon, toStop.stop_lat, toStop.stop_lon);
                         }
 
                         // Geometry
@@ -520,8 +536,8 @@ export class StructuredImportService {
                         const ref = String(row.stop_code || row.stop_name || row.stop_id || '').trim();
                         const stopId = stopsMap.get(ref);
                         if (stopId) {
-                            const dist = parseFloat(row.accumulate_distance || row.distance || '0');
-                            insertTemplateStopTime.run(tripId, '00:00:00', '00:00:00', stopId, idx + 1, dist);
+                            const distKm = this.normalizeKm3(row.accumulate_distance || row.distance || '0');
+                            insertTemplateStopTime.run(tripId, '00:00:00', '00:00:00', stopId, idx + 1, distKm);
                         }
                     });
                 }
@@ -761,23 +777,24 @@ export class StructuredImportService {
                         const r1 = subPattern[i];
                         const r2 = subPattern[i + 1];
 
-                        let d = 0;
-                        const d1 = parseFloat(r1.distance || r1.accumulate_distance || '0');
-                        const d2 = parseFloat(r2.distance || r2.accumulate_distance || '0');
+                        let dKm = 0;
+                        const acc1Km = this.parseNumber(r1.accumulate_distance);
+                        const acc2Km = this.parseNumber(r2.accumulate_distance);
+                        const segmentKm = this.parseNumber(r2.distance);
 
-                        if (r2.accumulate_distance && r1.accumulate_distance) {
-                            d = Math.abs(d2 - d1);
-                        } else {
-                            d = d2;
+                        if (Number.isFinite(acc1Km) && Number.isFinite(acc2Km)) {
+                            dKm = Math.abs(acc2Km - acc1Km);
+                        } else if (Number.isFinite(segmentKm) && segmentKm > 0) {
+                            dKm = segmentKm;
                         }
 
-                        if (d <= 0) {
+                        if (dKm <= 0) {
                             const ref1 = r1.stop_code || r1.stop_name;
                             const ref2 = r2.stop_code || r2.stop_name;
-                            d = getDirectDist(ref1, ref2);
+                            dKm = this.toKm3(getDirectDist(ref1, ref2));
                         }
-                        segmentLengths.push(d);
-                        totalDist += d;
+                        segmentLengths.push(dKm);
+                        totalDist = Number((totalDist + dKm).toFixed(3));
                         segmentDists.push(totalDist);
                     }
 
@@ -852,8 +869,8 @@ export class StructuredImportService {
                     }
 
                     // 1. Create Segment/TimeSlot (Existing Logic)
-                    const dist = getDirectDist(ref1, ref2);
-                    const segId = insertOrGetSegment(fromId, toId, dist, 'empty');
+                    const distMeters = getDirectDist(ref1, ref2);
+                    const segId = insertOrGetSegment(fromId, toId, distMeters, 'empty');
 
                     const startSec = this.timeToSeconds(startTimeStr);
                     const endSec = endTimeStr ? this.timeToSeconds(endTimeStr) : 0;
@@ -882,7 +899,7 @@ export class StructuredImportService {
                         insertStopTime.run(tripId, startTimeStr, startTimeStr, fromId, 1, 0);
 
                         // Stop 2
-                        insertStopTime.run(tripId, endTimeStr, endTimeStr, toId, 2, dist);
+                        insertStopTime.run(tripId, endTimeStr, endTimeStr, toId, 2, this.toKm3(distMeters));
                     }
                 }
             });
