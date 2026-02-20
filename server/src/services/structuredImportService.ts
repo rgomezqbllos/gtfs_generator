@@ -82,6 +82,102 @@ export class StructuredImportService {
         return R * c;
     }
 
+    private distributeDurationByDistance(segmentDistances: number[], totalDuration: number): number[] {
+        const count = segmentDistances.length;
+        if (count === 0 || totalDuration <= 0) return segmentDistances.map(() => 0);
+
+        const totalDist = segmentDistances.reduce((sum, d) => sum + Math.max(0, d), 0);
+        if (totalDist <= 0) {
+            const base = Math.floor(totalDuration / count);
+            const remainder = totalDuration - (base * count);
+            return segmentDistances.map((_, idx) => base + (idx < remainder ? 1 : 0));
+        }
+
+        const out: number[] = [];
+        let used = 0;
+        for (let i = 0; i < count; i++) {
+            if (i === count - 1) {
+                out.push(Math.max(0, totalDuration - used));
+                break;
+            }
+            const share = Math.round((Math.max(0, segmentDistances[i]) / totalDist) * totalDuration);
+            out.push(Math.max(0, share));
+            used += share;
+        }
+        return out;
+    }
+
+    private persistRevenueSegmentTimes(
+        segmentEvents: Map<string, { time: number; duration: number }[]>
+    ) {
+        if (segmentEvents.size === 0) return;
+
+        const deleteSlotsBySegment = db.prepare('DELETE FROM segment_time_slots WHERE segment_id = ?');
+        const updateSegmentTravelTime = db.prepare('UPDATE segments SET travel_time = ? WHERE segment_id = ?');
+        const insertSlot = db.prepare(`
+            INSERT INTO segment_time_slots (id, segment_id, start_time, end_time, travel_time)
+            VALUES (?, ?, ?, ?, ?)
+        `);
+
+        const tx = db.transaction(() => {
+            for (const [segmentId, events] of segmentEvents) {
+                if (events.length === 0) continue;
+
+                const uniqueEventsMap = new Map<number, number>();
+                events.forEach((e) => {
+                    if (e.duration <= 0) return;
+                    const existing = uniqueEventsMap.get(e.time);
+                    if (existing === undefined || e.duration > existing) {
+                        uniqueEventsMap.set(e.time, e.duration);
+                    }
+                });
+
+                const uniqueEvents = Array.from(uniqueEventsMap.entries())
+                    .map(([time, duration]) => ({ time, duration }))
+                    .sort((a, b) => a.time - b.time);
+
+                if (uniqueEvents.length === 0) continue;
+
+                const durations = uniqueEvents.map((e) => e.duration).sort((a, b) => a - b);
+                const middle = Math.floor(durations.length / 2);
+                const baseDuration = durations.length % 2 === 0
+                    ? Math.round((durations[middle - 1] + durations[middle]) / 2)
+                    : durations[middle];
+
+                updateSegmentTravelTime.run(baseDuration, segmentId);
+                deleteSlotsBySegment.run(segmentId);
+
+                let currentStart = uniqueEvents[0].time;
+                let currentDuration = uniqueEvents[0].duration;
+
+                for (let i = 1; i < uniqueEvents.length; i++) {
+                    const event = uniqueEvents[i];
+                    if (event.duration !== currentDuration) {
+                        insertSlot.run(
+                            uuidv4(),
+                            segmentId,
+                            this.secondsToTime(currentStart),
+                            this.secondsToTime(event.time),
+                            currentDuration
+                        );
+                        currentStart = event.time;
+                        currentDuration = event.duration;
+                    }
+                }
+
+                insertSlot.run(
+                    uuidv4(),
+                    segmentId,
+                    this.secondsToTime(currentStart),
+                    '36:00:00',
+                    currentDuration
+                );
+            }
+        });
+
+        tx();
+    }
+
     // --- Processors ---
 
     processStops(rows: any[]) {
@@ -459,6 +555,18 @@ export class StructuredImportService {
             VALUES (?, ?, ?, ?, ?, ?)
         `);
 
+        const revenueSegments = db.prepare(`
+            SELECT segment_id, start_node_id, end_node_id
+            FROM segments
+            WHERE type = 'revenue' OR type IS NULL
+        `).all() as { segment_id: string; start_node_id: string; end_node_id: string }[];
+        const revenueSegmentMap = new Map<string, string>();
+        revenueSegments.forEach((seg) => {
+            revenueSegmentMap.set(`${seg.start_node_id}-${seg.end_node_id}`, seg.segment_id);
+        });
+
+        const segmentEvents = new Map<string, { time: number; duration: number }[]>();
+
         const getDirectDist = (ref1: string, ref2: string) => {
             const s1 = stopCodeToId.get(ref1);
             const s2 = stopCodeToId.get(ref2);
@@ -647,6 +755,7 @@ export class StructuredImportService {
                     // Distances
                     let totalDist = 0;
                     const segmentDists: number[] = [0];
+                    const segmentLengths: number[] = [];
 
                     for (let i = 0; i < subPattern.length - 1; i++) {
                         const r1 = subPattern[i];
@@ -667,8 +776,16 @@ export class StructuredImportService {
                             const ref2 = r2.stop_code || r2.stop_name;
                             d = getDirectDist(ref1, ref2);
                         }
+                        segmentLengths.push(d);
                         totalDist += d;
                         segmentDists.push(totalDist);
+                    }
+
+                    const totalDuration = Math.max(0, duration);
+                    const segmentDurations = this.distributeDurationByDistance(segmentLengths, totalDuration);
+                    const segmentOffsets: number[] = [0];
+                    for (let i = 0; i < segmentDurations.length; i++) {
+                        segmentOffsets.push(segmentOffsets[i] + segmentDurations[i]);
                     }
 
                     // Determine Direction ID (0 or 1)
@@ -691,10 +808,7 @@ export class StructuredImportService {
                         const stopId = stopCodeToId.get(ref);
                         if (!stopId) return;
 
-                        let timeOffset = 0;
-                        if (totalDist > 0 && duration > 0) {
-                            timeOffset = Math.round((segmentDists[i] / totalDist) * duration);
-                        }
+                        const timeOffset = segmentOffsets[i] || 0;
                         const timeAtStop = this.secondsToTime(startTimeSec + timeOffset);
 
                         insertStopTime.run(
@@ -706,6 +820,24 @@ export class StructuredImportService {
                             segmentDists[i]
                         );
                     });
+
+                    for (let i = 0; i < subPattern.length - 1; i++) {
+                        const fromRef = subPattern[i].stop_code || subPattern[i].stop_name;
+                        const toRef = subPattern[i + 1].stop_code || subPattern[i + 1].stop_name;
+                        const fromId = stopCodeToId.get(fromRef);
+                        const toId = stopCodeToId.get(toRef);
+                        const segDuration = segmentDurations[i] || 0;
+                        if (!fromId || !toId || segDuration <= 0) continue;
+
+                        const segId = revenueSegmentMap.get(`${fromId}-${toId}`);
+                        if (!segId) continue;
+
+                        if (!segmentEvents.has(segId)) segmentEvents.set(segId, []);
+                        segmentEvents.get(segId)!.push({
+                            time: startTimeSec + (segmentOffsets[i] || 0),
+                            duration: segDuration
+                        });
+                    }
 
                 } else if (eventType === '0') {
                     // DEADHEAD matches
@@ -757,6 +889,7 @@ export class StructuredImportService {
         });
 
         tx();
+        this.persistRevenueSegmentTimes(segmentEvents);
     }
 
 
