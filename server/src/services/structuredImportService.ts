@@ -422,6 +422,7 @@ export class StructuredImportService {
                     if (!groups.has(d)) groups.set(d, []);
                     groups.get(d)!.push(r);
                 });
+
                 for (const g of groups.values()) {
                     g.sort((a, b) => Number(a.sequence || a.seq) - Number(b.sequence || b.seq));
                     patterns.push(g);
@@ -518,11 +519,16 @@ export class StructuredImportService {
                     const firstRow = pattern[0];
                     const rawDir = String(firstRow.direction || firstRow.direction_id || firstRow.sentido || '0').trim();
 
-                    let dirId = 0; // Default to 0
-                    if (rawDir === 'IDA') dirId = 0;
-                    else if (rawDir === 'VUELTA') dirId = 1;
-                    else dirId = parseInt(rawDir, 10);
-                    if (isNaN(dirId)) dirId = 0;
+                    if (rawDir !== '0' && rawDir !== '1') {
+                        this.errors.push({
+                            row: 0, // General mapping error
+                            file: 'routes',
+                            message: `Error en la ruta ${routeId}: Sentido no válido "${rawDir}". Debe ser estrictamente 0 (Ida) o 1 (Vuelta).`
+                        });
+                        continue;
+                    }
+
+                    let dirId = parseInt(rawDir, 10);
 
                     // Create Template Trip
                     const tripId = `t_${routeId}_${dirId}`;
@@ -806,14 +812,18 @@ export class StructuredImportService {
                     }
 
                     // Determine Direction ID (0 or 1)
-                    // Determine Direction ID (0 or 1)
                     let directionId: number | null = null;
                     const rawDir = String(it.direction || it.sentido || '').trim();
-                    if (rawDir === 'IDA') directionId = 0; // 0 is implied if parseInt matches, but handle keywords
-                    else if (rawDir === 'VUELTA') directionId = 1;
-                    else directionId = parseInt(rawDir, 10);
 
-                    if (isNaN(directionId!) || (directionId !== 0 && directionId !== 1)) directionId = 0; // Default or fallback
+                    if (rawDir !== '0' && rawDir !== '1') {
+                        this.errors.push({
+                            row: rowNumber,
+                            file: 'itineraries',
+                            message: `Sentido no válido "${rawDir}" en viaje ${tripId}. Debe ser estrictamente 0 (Ida) o 1 (Vuelta).`
+                        });
+                        return;
+                    }
+                    directionId = parseInt(rawDir, 10);
 
                     // Create Trip
                     insertTrip.run(routeId, serviceId, tripId, null, directionId); // remove block_id for safety
@@ -886,11 +896,16 @@ export class StructuredImportService {
                     if (routeId) {
                         let directionId: number | null = null;
                         const rawDir = String(it.direction || it.sentido || '').trim();
-                        if (rawDir === 'IDA') directionId = 0;
-                        else if (rawDir === 'VUELTA') directionId = 1;
-                        else directionId = parseInt(rawDir, 10);
 
-                        if (isNaN(directionId!) || (directionId !== 0 && directionId !== 1)) directionId = 0;
+                        if (rawDir !== '0' && rawDir !== '1') {
+                            this.errors.push({
+                                row: rowNumber,
+                                file: 'itineraries',
+                                message: `Sentido no válido "${rawDir}" en viaje en vacío ${tripId}. Debe ser estrictamente 0 (Ida) o 1 (Vuelta).`
+                            });
+                            return;
+                        }
+                        directionId = parseInt(rawDir, 10);
 
                         insertTrip.run(routeId, serviceId, tripId, null, directionId);
                         deleteStopTimes.run(tripId);

@@ -25,3 +25,41 @@ route,route_name,direction,stop_name,sequence,accumulate_distance,
 203,Santa Cândida / Capão Raso,1,Terminal Boa Vista,11,14.9,
 203,Santa Cândida / Capão Raso,1,Estação Tubo Fernando de Noronha,12,17.2,
 203,Santa Cândida / Capão Raso,1,Terminal Santa Cândida,13,18.4,
+303,Centenário / Campo Comprido,0,Terminal Centenário,1,0.0
+303,Centenário / Campo Comprido,0,Estação Tubo UFPR,2,4.5
+303,Centenário / Campo Comprido,0,Praça Rui Barbosa,3,6.2
+303,Centenário / Campo Comprido,0,Terminal Campo Comprido,4,12.0
+303,Centenário / Campo Comprido,1,Terminal Campo Comprido,1,0.0
+303,Centenário / Campo Comprido,1,Praça Rui Barbosa,2,5.8
+303,Centenário / Campo Comprido,1,Estação Tubo UFPR,3,7.5
+303,Centenário / Campo Comprido,1,Terminal Centenário,4,12.0
+500,Ligeirão Boqueirão,0,Terminal Boqueirão,1,0.0
+500,Ligeirão Boqueirão,0,Estação Tubo PUC,2,5.5
+500,Ligeirão Boqueirão,0,Praça Carlos Gomes,3,9.0
+500,Ligeirão Boqueirão,1,Praça Carlos Gomes,1,0.0
+500,Ligeirão Boqueirão,1,Estação Tubo PUC,2,3.5
+500,Ligeirão Boqueirão,1,Terminal Boqueirão,3,9.0
+603,Pinheirinho / Rui Barbosa,0,Terminal Pinheirinho,1,0.0
+603,Pinheirinho / Rui Barbosa,0,Terminal Capão Raso,2,2.5
+603,Pinheirinho / Rui Barbosa,0,Terminal Portão,3,5.0
+603,Pinheirinho / Rui Barbosa,0,Praça Rui Barbosa,4,11.5
+603,Pinheirinho / Rui Barbosa,1,Praça Rui Barbosa,1,0.0
+603,Pinheirinho / Rui Barbosa,1,Terminal Portão,2,6.5
+603,Pinheirinho / Rui Barbosa,1,Terminal Capão Raso,3,9.0
+603,Pinheirinho / Rui Barbosa,1,Terminal Pinheirinho,4,11.5
+204,Santa Cândida / Pinheirinho,0,Terminal Santa Cândida,1,0.0
+204,Santa Cândida / Pinheirinho,0,Praça Rui Barbosa,2,9.5
+204,Santa Cândida / Pinheirinho,0,Terminal Portão,3,15.1
+204,Santa Cândida / Pinheirinho,0,Terminal Pinheirinho,4,20.5
+204,Santa Cândida / Pinheirinho,1,Terminal Pinheirinho,1,0.0
+204,Santa Cândida / Pinheirinho,1,Terminal Portão,2,5.4
+204,Santa Cândida / Pinheirinho,1,Praça Rui Barbosa,3,11.0
+204,Santa Cândida / Pinheirinho,1,Terminal Santa Cândida,4,20.5
+304,Pinhais / Campo Comprido,0,Terminal Pinhais,1,0.0
+304,Pinhais / Campo Comprido,0,Estação Tubo Tarumã,2,3.0
+304,Pinhais / Campo Comprido,0,Praça Rui Barbosa,3,8.5
+304,Pinhais / Campo Comprido,0,Terminal Campo Comprido,4,14.3
+304,Pinhais / Campo Comprido,1,Terminal Campo Comprido,1,0.0
+304,Pinhais / Campo Comprido,1,Praça Rui Barbosa,2,5.8
+304,Pinhais / Campo Comprido,1,Estação Tubo Tarumã,3,11.3
+304,Pinhais / Campo Comprido,1,Terminal Pinhais,4,14.3

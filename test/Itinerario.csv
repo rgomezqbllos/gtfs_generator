@@ -1,5 +1,5 @@
 event,service_id,route,origin,destiny,direction,start,end,duration,bus
-0,Util,203,Garagem,Terminal Santa Cândida,0,05:00:00,05:20:00,00:20:00,1
+0,Util,203,Garagem 1 - Norte,Terminal Santa Cândida,0,05:00:00,05:20:00,00:20:00,1
 1,Util,203,Terminal Santa Cândida,Terminal Capão Raso,0,05:20:00,06:10:00,00:50:00,1
 1,Util,203,Terminal Capão Raso,Terminal Santa Cândida,1,06:20:00,07:10:00,00:50:00,1
 1,Util,203,Terminal Santa Cândida,Terminal Capão Raso,0,07:20:00,08:10:00,00:50:00,1
@@ -19,8 +19,8 @@ event,service_id,route,origin,destiny,direction,start,end,duration,bus
 1,Util,203,Terminal Santa Cândida,Terminal Capão Raso,0,21:20:00,22:10:00,00:50:00,1
 1,Util,203,Terminal Capão Raso,Terminal Santa Cândida,1,22:20:00,23:10:00,00:50:00,1
 1,Util,203,Terminal Santa Cândida,Terminal Capão Raso,0,23:20:00,1.00:10:00,00:50:00,1
-0,Util,203,Terminal Capão Raso,Garagem,1,1.00:20:00,1.00:40:00,00:20:00,1
-0,Util,203,Garagem,Terminal Capão Raso,1,05:15:00,05:35:00,00:20:00,2
+0,Util,203,Terminal Capão Raso,Garagem 1 - Norte,1,1.00:20:00,1.00:40:00,00:20:00,1
+0,Util,203,Garagem 1 - Norte,Terminal Capão Raso,1,05:15:00,05:35:00,00:20:00,2
 1,Util,203,Terminal Capão Raso,Terminal Santa Cândida,1,05:35:00,06:25:00,00:50:00,2
 1,Util,203,Terminal Santa Cândida,Terminal Capão Raso,0,06:35:00,07:25:00,00:50:00,2
 1,Util,203,Terminal Capão Raso,Terminal Santa Cândida,1,07:35:00,08:25:00,00:50:00,2
@@ -39,8 +39,8 @@ event,service_id,route,origin,destiny,direction,start,end,duration,bus
 1,Util,203,Terminal Santa Cândida,Terminal Capão Raso,0,20:35:00,21:25:00,00:50:00,2
 1,Util,203,Terminal Capão Raso,Terminal Santa Cândida,1,21:35:00,22:25:00,00:50:00,2
 1,Util,203,Terminal Santa Cândida,Terminal Capão Raso,0,22:35:00,23:25:00,00:50:00,2
-0,Util,203,Terminal Capão Raso,Garagem,1,23:35:00,23:55:00,00:20:00,2
-0,Util,203,Garagem,Terminal Santa Cândida,0,05:30:00,05:50:00,00:20:00,3
+0,Util,203,Terminal Capão Raso,Garagem 1 - Norte,1,23:35:00,23:55:00,00:20:00,2
+0,Util,203,Garagem 1 - Norte,Terminal Santa Cândida,0,05:30:00,05:50:00,00:20:00,3
 1,Util,203,Terminal Santa Cândida,Terminal Capão Raso,0,05:50:00,06:40:00,00:50:00,3
 1,Util,203,Terminal Capão Raso,Terminal Santa Cândida,1,06:50:00,07:40:00,00:50:00,3
 1,Util,203,Terminal Santa Cândida,Terminal Capão Raso,0,07:50:00,08:40:00,00:50:00,3
@@ -59,8 +59,8 @@ event,service_id,route,origin,destiny,direction,start,end,duration,bus
 1,Util,203,Terminal Capão Raso,Terminal Santa Cândida,1,20:50:00,21:40:00,00:50:00,3
 1,Util,203,Terminal Santa Cândida,Terminal Capão Raso,0,21:50:00,22:40:00,00:50:00,3
 1,Util,203,Terminal Capão Raso,Terminal Santa Cândida,1,22:50:00,23:40:00,00:50:00,3
-0,Util,203,Terminal Santa Cândida,Garagem,0,23:50:00,1.00:10:00,00:20:00,3
-0,Util,203,Garagem,Terminal Capão Raso,1,05:45:00,06:05:00,00:20:00,4
+0,Util,203,Terminal Santa Cândida,Garagem 1 - Norte,0,23:50:00,1.00:10:00,00:20:00,3
+0,Util,203,Garagem 1 - Norte,Terminal Capão Raso,1,05:45:00,06:05:00,00:20:00,4
 1,Util,203,Terminal Capão Raso,Terminal Santa Cândida,1,06:05:00,06:55:00,00:50:00,4
 1,Util,203,Terminal Santa Cândida,Terminal Capão Raso,0,07:05:00,07:55:00,00:50:00,4
 1,Util,203,Terminal Capão Raso,Terminal Santa Cândida,1,08:05:00,08:55:00,00:50:00,4
@@ -79,8 +79,8 @@ event,service_id,route,origin,destiny,direction,start,end,duration,bus
 1,Util,203,Terminal Santa Cândida,Terminal Capão Raso,0,21:05:00,21:55:00,00:50:00,4
 1,Util,203,Terminal Capão Raso,Terminal Santa Cândida,1,22:05:00,22:55:00,00:50:00,4
 1,Util,203,Terminal Santa Cândida,Terminal Capão Raso,0,23:05:00,23:55:00,00:50:00,4
-0,Util,203,Terminal Capão Raso,Garagem,1,1.00:05:00,1.00:25:00,00:20:00,4
-0,Util,203,Garagem,Terminal Santa Cândida,0,06:00:00,06:20:00,00:20:00,5
+0,Util,203,Terminal Capão Raso,Garagem 1 - Norte,1,1.00:05:00,1.00:25:00,00:20:00,4
+0,Util,203,Garagem 1 - Norte,Terminal Santa Cândida,0,06:00:00,06:20:00,00:20:00,5
 1,Util,203,Terminal Santa Cândida,Terminal Capão Raso,0,06:20:00,07:10:00,00:50:00,5
 1,Util,203,Terminal Capão Raso,Terminal Santa Cândida,1,07:20:00,08:10:00,00:50:00,5
 1,Util,203,Terminal Santa Cândida,Terminal Capão Raso,0,08:20:00,09:10:00,00:50:00,5
@@ -99,4 +99,223 @@ event,service_id,route,origin,destiny,direction,start,end,duration,bus
 1,Util,203,Terminal Capão Raso,Terminal Santa Cândida,1,21:20:00,22:10:00,00:50:00,5
 1,Util,203,Terminal Santa Cândida,Terminal Capão Raso,0,22:20:00,23:10:00,00:50:00,5
 1,Util,203,Terminal Capão Raso,Terminal Santa Cândida,1,23:20:00,1.00:10:00,00:50:00,5
-0,Util,203,Terminal Santa Cândida,Garagem,0,1.00:20:00,1.00:40:00,00:20:00,5
+0,Util,203,Terminal Santa Cândida,Garagem 1 - Norte,0,1.00:20:00,1.00:40:00,00:20:00,5
+0,Util,303,Garagem 3 - Leste,Terminal Centenário,0,05:00:00,05:25:00,00:25:00,6
+1,Util,303,Terminal Centenário,Terminal Campo Comprido,0,05:25:00,06:10:00,00:45:00,6
+1,Util,303,Terminal Campo Comprido,Terminal Centenário,1,06:20:00,07:05:00,00:45:00,6
+1,Util,303,Terminal Centenário,Terminal Campo Comprido,0,07:15:00,08:00:00,00:45:00,6
+1,Util,303,Terminal Campo Comprido,Terminal Centenário,1,08:10:00,08:55:00,00:45:00,6
+1,Util,303,Terminal Centenário,Terminal Campo Comprido,0,09:05:00,09:50:00,00:45:00,6
+0,Util,303,Terminal Campo Comprido,Garagem 4 - Oeste,1,10:00:00,10:25:00,00:25:00,6
+0,Util,303,Garagem 4 - Oeste,Terminal Campo Comprido,1,05:10:00,05:35:00,00:25:00,7
+1,Util,303,Terminal Campo Comprido,Terminal Centenário,1,05:35:00,06:20:00,00:45:00,7
+1,Util,303,Terminal Centenário,Terminal Campo Comprido,0,06:30:00,07:15:00,00:45:00,7
+1,Util,303,Terminal Campo Comprido,Terminal Centenário,1,07:25:00,08:10:00,00:45:00,7
+1,Util,303,Terminal Centenário,Terminal Campo Comprido,0,08:20:00,09:05:00,00:45:00,7
+1,Util,303,Terminal Campo Comprido,Terminal Centenário,1,09:15:00,10:00:00,00:45:00,7
+0,Util,303,Terminal Centenário,Garagem 3 - Leste,0,10:10:00,10:35:00,00:25:00,7
+0,Util,303,Garagem 3 - Leste,Terminal Centenário,0,05:20:00,05:45:00,00:25:00,8
+1,Util,303,Terminal Centenário,Terminal Campo Comprido,0,05:45:00,06:30:00,00:45:00,8
+1,Util,303,Terminal Campo Comprido,Terminal Centenário,1,06:40:00,07:25:00,00:45:00,8
+1,Util,303,Terminal Centenário,Terminal Campo Comprido,0,07:35:00,08:20:00,00:45:00,8
+1,Util,303,Terminal Campo Comprido,Terminal Centenário,1,08:30:00,09:15:00,00:45:00,8
+1,Util,303,Terminal Centenário,Terminal Campo Comprido,0,09:25:00,10:10:00,00:45:00,8
+0,Util,303,Terminal Campo Comprido,Garagem 4 - Oeste,1,10:20:00,10:45:00,00:25:00,8
+0,Util,303,Garagem 4 - Oeste,Terminal Campo Comprido,1,05:30:00,05:55:00,00:25:00,9
+1,Util,303,Terminal Campo Comprido,Terminal Centenário,1,05:55:00,06:40:00,00:45:00,9
+1,Util,303,Terminal Centenário,Terminal Campo Comprido,0,06:50:00,07:35:00,00:45:00,9
+1,Util,303,Terminal Campo Comprido,Terminal Centenário,1,07:45:00,08:30:00,00:45:00,9
+1,Util,303,Terminal Centenário,Terminal Campo Comprido,0,08:40:00,09:25:00,00:45:00,9
+0,Util,303,Terminal Campo Comprido,Garagem 4 - Oeste,1,09:35:00,10:00:00,00:25:00,9
+0,Util,303,Garagem 3 - Leste,Terminal Centenário,0,05:40:00,06:05:00,00:25:00,10
+1,Util,303,Terminal Centenário,Terminal Campo Comprido,0,06:05:00,06:50:00,00:45:00,10
+1,Util,303,Terminal Campo Comprido,Terminal Centenário,1,07:00:00,07:45:00,00:45:00,10
+1,Util,303,Terminal Centenário,Terminal Campo Comprido,0,07:55:00,08:40:00,00:45:00,10
+1,Util,303,Terminal Campo Comprido,Terminal Centenário,1,08:50:00,09:35:00,00:45:00,10
+0,Util,303,Terminal Centenário,Garagem 3 - Leste,0,09:45:00,10:10:00,00:25:00,10
+0,Util,303,Garagem 4 - Oeste,Terminal Campo Comprido,1,05:50:00,06:15:00,00:25:00,11
+1,Util,303,Terminal Campo Comprido,Terminal Centenário,1,06:15:00,07:00:00,00:45:00,11
+1,Util,303,Terminal Centenário,Terminal Campo Comprido,0,07:10:00,07:55:00,00:45:00,11
+1,Util,303,Terminal Campo Comprido,Terminal Centenário,1,08:05:00,08:50:00,00:45:00,11
+1,Util,303,Terminal Centenário,Terminal Campo Comprido,0,09:00:00,09:45:00,00:45:00,11
+0,Util,303,Terminal Campo Comprido,Garagem 4 - Oeste,1,09:55:00,10:20:00,00:25:00,11
+0,Util,500,Garagem 2 - Sul,Terminal Boqueirão,0,05:00:00,05:25:00,00:25:00,12
+1,Util,500,Terminal Boqueirão,Praça Carlos Gomes,0,05:25:00,06:00:00,00:35:00,12
+1,Util,500,Praça Carlos Gomes,Terminal Boqueirão,1,06:10:00,06:45:00,00:35:00,12
+1,Util,500,Terminal Boqueirão,Praça Carlos Gomes,0,06:55:00,07:30:00,00:35:00,12
+1,Util,500,Praça Carlos Gomes,Terminal Boqueirão,1,07:40:00,08:15:00,00:35:00,12
+1,Util,500,Terminal Boqueirão,Praça Carlos Gomes,0,08:25:00,09:00:00,00:35:00,12
+1,Util,500,Praça Carlos Gomes,Terminal Boqueirão,1,09:10:00,09:45:00,00:35:00,12
+0,Util,500,Terminal Boqueirão,Garagem 2 - Sul,0,09:55:00,10:20:00,00:25:00,12
+0,Util,500,Garagem 1 - Norte,Praça Carlos Gomes,1,05:10:00,05:35:00,00:25:00,13
+1,Util,500,Praça Carlos Gomes,Terminal Boqueirão,1,05:35:00,06:10:00,00:35:00,13
+1,Util,500,Terminal Boqueirão,Praça Carlos Gomes,0,06:20:00,06:55:00,00:35:00,13
+1,Util,500,Praça Carlos Gomes,Terminal Boqueirão,1,07:05:00,07:40:00,00:35:00,13
+1,Util,500,Terminal Boqueirão,Praça Carlos Gomes,0,07:50:00,08:25:00,00:35:00,13
+1,Util,500,Praça Carlos Gomes,Terminal Boqueirão,1,08:35:00,09:10:00,00:35:00,13
+1,Util,500,Terminal Boqueirão,Praça Carlos Gomes,0,09:20:00,09:55:00,00:35:00,13
+0,Util,500,Praça Carlos Gomes,Garagem 1 - Norte,1,10:05:00,10:30:00,00:25:00,13
+0,Util,500,Garagem 2 - Sul,Terminal Boqueirão,0,05:20:00,05:45:00,00:25:00,14
+1,Util,500,Terminal Boqueirão,Praça Carlos Gomes,0,05:45:00,06:20:00,00:35:00,14
+1,Util,500,Praça Carlos Gomes,Terminal Boqueirão,1,06:30:00,07:05:00,00:35:00,14
+1,Util,500,Terminal Boqueirão,Praça Carlos Gomes,0,07:15:00,07:50:00,00:35:00,14
+1,Util,500,Praça Carlos Gomes,Terminal Boqueirão,1,08:00:00,08:35:00,00:35:00,14
+1,Util,500,Terminal Boqueirão,Praça Carlos Gomes,0,08:45:00,09:20:00,00:35:00,14
+0,Util,500,Praça Carlos Gomes,Garagem 1 - Norte,1,09:30:00,09:55:00,00:25:00,14
+0,Util,500,Garagem 1 - Norte,Praça Carlos Gomes,1,05:30:00,05:55:00,00:25:00,15
+1,Util,500,Praça Carlos Gomes,Terminal Boqueirão,1,05:55:00,06:30:00,00:35:00,15
+1,Util,500,Terminal Boqueirão,Praça Carlos Gomes,0,06:40:00,07:15:00,00:35:00,15
+1,Util,500,Praça Carlos Gomes,Terminal Boqueirão,1,07:25:00,08:00:00,00:35:00,15
+1,Util,500,Terminal Boqueirão,Praça Carlos Gomes,0,08:10:00,08:45:00,00:35:00,15
+1,Util,500,Praça Carlos Gomes,Terminal Boqueirão,1,08:55:00,09:30:00,00:35:00,15
+0,Util,500,Terminal Boqueirão,Garagem 2 - Sul,0,09:40:00,10:05:00,00:25:00,15
+0,Util,500,Garagem 2 - Sul,Terminal Boqueirão,0,05:40:00,06:05:00,00:25:00,16
+1,Util,500,Terminal Boqueirão,Praça Carlos Gomes,0,06:05:00,06:40:00,00:35:00,16
+1,Util,500,Praça Carlos Gomes,Terminal Boqueirão,1,06:50:00,07:25:00,00:35:00,16
+1,Util,500,Terminal Boqueirão,Praça Carlos Gomes,0,07:35:00,08:10:00,00:35:00,16
+1,Util,500,Praça Carlos Gomes,Terminal Boqueirão,1,08:20:00,08:55:00,00:35:00,16
+1,Util,500,Terminal Boqueirão,Praça Carlos Gomes,0,09:05:00,09:40:00,00:35:00,16
+0,Util,500,Praça Carlos Gomes,Garagem 1 - Norte,1,09:50:00,10:15:00,00:25:00,16
+0,Util,500,Garagem 1 - Norte,Praça Carlos Gomes,1,05:50:00,06:15:00,00:25:00,17
+1,Util,500,Praça Carlos Gomes,Terminal Boqueirão,1,06:15:00,06:50:00,00:35:00,17
+1,Util,500,Terminal Boqueirão,Praça Carlos Gomes,0,07:00:00,07:35:00,00:35:00,17
+1,Util,500,Praça Carlos Gomes,Terminal Boqueirão,1,07:45:00,08:20:00,00:35:00,17
+1,Util,500,Terminal Boqueirão,Praça Carlos Gomes,0,08:30:00,09:05:00,00:35:00,17
+1,Util,500,Praça Carlos Gomes,Terminal Boqueirão,1,09:15:00,09:50:00,00:35:00,17
+0,Util,500,Terminal Boqueirão,Garagem 2 - Sul,0,10:00:00,10:25:00,00:25:00,17
+0,Util,500,Garagem 2 - Sul,Terminal Boqueirão,0,06:00:00,06:25:00,00:25:00,18
+1,Util,500,Terminal Boqueirão,Praça Carlos Gomes,0,06:25:00,07:00:00,00:35:00,18
+1,Util,500,Praça Carlos Gomes,Terminal Boqueirão,1,07:10:00,07:45:00,00:35:00,18
+1,Util,500,Terminal Boqueirão,Praça Carlos Gomes,0,07:55:00,08:30:00,00:35:00,18
+1,Util,500,Praça Carlos Gomes,Terminal Boqueirão,1,08:40:00,09:15:00,00:35:00,18
+1,Util,500,Terminal Boqueirão,Praça Carlos Gomes,0,09:25:00,10:00:00,00:35:00,18
+0,Util,500,Praça Carlos Gomes,Garagem 1 - Norte,1,10:10:00,10:35:00,00:25:00,18
+0,Util,500,Garagem 1 - Norte,Praça Carlos Gomes,1,06:10:00,06:35:00,00:25:00,19
+1,Util,500,Praça Carlos Gomes,Terminal Boqueirão,1,06:35:00,07:10:00,00:35:00,19
+1,Util,500,Terminal Boqueirão,Praça Carlos Gomes,0,07:20:00,07:55:00,00:35:00,19
+1,Util,500,Praça Carlos Gomes,Terminal Boqueirão,1,08:05:00,08:40:00,00:35:00,19
+1,Util,500,Terminal Boqueirão,Praça Carlos Gomes,0,08:50:00,09:25:00,00:35:00,19
+0,Util,500,Praça Carlos Gomes,Garagem 1 - Norte,1,09:35:00,10:00:00,00:25:00,19
+0,Util,603,Garagem 2 - Sul,Terminal Pinheirinho,0,05:00:00,05:25:00,00:25:00,20
+1,Util,603,Terminal Pinheirinho,Praça Rui Barbosa,0,05:25:00,06:05:00,00:40:00,20
+1,Util,603,Praça Rui Barbosa,Terminal Pinheirinho,1,06:15:00,06:55:00,00:40:00,20
+1,Util,603,Terminal Pinheirinho,Praça Rui Barbosa,0,07:05:00,07:45:00,00:40:00,20
+1,Util,603,Praça Rui Barbosa,Terminal Pinheirinho,1,07:55:00,08:35:00,00:40:00,20
+1,Util,603,Terminal Pinheirinho,Praça Rui Barbosa,0,08:45:00,09:25:00,00:40:00,20
+0,Util,603,Praça Rui Barbosa,Garagem 1 - Norte,1,09:35:00,10:00:00,00:25:00,20
+0,Util,603,Garagem 1 - Norte,Praça Rui Barbosa,1,05:10:00,05:35:00,00:25:00,21
+1,Util,603,Praça Rui Barbosa,Terminal Pinheirinho,1,05:35:00,06:15:00,00:40:00,21
+1,Util,603,Terminal Pinheirinho,Praça Rui Barbosa,0,06:25:00,07:05:00,00:40:00,21
+1,Util,603,Praça Rui Barbosa,Terminal Pinheirinho,1,07:15:00,07:55:00,00:40:00,21
+1,Util,603,Terminal Pinheirinho,Praça Rui Barbosa,0,08:05:00,08:45:00,00:40:00,21
+1,Util,603,Praça Rui Barbosa,Terminal Pinheirinho,1,08:55:00,09:35:00,00:40:00,21
+0,Util,603,Terminal Pinheirinho,Garagem 2 - Sul,0,09:45:00,10:10:00,00:25:00,21
+0,Util,603,Garagem 2 - Sul,Terminal Pinheirinho,0,05:20:00,05:45:00,00:25:00,22
+1,Util,603,Terminal Pinheirinho,Praça Rui Barbosa,0,05:45:00,06:25:00,00:40:00,22
+1,Util,603,Praça Rui Barbosa,Terminal Pinheirinho,1,06:35:00,07:15:00,00:40:00,22
+1,Util,603,Terminal Pinheirinho,Praça Rui Barbosa,0,07:25:00,08:05:00,00:40:00,22
+1,Util,603,Praça Rui Barbosa,Terminal Pinheirinho,1,08:15:00,08:55:00,00:40:00,22
+1,Util,603,Terminal Pinheirinho,Praça Rui Barbosa,0,09:05:00,09:45:00,00:40:00,22
+0,Util,603,Praça Rui Barbosa,Garagem 1 - Norte,1,09:55:00,10:20:00,00:25:00,22
+0,Util,603,Garagem 1 - Norte,Praça Rui Barbosa,1,05:30:00,05:55:00,00:25:00,23
+1,Util,603,Praça Rui Barbosa,Terminal Pinheirinho,1,05:55:00,06:35:00,00:40:00,23
+1,Util,603,Terminal Pinheirinho,Praça Rui Barbosa,0,06:45:00,07:25:00,00:40:00,23
+1,Util,603,Praça Rui Barbosa,Terminal Pinheirinho,1,07:35:00,08:15:00,00:40:00,23
+1,Util,603,Terminal Pinheirinho,Praça Rui Barbosa,0,08:25:00,09:05:00,00:40:00,23
+1,Util,603,Praça Rui Barbosa,Terminal Pinheirinho,1,09:15:00,09:55:00,00:40:00,23
+0,Util,603,Terminal Pinheirinho,Garagem 2 - Sul,0,10:05:00,10:30:00,00:25:00,23
+0,Util,603,Garagem 2 - Sul,Terminal Pinheirinho,0,05:40:00,06:05:00,00:25:00,24
+1,Util,603,Terminal Pinheirinho,Praça Rui Barbosa,0,06:05:00,06:45:00,00:40:00,24
+1,Util,603,Praça Rui Barbosa,Terminal Pinheirinho,1,06:55:00,07:35:00,00:40:00,24
+1,Util,603,Terminal Pinheirinho,Praça Rui Barbosa,0,07:45:00,08:25:00,00:40:00,24
+1,Util,603,Praça Rui Barbosa,Terminal Pinheirinho,1,08:35:00,09:15:00,00:40:00,24
+1,Util,603,Terminal Pinheirinho,Praça Rui Barbosa,0,09:25:00,10:05:00,00:40:00,24
+0,Util,603,Praça Rui Barbosa,Garagem 1 - Norte,1,10:15:00,10:40:00,00:25:00,24
+0,Util,603,Garagem 1 - Norte,Praça Rui Barbosa,1,05:50:00,06:15:00,00:25:00,25
+1,Util,603,Praça Rui Barbosa,Terminal Pinheirinho,1,06:15:00,06:55:00,00:40:00,25
+1,Util,603,Terminal Pinheirinho,Praça Rui Barbosa,0,07:05:00,07:45:00,00:40:00,25
+1,Util,603,Praça Rui Barbosa,Terminal Pinheirinho,1,07:55:00,08:35:00,00:40:00,25
+1,Util,603,Terminal Pinheirinho,Praça Rui Barbosa,0,08:45:00,09:25:00,00:40:00,25
+0,Util,603,Praça Rui Barbosa,Garagem 1 - Norte,1,09:35:00,10:00:00,00:25:00,25
+0,Util,603,Garagem 2 - Sul,Terminal Pinheirinho,0,06:00:00,06:25:00,00:25:00,26
+1,Util,603,Terminal Pinheirinho,Praça Rui Barbosa,0,06:25:00,07:05:00,00:40:00,26
+1,Util,603,Praça Rui Barbosa,Terminal Pinheirinho,1,07:15:00,07:55:00,00:40:00,26
+1,Util,603,Terminal Pinheirinho,Praça Rui Barbosa,0,08:05:00,08:45:00,00:40:00,26
+1,Util,603,Praça Rui Barbosa,Terminal Pinheirinho,1,08:55:00,09:35:00,00:40:00,26
+0,Util,603,Terminal Pinheirinho,Garagem 2 - Sul,0,09:45:00,10:10:00,00:25:00,26
+0,Util,204,Garagem 1 - Norte,Terminal Santa Cândida,0,05:00:00,05:25:00,00:25:00,27
+1,Util,204,Terminal Santa Cândida,Terminal Pinheirinho,0,05:25:00,06:20:00,00:55:00,27
+1,Util,204,Terminal Pinheirinho,Terminal Santa Cândida,1,06:30:00,07:25:00,00:55:00,27
+1,Util,204,Terminal Santa Cândida,Terminal Pinheirinho,0,07:35:00,08:30:00,00:55:00,27
+1,Util,204,Terminal Pinheirinho,Terminal Santa Cândida,1,08:40:00,09:35:00,00:55:00,27
+0,Util,204,Terminal Santa Cândida,Garagem 1 - Norte,0,09:45:00,10:10:00,00:25:00,27
+0,Util,204,Garagem 2 - Sul,Terminal Pinheirinho,1,05:10:00,05:35:00,00:25:00,28
+1,Util,204,Terminal Pinheirinho,Terminal Santa Cândida,1,05:35:00,06:30:00,00:55:00,28
+1,Util,204,Terminal Santa Cândida,Terminal Pinheirinho,0,06:40:00,07:35:00,00:55:00,28
+1,Util,204,Terminal Pinheirinho,Terminal Santa Cândida,1,07:45:00,08:40:00,00:55:00,28
+1,Util,204,Terminal Santa Cândida,Terminal Pinheirinho,0,08:50:00,09:45:00,00:55:00,28
+0,Util,204,Terminal Pinheirinho,Garagem 2 - Sul,1,09:55:00,10:20:00,00:25:00,28
+0,Util,204,Garagem 1 - Norte,Terminal Santa Cândida,0,05:20:00,05:45:00,00:25:00,29
+1,Util,204,Terminal Santa Cândida,Terminal Pinheirinho,0,05:45:00,06:40:00,00:55:00,29
+1,Util,204,Terminal Pinheirinho,Terminal Santa Cândida,1,06:50:00,07:45:00,00:55:00,29
+1,Util,204,Terminal Santa Cândida,Terminal Pinheirinho,0,07:55:00,08:50:00,00:55:00,29
+1,Util,204,Terminal Pinheirinho,Terminal Santa Cândida,1,09:00:00,09:55:00,00:55:00,29
+0,Util,204,Terminal Santa Cândida,Garagem 1 - Norte,0,10:05:00,10:30:00,00:25:00,29
+0,Util,204,Garagem 2 - Sul,Terminal Pinheirinho,1,05:30:00,05:55:00,00:25:00,30
+1,Util,204,Terminal Pinheirinho,Terminal Santa Cândida,1,05:55:00,06:50:00,00:55:00,30
+1,Util,204,Terminal Santa Cândida,Terminal Pinheirinho,0,07:00:00,07:55:00,00:55:00,30
+1,Util,204,Terminal Pinheirinho,Terminal Santa Cândida,1,08:05:00,09:00:00,00:55:00,30
+1,Util,204,Terminal Santa Cândida,Terminal Pinheirinho,0,09:10:00,10:05:00,00:55:00,30
+0,Util,204,Terminal Pinheirinho,Garagem 2 - Sul,1,10:15:00,10:40:00,00:25:00,30
+0,Util,204,Garagem 1 - Norte,Terminal Santa Cândida,0,05:40:00,06:05:00,00:25:00,31
+1,Util,204,Terminal Santa Cândida,Terminal Pinheirinho,0,06:05:00,07:00:00,00:55:00,31
+1,Util,204,Terminal Pinheirinho,Terminal Santa Cândida,1,07:10:00,08:05:00,00:55:00,31
+1,Util,204,Terminal Santa Cândida,Terminal Pinheirinho,0,08:15:00,09:10:00,00:55:00,31
+1,Util,204,Terminal Pinheirinho,Terminal Santa Cândida,1,09:20:00,10:15:00,00:55:00,31
+0,Util,204,Terminal Santa Cândida,Garagem 1 - Norte,0,10:25:00,10:50:00,00:25:00,31
+0,Util,204,Garagem 2 - Sul,Terminal Pinheirinho,1,05:50:00,06:15:00,00:25:00,32
+1,Util,204,Terminal Pinheirinho,Terminal Santa Cândida,1,06:15:00,07:10:00,00:55:00,32
+1,Util,204,Terminal Santa Cândida,Terminal Pinheirinho,0,07:20:00,08:15:00,00:55:00,32
+1,Util,204,Terminal Pinheirinho,Terminal Santa Cândida,1,08:25:00,09:20:00,00:55:00,32
+0,Util,204,Terminal Santa Cândida,Garagem 1 - Norte,0,09:30:00,09:55:00,00:25:00,32
+0,Util,204,Garagem 1 - Norte,Terminal Santa Cândida,0,06:00:00,06:25:00,00:25:00,33
+1,Util,204,Terminal Santa Cândida,Terminal Pinheirinho,0,06:25:00,07:20:00,00:55:00,33
+1,Util,204,Terminal Pinheirinho,Terminal Santa Cândida,1,07:30:00,08:25:00,00:55:00,33
+1,Util,204,Terminal Santa Cândida,Terminal Pinheirinho,0,08:35:00,09:30:00,00:55:00,33
+0,Util,204,Terminal Pinheirinho,Garagem 2 - Sul,1,09:40:00,10:05:00,00:25:00,33
+0,Util,204,Garagem 2 - Sul,Terminal Pinheirinho,1,06:10:00,06:35:00,00:25:00,34
+1,Util,204,Terminal Pinheirinho,Terminal Santa Cândida,1,06:35:00,07:30:00,00:55:00,34
+1,Util,204,Terminal Santa Cândida,Terminal Pinheirinho,0,07:40:00,08:35:00,00:55:00,34
+1,Util,204,Terminal Pinheirinho,Terminal Santa Cândida,1,08:45:00,09:40:00,00:55:00,34
+0,Util,204,Terminal Santa Cândida,Garagem 1 - Norte,0,09:50:00,10:15:00,00:25:00,34
+0,Util,304,Garagem 3 - Leste,Terminal Pinhais,0,05:00:00,05:25:00,00:25:00,35
+1,Util,304,Terminal Pinhais,Terminal Campo Comprido,0,05:25:00,06:15:00,00:50:00,35
+1,Util,304,Terminal Campo Comprido,Terminal Pinhais,1,06:25:00,07:15:00,00:50:00,35
+1,Util,304,Terminal Pinhais,Terminal Campo Comprido,0,07:25:00,08:15:00,00:50:00,35
+1,Util,304,Terminal Campo Comprido,Terminal Pinhais,1,08:25:00,09:15:00,00:50:00,35
+1,Util,304,Terminal Pinhais,Terminal Campo Comprido,0,09:25:00,10:15:00,00:50:00,35
+0,Util,304,Terminal Campo Comprido,Garagem 4 - Oeste,1,10:25:00,10:50:00,00:25:00,35
+0,Util,304,Garagem 4 - Oeste,Terminal Campo Comprido,1,05:10:00,05:35:00,00:25:00,36
+1,Util,304,Terminal Campo Comprido,Terminal Pinhais,1,05:35:00,06:25:00,00:50:00,36
+1,Util,304,Terminal Pinhais,Terminal Campo Comprido,0,06:35:00,07:25:00,00:50:00,36
+1,Util,304,Terminal Campo Comprido,Terminal Pinhais,1,07:35:00,08:25:00,00:50:00,36
+1,Util,304,Terminal Pinhais,Terminal Campo Comprido,0,08:35:00,09:25:00,00:50:00,36
+0,Util,304,Terminal Campo Comprido,Garagem 4 - Oeste,1,09:35:00,10:00:00,00:25:00,36
+0,Util,304,Garagem 3 - Leste,Terminal Pinhais,0,05:20:00,05:45:00,00:25:00,37
+1,Util,304,Terminal Pinhais,Terminal Campo Comprido,0,05:45:00,06:35:00,00:50:00,37
+1,Util,304,Terminal Campo Comprido,Terminal Pinhais,1,06:45:00,07:35:00,00:50:00,37
+1,Util,304,Terminal Pinhais,Terminal Campo Comprido,0,07:45:00,08:35:00,00:50:00,37
+1,Util,304,Terminal Campo Comprido,Terminal Pinhais,1,08:45:00,09:35:00,00:50:00,37
+0,Util,304,Terminal Pinhais,Garagem 3 - Leste,0,09:45:00,10:10:00,00:25:00,37
+0,Util,304,Garagem 4 - Oeste,Terminal Campo Comprido,1,05:30:00,05:55:00,00:25:00,38
+1,Util,304,Terminal Campo Comprido,Terminal Pinhais,1,05:55:00,06:45:00,00:50:00,38
+1,Util,304,Terminal Pinhais,Terminal Campo Comprido,0,06:55:00,07:45:00,00:50:00,38
+1,Util,304,Terminal Campo Comprido,Terminal Pinhais,1,07:55:00,08:45:00,00:50:00,38
+1,Util,304,Terminal Pinhais,Terminal Campo Comprido,0,08:55:00,09:45:00,00:50:00,38
+0,Util,304,Terminal Campo Comprido,Garagem 4 - Oeste,1,09:55:00,10:20:00,00:25:00,38
+0,Util,304,Garagem 3 - Leste,Terminal Pinhais,0,05:40:00,06:05:00,00:25:00,39
+1,Util,304,Terminal Pinhais,Terminal Campo Comprido,0,06:05:00,06:55:00,00:50:00,39
+1,Util,304,Terminal Campo Comprido,Terminal Pinhais,1,07:05:00,07:55:00,00:50:00,39
+1,Util,304,Terminal Pinhais,Terminal Campo Comprido,0,08:05:00,08:55:00,00:50:00,39
+1,Util,304,Terminal Campo Comprido,Terminal Pinhais,1,09:05:00,09:55:00,00:50:00,39
+0,Util,304,Terminal Pinhais,Garagem 3 - Leste,0,10:05:00,10:30:00,00:25:00,39
