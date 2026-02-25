@@ -115,6 +115,13 @@ class OsrmService {
         return currentStatus;
     }
 
+    clearError() {
+        if (currentStatus.status === 'error') {
+            currentStatus = { status: 'idle', message: 'Ready', activeRegion: 'unknown' };
+        }
+        return currentStatus;
+    }
+
     getLocalMaps(): MapInfo[] {
         if (!fs.existsSync(DATA_DIR)) return [];
         const files = fs.readdirSync(DATA_DIR);
@@ -211,6 +218,16 @@ class OsrmService {
             });
             // if (deletedCount === 0) throw new Error('No files found to delete');
         }
+
+        // Reset active state if we deleted the active map
+        if (currentStatus.activeRegion === regionKey) {
+            currentStatus.activeRegion = 'unknown';
+            if (currentStatus.status !== 'downloading' && currentStatus.status !== 'processing') {
+                currentStatus.status = 'idle';
+                currentStatus.message = 'No Map Active';
+            }
+        }
+
         return { message: `Map files for ${regionKey} deleted` };
     }
 
@@ -286,12 +303,30 @@ class OsrmService {
             // 3. Process Data
             const osrmName = filename.replace('.osm.pbf', '');
             const osrmPath = path.join(DATA_DIR, `${osrmName}.osrm`);
+            const edgesPath = path.join(DATA_DIR, `${osrmName}.osrm.edges`);
             const volume = `${DATA_DIR.replace(/\\/g, '/')}:/data`;
+            const scriptDir = path.resolve(__dirname, '../../scripts');
+            const profilesVolume = `${path.join(scriptDir, 'osrm-profiles').replace(/\\/g, '/')}:/profiles`;
+
+            // Detect and clean corrupt data
+            if (fs.existsSync(osrmPath) && !fs.existsSync(edgesPath)) {
+                console.log("Found base .osrm file but missing index files (.edges). Data is corrupt. Re-extracting...");
+                currentStatus = { status: 'processing', message: 'Cleaning corrupt map data...', activeRegion: regionKey };
+                try {
+                    fs.readdirSync(DATA_DIR).forEach(file => {
+                        if (file.startsWith(osrmName) && file !== filename) {
+                            fs.unlinkSync(path.join(DATA_DIR, file));
+                        }
+                    });
+                } catch (e) {
+                    console.warn("Could not delete some corrupt files.", e);
+                }
+            }
 
             // Setup OSRM if not already extracted
-            if (!fs.existsSync(osrmPath)) {
+            if (!fs.existsSync(osrmPath) || !fs.existsSync(edgesPath)) {
                 currentStatus = { status: 'processing', message: 'Extracting map data (this may take a while)...', activeRegion: regionKey };
-                await execAsync(`docker run -t -v "${volume}" osrm/osrm-backend osrm-extract -p /opt/car.lua /data/${filename}`);
+                await execAsync(`docker run -t -v "${volume}" -v "${profilesVolume}" osrm/osrm-backend osrm-extract -p /profiles/bus.lua /data/${filename}`);
 
                 currentStatus = { status: 'processing', message: 'Partitioning map data...', activeRegion: regionKey };
                 await execAsync(`docker run -t -v "${volume}" osrm/osrm-backend osrm-partition /data/${osrmName}`);

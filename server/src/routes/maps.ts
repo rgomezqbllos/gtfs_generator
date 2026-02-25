@@ -18,6 +18,10 @@ export default async function mapsRoutes(fastify: FastifyInstance) {
         return osrmService.getStatus();
     });
 
+    fastify.post('/maps/status/clear', async (request, reply) => {
+        return osrmService.clearError();
+    });
+
     fastify.post<{ Body: { region: string; customUrl?: string; customName?: string } }>('/maps/download', async (request, reply) => {
         const { region, customUrl, customName } = request.body;
 

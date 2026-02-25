@@ -120,6 +120,17 @@ const MapManager: React.FC = () => {
         }
     };
 
+    const handleClearError = async () => {
+        try {
+            const res = await fetch(`${API_URL}/maps/status/clear`, { method: 'POST' });
+            if (res.ok) {
+                fetchStatus();
+            }
+        } catch (e) {
+            console.error(e);
+        }
+    };
+
     const isBusy = status.status === 'downloading' || status.status === 'processing';
 
     if (loading) {
@@ -164,6 +175,18 @@ const MapManager: React.FC = () => {
                             style={{ width: `${status.progress || 0}%` }}
                         ></div>
                         <p className="text-xs text-right mt-1 font-mono">{status.progress || 0}%</p>
+                    </div>
+                )}
+
+                {/* Error Actions */}
+                {status.status === 'error' && (
+                    <div className="flex justify-end mt-2">
+                        <button
+                            onClick={handleClearError}
+                            className="bg-red-100 hover:bg-red-200 text-red-700 dark:bg-red-900/40 dark:hover:bg-red-900/60 dark:text-red-300 text-xs px-3 py-1.5 rounded-md transition-colors font-medium border border-red-200 dark:border-red-800"
+                        >
+                            Clear Error Alert
+                        </button>
                     </div>
                 )}
             </div>
@@ -276,14 +299,38 @@ const MapManager: React.FC = () => {
                                         {m.isActive ? (
                                             <span className="text-xs font-bold text-green-600 dark:text-green-400 bg-green-50 dark:bg-green-900/20 px-2 py-0.5 rounded-full">Active</span>
                                         ) : (
-                                            <button
-                                                onClick={() => setConfirmDelete(m.key)}
-                                                className="p-1.5 text-gray-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-lg transition-colors"
-                                                title="Delete Map Files"
-                                                disabled={isBusy}
-                                            >
-                                                <Trash2 size={16} />
-                                            </button>
+                                            <div className="flex gap-2">
+                                                <button
+                                                    onClick={() => {
+                                                        // Auto-select map and trigger download/activation logic
+                                                        setSelectedMap(m.key);
+                                                        setIsCustomMode(false);
+                                                        setTimeout(() => {
+                                                            // We construct our own payload instead of relying on state batching
+                                                            fetch(`${API_URL}/maps/download`, {
+                                                                method: 'POST',
+                                                                headers: { 'Content-Type': 'application/json' },
+                                                                body: JSON.stringify({ region: m.key })
+                                                            }).then(res => {
+                                                                if (res.ok) fetchStatus();
+                                                                else res.json().then(err => alert(`Error: ${err.error}`));
+                                                            });
+                                                        }, 50);
+                                                    }}
+                                                    className="p-1 px-3 text-xs font-medium text-blue-600 hover:bg-blue-50 dark:text-blue-400 dark:hover:bg-blue-900/20 rounded-md border border-blue-200 dark:border-blue-800 transition-colors"
+                                                    disabled={isBusy}
+                                                >
+                                                    Activate
+                                                </button>
+                                                <button
+                                                    onClick={() => setConfirmDelete(m.key)}
+                                                    className="p-1.5 text-gray-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-lg transition-colors"
+                                                    title="Delete Map Files"
+                                                    disabled={isBusy}
+                                                >
+                                                    <Trash2 size={16} />
+                                                </button>
+                                            </div>
                                         )}
                                     </div>
                                 </div>

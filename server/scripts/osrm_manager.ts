@@ -15,7 +15,8 @@ dotenv.config();
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-const DATA_DIR = path.resolve(__dirname, '../../../osrm-data');
+const isDist = __dirname.includes('dist');
+const DATA_DIR = path.resolve(__dirname, isDist ? '../../../osrm-data' : '../../osrm-data');
 const CONTAINER_NAME = 'gtfs-osrm-server';
 const PORT = 5001;
 
@@ -234,10 +235,25 @@ ${Object.keys(REGIONS).map(k => ` - ${k}`).join('\n')}
 
     // Using absolute path for volume mount
     const volume = `${DATA_DIR}:/data`;
+    const profilesVolume = `${path.join(__dirname, 'osrm-profiles')}:/profiles`;
+    const edgesPath = path.join(DATA_DIR, `${osrmName}.osrm.edges`);
+
+    if (fs.existsSync(osrmPath) && !fs.existsSync(edgesPath)) {
+        console.log("Found base .osrm file but missing index files (.edges). Data is corrupt. Re-extracting...");
+        try {
+            fs.readdirSync(DATA_DIR).forEach(file => {
+                if (file.startsWith(osrmName) && file !== filename) {
+                    fs.unlinkSync(path.join(DATA_DIR, file));
+                }
+            });
+        } catch (e) {
+            console.warn("Could not delete some corrupt files. They might be overwritten.", e);
+        }
+    }
 
     // Extract
-    if (!fs.existsSync(osrmPath)) {
-        runCommand(`docker run -t -v "${volume}" osrm/osrm-backend osrm-extract -p /opt/car.lua /data/${filename}`);
+    if (!fs.existsSync(osrmPath) || !fs.existsSync(edgesPath)) {
+        runCommand(`docker run -t -v "${volume}" -v "${profilesVolume}" osrm/osrm-backend osrm-extract -p /profiles/bus.lua /data/${filename}`);
         runCommand(`docker run -t -v "${volume}" osrm/osrm-backend osrm-partition /data/${osrmName}`);
         runCommand(`docker run -t -v "${volume}" osrm/osrm-backend osrm-customize /data/${osrmName}`);
     } else {
