@@ -1,0 +1,71 @@
+Line;Route;Version;DayType;Type;Departure;Arrival;Start;End;MinTime;OptTime;MaxTime
+100;100-pXwoL;L100-WD-2025_2;WD;trip;3109-Hertzallee;5864-S+U Alexanderplatz Bhf/Memhardstr.;25:00:00;36:00:00;00:19;00:20;00:21
+100;100-pXwoL;L100-WD-2025_2;WD;trip;3109-Hertzallee;5864-S+U Alexanderplatz Bhf/Memhardstr.;19:00:00;25:00:00;00:23;00:24;00:25
+100;100-pXwoL;L100-WD-2025_2;WD;trip;3109-Hertzallee;5864-S+U Alexanderplatz Bhf/Memhardstr.;16:00:00;19:00:00;00:24;00:25;00:26
+100;100-pXwoL;L100-WD-2025_2;WD;trip;3109-Hertzallee;5864-S+U Alexanderplatz Bhf/Memhardstr.;12:00:00;16:00:00;00:25;00:26;00:27
+100;100-pXwoL;L100-WD-2025_2;WD;trip;3109-Hertzallee;5864-S+U Alexanderplatz Bhf/Memhardstr.;08:00:00;12:00:00;00:23;00:24;00:25
+100;100-pXwoL;L100-WD-2025_2;WD;trip;3109-Hertzallee;5864-S+U Alexanderplatz Bhf/Memhardstr.;00:00:00;08:00:00;00:19;00:20;00:21
+100;100-pXwoL;L100-WD-2025_2;WD;stop;5864-S+U Alexanderplatz Bhf/Memhardstr.;5864-S+U Alexanderplatz Bhf/Memhardstr.;00:00:00;36:00:00;00:11;00:12;00:13
+100;100-pXwoL;L100-WD-2025_1;WD;trip;3109-Hertzallee;5864-S+U Alexanderplatz Bhf/Memhardstr.;25:00:00;36:00:00;00:19;00:20;00:21
+100;100-pXwoL;L100-WD-2025_1;WD;trip;3109-Hertzallee;5864-S+U Alexanderplatz Bhf/Memhardstr.;19:00:00;25:00:00;00:23;00:24;00:25
+100;100-pXwoL;L100-WD-2025_1;WD;trip;3109-Hertzallee;5864-S+U Alexanderplatz Bhf/Memhardstr.;16:00:00;19:00:00;00:24;00:25;00:26
+100;100-pXwoL;L100-WD-2025_1;WD;trip;3109-Hertzallee;5864-S+U Alexanderplatz Bhf/Memhardstr.;12:00:00;16:00:00;00:25;00:26;00:27
+100;100-pXwoL;L100-WD-2025_1;WD;trip;3109-Hertzallee;5864-S+U Alexanderplatz Bhf/Memhardstr.;08:00:00;12:00:00;00:23;00:24;00:25
+100;100-pXwoL;L100-WD-2025_1;WD;trip;3109-Hertzallee;5864-S+U Alexanderplatz Bhf/Memhardstr.;00:00:00;08:00:00;00:19;00:20;00:21
+100;100-pXwoL;L100-WD-2025_1;WD;stop;5864-S+U Alexanderplatz Bhf/Memhardstr.;5864-S+U Alexanderplatz Bhf/Memhardstr.;00:00:00;36:00:00;00:11;00:12;00:13
+100;100-pXwoL;L100-Sun-2025_1;Sun;trip;3109-Hertzallee;5864-S+U Alexanderplatz Bhf/Memhardstr.;25:00:00;36:00:00;00:19;00:20;00:21
+100;100-pXwoL;L100-Sun-2025_1;Sun;trip;3109-Hertzallee;5864-S+U Alexanderplatz Bhf/Memhardstr.;20:00:00;25:00:00;00:23;00:24;00:25
+100;100-pXwoL;L100-Sun-2025_1;Sun;trip;3109-Hertzallee;5864-S+U Alexanderplatz Bhf/Memhardstr.;18:00:00;20:00:00;00:24;00:25;00:26
+100;100-pXwoL;L100-Sun-2025_1;Sun;trip;3109-Hertzallee;5864-S+U Alexanderplatz Bhf/Memhardstr.;14:00:00;18:00:00;00:25;00:26;00:27
+100;100-pXwoL;L100-Sun-2025_1;Sun;trip;3109-Hertzallee;5864-S+U Alexanderplatz Bhf/Memhardstr.;10:00:00;14:00:00;00:23;00:24;00:25
+100;100-pXwoL;L100-Sun-2025_1;Sun;trip;3109-Hertzallee;5864-S+U Alexanderplatz Bhf/Memhardstr.;00:00:00;10:00:00;00:19;00:20;00:21
+100;100-pXwoL;L100-Sun-2025_1;Sun;stop;5864-S+U Alexanderplatz Bhf/Memhardstr.;5864-S+U Alexanderplatz Bhf/Memhardstr.;00:00:00;36:00:00;00:11;00:12;00:13
+100;100-pXwoL;L100-Sat-2025_2;Sat;trip;3109-Hertzallee;5864-S+U Alexanderplatz Bhf/Memhardstr.;25:00:00;36:00:00;00:19;00:20;00:21
+100;100-pXwoL;L100-Sat-2025_2;Sat;trip;3109-Hertzallee;5864-S+U Alexanderplatz Bhf/Memhardstr.;20:00:00;25:00:00;00:26;00:27;00:28
+100;100-pXwoL;L100-Sat-2025_2;Sat;trip;3109-Hertzallee;5864-S+U Alexanderplatz Bhf/Memhardstr.;18:00:00;20:00:00;00:24;00:25;00:26
+100;100-pXwoL;L100-Sat-2025_2;Sat;trip;3109-Hertzallee;5864-S+U Alexanderplatz Bhf/Memhardstr.;14:00:00;18:00:00;00:23;00:24;00:25
+100;100-pXwoL;L100-Sat-2025_2;Sat;trip;3109-Hertzallee;5864-S+U Alexanderplatz Bhf/Memhardstr.;10:00:00;14:00:00;00:21;00:22;00:23
+100;100-pXwoL;L100-Sat-2025_2;Sat;trip;3109-Hertzallee;5864-S+U Alexanderplatz Bhf/Memhardstr.;00:00:00;10:00:00;00:19;00:20;00:21
+100;100-pXwoL;L100-Sat-2025_2;Sat;stop;5864-S+U Alexanderplatz Bhf/Memhardstr.;5864-S+U Alexanderplatz Bhf/Memhardstr.;00:00:00;36:00:00;00:11;00:12;00:13
+100;100-pXwoL;L100-Sat-2025_1;Sat;trip;3109-Hertzallee;5864-S+U Alexanderplatz Bhf/Memhardstr.;25:00:00;36:00:00;00:19;00:20;00:21
+100;100-pXwoL;L100-Sat-2025_1;Sat;trip;3109-Hertzallee;5864-S+U Alexanderplatz Bhf/Memhardstr.;20:00:00;25:00:00;00:26;00:27;00:28
+100;100-pXwoL;L100-Sat-2025_1;Sat;trip;3109-Hertzallee;5864-S+U Alexanderplatz Bhf/Memhardstr.;18:00:00;20:00:00;00:24;00:25;00:26
+100;100-pXwoL;L100-Sat-2025_1;Sat;trip;3109-Hertzallee;5864-S+U Alexanderplatz Bhf/Memhardstr.;14:00:00;18:00:00;00:23;00:24;00:25
+100;100-pXwoL;L100-Sat-2025_1;Sat;trip;3109-Hertzallee;5864-S+U Alexanderplatz Bhf/Memhardstr.;10:00:00;14:00:00;00:21;00:22;00:23
+100;100-pXwoL;L100-Sat-2025_1;Sat;trip;3109-Hertzallee;5864-S+U Alexanderplatz Bhf/Memhardstr.;00:00:00;10:00:00;00:19;00:20;00:21
+100;100-pXwoL;L100-Sat-2025_1;Sat;stop;5864-S+U Alexanderplatz Bhf/Memhardstr.;5864-S+U Alexanderplatz Bhf/Memhardstr.;00:00:00;36:00:00;00:11;00:12;00:13
+100;100-wmw34;L100-WD-2025_2;WD;trip;7379-Memhardstr.;1127-S+U Zoologischer Garten/Jebensstr.;25:00:00;36:00:00;00:19;00:20;00:21
+100;100-wmw34;L100-WD-2025_2;WD;trip;7379-Memhardstr.;1127-S+U Zoologischer Garten/Jebensstr.;19:00:00;25:00:00;00:23;00:24;00:25
+100;100-wmw34;L100-WD-2025_2;WD;trip;7379-Memhardstr.;1127-S+U Zoologischer Garten/Jebensstr.;16:00:00;19:00:00;00:24;00:25;00:26
+100;100-wmw34;L100-WD-2025_2;WD;trip;7379-Memhardstr.;1127-S+U Zoologischer Garten/Jebensstr.;12:00:00;16:00:00;00:25;00:26;00:27
+100;100-wmw34;L100-WD-2025_2;WD;trip;7379-Memhardstr.;1127-S+U Zoologischer Garten/Jebensstr.;08:00:00;12:00:00;00:23;00:24;00:25
+100;100-wmw34;L100-WD-2025_2;WD;trip;7379-Memhardstr.;1127-S+U Zoologischer Garten/Jebensstr.;00:00:00;08:00:00;00:19;00:20;00:21
+100;100-wmw34;L100-WD-2025_2;WD;stop;1127-S+U Zoologischer Garten/Jebensstr.;1127-S+U Zoologischer Garten/Jebensstr.;00:00:00;36:00:00;00:11;00:12;00:13
+100;100-wmw34;L100-WD-2025_1;WD;trip;7379-Memhardstr.;1127-S+U Zoologischer Garten/Jebensstr.;25:00:00;36:00:00;00:19;00:20;00:21
+100;100-wmw34;L100-WD-2025_1;WD;trip;7379-Memhardstr.;1127-S+U Zoologischer Garten/Jebensstr.;19:00:00;25:00:00;00:23;00:24;00:25
+100;100-wmw34;L100-WD-2025_1;WD;trip;7379-Memhardstr.;1127-S+U Zoologischer Garten/Jebensstr.;16:00:00;19:00:00;00:24;00:25;00:26
+100;100-wmw34;L100-WD-2025_1;WD;trip;7379-Memhardstr.;1127-S+U Zoologischer Garten/Jebensstr.;12:00:00;16:00:00;00:25;00:26;00:27
+100;100-wmw34;L100-WD-2025_1;WD;trip;7379-Memhardstr.;1127-S+U Zoologischer Garten/Jebensstr.;08:00:00;12:00:00;00:23;00:24;00:25
+100;100-wmw34;L100-WD-2025_1;WD;trip;7379-Memhardstr.;1127-S+U Zoologischer Garten/Jebensstr.;00:00:00;08:00:00;00:19;00:20;00:21
+100;100-wmw34;L100-WD-2025_1;WD;stop;1127-S+U Zoologischer Garten/Jebensstr.;1127-S+U Zoologischer Garten/Jebensstr.;00:00:00;36:00:00;00:11;00:12;00:13
+100;100-wmw34;L100-Sun-2025_1;Sun;trip;7379-Memhardstr.;1127-S+U Zoologischer Garten/Jebensstr.;25:00:00;36:00:00;00:19;00:20;00:21
+100;100-wmw34;L100-Sun-2025_1;Sun;trip;7379-Memhardstr.;1127-S+U Zoologischer Garten/Jebensstr.;20:00:00;25:00:00;00:23;00:24;00:25
+100;100-wmw34;L100-Sun-2025_1;Sun;trip;7379-Memhardstr.;1127-S+U Zoologischer Garten/Jebensstr.;18:00:00;20:00:00;00:24;00:25;00:26
+100;100-wmw34;L100-Sun-2025_1;Sun;trip;7379-Memhardstr.;1127-S+U Zoologischer Garten/Jebensstr.;14:00:00;18:00:00;00:25;00:26;00:27
+100;100-wmw34;L100-Sun-2025_1;Sun;trip;7379-Memhardstr.;1127-S+U Zoologischer Garten/Jebensstr.;10:00:00;14:00:00;00:23;00:24;00:25
+100;100-wmw34;L100-Sun-2025_1;Sun;trip;7379-Memhardstr.;1127-S+U Zoologischer Garten/Jebensstr.;00:00:00;10:00:00;00:19;00:20;00:21
+100;100-wmw34;L100-Sun-2025_1;Sun;stop;1127-S+U Zoologischer Garten/Jebensstr.;1127-S+U Zoologischer Garten/Jebensstr.;00:00:00;36:00:00;00:11;00:12;00:13
+100;100-wmw34;L100-Sat-2025_2;Sat;trip;7379-Memhardstr.;1127-S+U Zoologischer Garten/Jebensstr.;25:00:00;36:00:00;00:19;00:20;00:21
+100;100-wmw34;L100-Sat-2025_2;Sat;trip;7379-Memhardstr.;1127-S+U Zoologischer Garten/Jebensstr.;20:00:00;25:00:00;00:23;00:24;00:25
+100;100-wmw34;L100-Sat-2025_2;Sat;trip;7379-Memhardstr.;1127-S+U Zoologischer Garten/Jebensstr.;18:00:00;20:00:00;00:24;00:25;00:26
+100;100-wmw34;L100-Sat-2025_2;Sat;trip;7379-Memhardstr.;1127-S+U Zoologischer Garten/Jebensstr.;14:00:00;18:00:00;00:25;00:26;00:27
+100;100-wmw34;L100-Sat-2025_2;Sat;trip;7379-Memhardstr.;1127-S+U Zoologischer Garten/Jebensstr.;10:00:00;14:00:00;00:23;00:24;00:25
+100;100-wmw34;L100-Sat-2025_2;Sat;trip;7379-Memhardstr.;1127-S+U Zoologischer Garten/Jebensstr.;00:00:00;10:00:00;00:19;00:20;00:21
+100;100-wmw34;L100-Sat-2025_2;Sat;stop;1127-S+U Zoologischer Garten/Jebensstr.;1127-S+U Zoologischer Garten/Jebensstr.;00:00:00;36:00:00;00:11;00:12;00:13
+100;100-wmw34;L100-Sat-2025_1;Sat;trip;7379-Memhardstr.;1127-S+U Zoologischer Garten/Jebensstr.;25:00:00;36:00:00;00:19;00:20;00:21
+100;100-wmw34;L100-Sat-2025_1;Sat;trip;7379-Memhardstr.;1127-S+U Zoologischer Garten/Jebensstr.;20:00:00;25:00:00;00:23;00:24;00:25
+100;100-wmw34;L100-Sat-2025_1;Sat;trip;7379-Memhardstr.;1127-S+U Zoologischer Garten/Jebensstr.;18:00:00;20:00:00;00:24;00:25;00:26
+100;100-wmw34;L100-Sat-2025_1;Sat;trip;7379-Memhardstr.;1127-S+U Zoologischer Garten/Jebensstr.;14:00:00;18:00:00;00:25;00:26;00:27
+100;100-wmw34;L100-Sat-2025_1;Sat;trip;7379-Memhardstr.;1127-S+U Zoologischer Garten/Jebensstr.;10:00:00;14:00:00;00:23;00:24;00:25
+100;100-wmw34;L100-Sat-2025_1;Sat;trip;7379-Memhardstr.;1127-S+U Zoologischer Garten/Jebensstr.;00:00:00;10:00:00;00:19;00:20;00:21
+100;100-wmw34;L100-Sat-2025_1;Sat;stop;1127-S+U Zoologischer Garten/Jebensstr.;1127-S+U Zoologischer Garten/Jebensstr.;00:00:00;36:00:00;00:11;00:12;00:13

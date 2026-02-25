@@ -1,0 +1,2 @@
+route_id,agency_id,route_short_name,route_long_name,route_desc,route_type,route_url,route_color,route_text_color,route_sort_order,allowed_materials
+844f2b46-aeb0-46c0-b4f3-a2be4086165b,beb5b344-40bb-45fd-8136-443533651ac4,R1,Ruta el test,,3,,1337ec,FFFFFF,,

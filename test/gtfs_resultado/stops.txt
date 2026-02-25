@@ -1,0 +1,4 @@
+stop_id,stop_code,stop_name,stop_desc,stop_lat,stop_lon,zone_id,stop_url,location_type,parent_station,stop_timezone,wheelchair_boarding,level_id,platform_code,node_type
+035fb855-a0c5-46f2-a5da-b1e4ced76a66,P1,Parada 1,,-33.41768771056787,-70.73999526567746,,,0,,,,,,regular
+260953e2-be60-4d0c-9837-23c59880d6b9,P3,Parada 3,,-33.48452507985417,-70.67239610417751,,,0,,,,,,regular
+8f847165-96c1-460d-9660-5f77b74e60cc,P2,Parada 2,,-33.4490008467239,-70.72570116985368,,,0,,,,,,regular

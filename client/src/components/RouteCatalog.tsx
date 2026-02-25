@@ -1,10 +1,11 @@
 import * as React from 'react';
 import type { Route } from '../types';
-import { Trash2, Map as MapIcon, Edit2, Search, ArrowUpDown, Plus } from 'lucide-react';
+import { Trash2, Map as MapIcon, Edit2, Search, ArrowUpDown, Plus, FileText } from 'lucide-react';
 
 import ConfirmModal from './ConfirmModal';
 import RouteCreationModal from './RouteCreationModal';
 import TripsManager from './TripsManager';
+import ExportTravelTimesModal from './ExportTravelTimesModal';
 
 import { API_URL } from '../config';
 
@@ -39,6 +40,9 @@ const RouteCatalog: React.FC<RouteCatalogProps> = ({ onOpenMap, onSelectRoute, o
 
     // Trips Manager State
     const [tripsRoute, setTripsRoute] = React.useState<Route | null>(null);
+
+    // Export Travel Times State
+    const [isExportTimesOpen, setIsExportTimesOpen] = React.useState(false);
 
     const fetchRoutes = React.useCallback(async () => {
         setLoading(true);
@@ -154,6 +158,13 @@ const RouteCatalog: React.FC<RouteCatalogProps> = ({ onOpenMap, onSelectRoute, o
                             <p className="text-gray-500 dark:text-gray-400 mt-1">Manage network routes, agencies, and performance metrics.</p>
                         </div>
                         <div className="flex gap-3">
+                            <button
+                                onClick={() => setIsExportTimesOpen(true)}
+                                className="flex items-center gap-2 px-4 py-2 bg-green-50 dark:bg-green-900/20 text-green-700 dark:text-green-300 border border-green-200 dark:border-green-800 rounded-lg hover:bg-green-100 dark:hover:bg-green-900/40 transition-colors font-medium shadow-sm"
+                            >
+                                <FileText size={18} />
+                                Export Travel Times
+                            </button>
                             <button
                                 onClick={onOpenMap}
                                 className="flex items-center gap-2 px-4 py-2 bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-600 transition-colors font-medium shadow-sm"
@@ -364,6 +375,11 @@ const RouteCatalog: React.FC<RouteCatalogProps> = ({ onOpenMap, onSelectRoute, o
                     if (onDataUpdate) onDataUpdate();
                 }}
                 routeToEdit={routeToEdit}
+            />
+
+            <ExportTravelTimesModal
+                isOpen={isExportTimesOpen}
+                onClose={() => setIsExportTimesOpen(false)}
             />
 
             {tripsRoute && (

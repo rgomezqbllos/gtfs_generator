@@ -36,17 +36,13 @@ npm start
 - Persistencia local en SQLite (`server/gtfs.db` por defecto)
 - Exportación a `.zip` GTFS
 
-## Prerrequisitos por sistema operativo
+## Prerrequisitos y Guías de Instalación Completas
 
-- **Windows 10/11**
-  - Instala Node.js 18+ desde `https://nodejs.org/`
-  - Instala Docker Desktop (Linux containers). En algunas máquinas requiere WSL2
-  - Git: `winget install Git.Git`
-- **macOS**
-  - Node.js 18+ (por ejemplo con Homebrew) y Docker Desktop
-  - Git suele venir instalado; si no, `xcode-select --install`
-- **Linux**
-  - Node.js 18+ (NodeSource / tu distro), Docker Engine (si usas OSRM local) y Git
+Hemos preparado guías paso a paso detalladas según tu sistema operativo. **Por favor, lee la guía correspondiente a tu máquina antes de comenzar** para asegurar que dependencias clave como Node.js, Git y Docker se integren perfectamente:
+
+- 🟦 **[Guía para Windows (10/11)](./INSTALL_WINDOWS.md)**
+- 🍎 **[Guía para macOS (Intel/M1/M2)](./INSTALL_MACOS.md)**
+- 🐧 **[Guía para Linux (Ubuntu/Debian/etc)](./INSTALL_LINUX.md)**
 
 ## Configuración (variables de entorno)
 
@@ -122,3 +118,7 @@ docker compose up --build
 
 - Si ves líneas rectas o tiempos “raros”, revisa `OSRM_API_URL` y que el contenedor OSRM esté arriba (`docker ps`).
 - Si el download de Geofabrik está bloqueado, el script te pedirá descargar manualmente el `.osm.pbf` y dejarlo en `osrm-data/`.
+
+## Copias de Seguridad y Migración
+
+¿Necesitas mover tus datos a otra computadora o hacer un respaldo? Consulta nuestra **[Guía de Migración y Respaldo](./BACKUP_MIGRATION.md)** para gestionar tu base de datos SQLite de forma segura.

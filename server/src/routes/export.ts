@@ -421,4 +421,204 @@ export default async function exportRoutes(fastify: FastifyInstance) {
             reply.code(500).send({ error: 'Failed to generate export' });
         }
     });
+
+    fastify.post('/gtfs/export-travel-times', async (request, reply) => {
+        const { agency_ids, service_id, custom_version, route_ids } = request.body as any;
+
+        try {
+            if ((!agency_ids || agency_ids.length === 0) && (!route_ids || route_ids.length === 0)) {
+                return reply.code(400).send({ error: 'agency_ids or route_ids is required' });
+            }
+
+            const formatMins = (seconds: number) => {
+                const totalMins = Math.round(seconds / 60);
+                const h = Math.floor(totalMins / 60);
+                const m = totalMins % 60;
+                return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`;
+            };
+
+            let routes: any[] = [];
+            if (route_ids && route_ids.length > 0) {
+                const rPh = route_ids.map(() => '?').join(',');
+                routes = db.prepare(`SELECT * FROM routes WHERE route_id IN (${rPh})`).all(...route_ids) as any[];
+            } else if (agency_ids && agency_ids.length > 0) {
+                const ph = agency_ids.map(() => '?').join(',');
+                routes = db.prepare(`SELECT * FROM routes WHERE agency_id IN (${ph})`).all(...agency_ids) as any[];
+            }
+
+            if (routes.length === 0) return reply.send('');
+
+            const allStops = db.prepare('SELECT * FROM stops').all() as any[];
+            const stopsMap = new Map(allStops.map((s: any) => [s.stop_id, s]));
+
+            const outputRows: any[] = [];
+
+            for (const route of routes) {
+                for (const direction of [0, 1]) {
+                    const trip_id = `t_${route.route_id}_${direction}`;
+                    let stopTimes = db.prepare('SELECT stop_id FROM stop_times WHERE trip_id = ? ORDER BY stop_sequence ASC').all(trip_id) as any[];
+
+                    if (!stopTimes || stopTimes.length === 0) {
+                        const anyTrip = db.prepare('SELECT trip_id FROM trips WHERE route_id = ? AND direction_id = ? LIMIT 1').get(route.route_id, direction) as any;
+                        if (anyTrip) {
+                            stopTimes = db.prepare('SELECT stop_id FROM stop_times WHERE trip_id = ? ORDER BY stop_sequence ASC').all(anyTrip.trip_id) as any[];
+                        }
+                    }
+
+                    if (!stopTimes || stopTimes.length < 2) continue;
+                    const stopIds = stopTimes.map((st: any) => st.stop_id);
+
+                    const segments: any[] = [];
+                    for (let i = 0; i < stopIds.length - 1; i++) {
+                        const sId = stopIds[i];
+                        const eId = stopIds[i + 1];
+                        const seg = db.prepare('SELECT * FROM segments WHERE start_node_id = ? AND end_node_id = ?').get(sId, eId) as any;
+                        if (seg) segments.push(seg);
+                    }
+                    if (segments.length === 0) continue;
+
+                    // Fetch slots
+                    const segPh = segments.map((_: any) => '?').join(',');
+                    const segIds = segments.map((s: any) => s.segment_id);
+                    const slots = db.prepare(`SELECT * FROM segment_time_slots WHERE segment_id IN (${segPh})`).all(...segIds) as any[];
+
+                    const boundaries = new Set<string>(['00:00:00', '36:00:00']);
+                    slots.forEach((s: any) => {
+                        boundaries.add(s.start_time);
+                        boundaries.add(s.end_time);
+                    });
+                    const sortedBands = Array.from(boundaries).sort();
+
+                    const dayType = service_id || '';
+                    const versionStr = custom_version || '';
+
+                    for (let i = 0; i < segments.length; i++) {
+                        const seg = segments[i];
+                        const sId = stopIds[i];
+                        const eId = stopIds[i + 1];
+
+                        const depStop = stopsMap.get(sId);
+                        const arrStop = stopsMap.get(eId);
+                        if (!depStop || !arrStop) continue;
+
+                        const departureName = `${depStop.stop_code ? depStop.stop_code + '-' : ''}${depStop.stop_name}`;
+                        const arrivalName = `${arrStop.stop_code ? arrStop.stop_code + '-' : ''}${arrStop.stop_name}`;
+
+                        let lastTtm = -1;
+                        let currentBandStart = '';
+
+                        // Trip records for this segment across time bands
+                        for (let j = 0; j < sortedBands.length - 1; j++) {
+                            const start = sortedBands[j];
+                            const end = sortedBands[j + 1];
+                            if (start === end) continue;
+
+                            let tt = seg.travel_time || 0;
+                            const activeSlot = slots.find((s: any) => s.segment_id === seg.segment_id && start >= s.start_time && start < s.end_time);
+                            if (activeSlot) tt = activeSlot.travel_time;
+
+                            if (lastTtm === -1) {
+                                lastTtm = tt;
+                                currentBandStart = start;
+                            } else if (lastTtm !== tt) {
+                                outputRows.push({
+                                    Line: route.route_short_name,
+                                    Route: `${route.route_short_name}-${direction}`,
+                                    Version: versionStr,
+                                    DayType: dayType,
+                                    Type: 'trip',
+                                    Departure: departureName,
+                                    Arrival: arrivalName,
+                                    Start: currentBandStart,
+                                    End: start,
+                                    MinTime: formatMins(Math.max(0, lastTtm - 60)),
+                                    OptTime: formatMins(lastTtm),
+                                    MaxTime: formatMins(lastTtm + 60)
+                                });
+                                lastTtm = tt;
+                                currentBandStart = start;
+                            }
+                        }
+
+                        if (lastTtm !== -1) {
+                            outputRows.push({
+                                Line: route.route_short_name,
+                                Route: `${route.route_short_name}-${direction}`,
+                                Version: versionStr,
+                                DayType: dayType,
+                                Type: 'trip',
+                                Departure: departureName,
+                                Arrival: arrivalName,
+                                Start: currentBandStart,
+                                End: '36:00:00',
+                                MinTime: formatMins(Math.max(0, lastTtm - 60)),
+                                OptTime: formatMins(lastTtm),
+                                MaxTime: formatMins(lastTtm + 60)
+                            });
+                        }
+
+                        // Stop record for the departure stop of this segment
+                        outputRows.push({
+                            Line: route.route_short_name,
+                            Route: `${route.route_short_name}-${direction}`,
+                            Version: versionStr,
+                            DayType: dayType,
+                            Type: 'stop',
+                            Departure: departureName,
+                            Arrival: departureName,
+                            Start: '00:00:00',
+                            End: '36:00:00',
+                            MinTime: '00:00',
+                            OptTime: '00:00',
+                            MaxTime: '00:00'
+                        });
+                    }
+
+                    // Add one STOP row at the very end for the final arrival stop
+                    const finalStopId = stopIds[stopIds.length - 1];
+                    const finalStop = stopsMap.get(finalStopId);
+                    if (finalStop) {
+                        const finalName = `${finalStop.stop_code ? finalStop.stop_code + '-' : ''}${finalStop.stop_name}`;
+                        outputRows.push({
+                            Line: route.route_short_name,
+                            Route: `${route.route_short_name}-${direction}`,
+                            Version: versionStr,
+                            DayType: dayType,
+                            Type: 'stop',
+                            Departure: finalName,
+                            Arrival: finalName,
+                            Start: '00:00:00',
+                            End: '36:00:00',
+                            MinTime: '00:00',
+                            OptTime: '00:00',
+                            MaxTime: '00:00'
+                        });
+                    }
+                }
+            }
+
+            if (outputRows.length === 0) {
+                return reply.send('');
+            }
+
+            const headers = ['Line', 'Route', 'Version', 'DayType', 'Type', 'Departure', 'Arrival', 'Start', 'End', 'MinTime', 'OptTime', 'MaxTime'];
+            const csvContent = [
+                headers.join(';'),
+                ...outputRows.map(row => headers.map(h => {
+                    const val = row[h as keyof typeof row];
+                    if (val === null || val === undefined) return '';
+                    if (typeof val === 'string' && val.includes(';')) return `"${val}"`;
+                    return val;
+                }).join(';'))
+            ].join('\n');
+
+            reply.header('Content-Type', 'text/csv; charset=utf-8');
+            reply.header('Content-Disposition', 'attachment; filename="trips_times.csv"');
+            return reply.send(csvContent);
+
+        } catch (err) {
+            request.log.error(err);
+            reply.code(500).send({ error: 'Failed to generate travel times export' });
+        }
+    });
 }
