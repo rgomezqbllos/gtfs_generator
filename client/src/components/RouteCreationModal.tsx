@@ -333,7 +333,23 @@ const RouteCreationModal: React.FC<RouteCreationModalProps> = ({ isOpen, onClose
 
                             {/* Associated Parkings */}
                             <div>
-                                <label className="block text-xs font-bold text-gray-500 uppercase mb-1.5">Associated Parkings</label>
+                                <div className="flex justify-between items-center mb-1.5">
+                                    <label className="block text-xs font-bold text-gray-500 uppercase">Associated Parkings</label>
+                                    {parkingStops.length > 0 && (
+                                        <div className="flex gap-2">
+                                            <button
+                                                type="button"
+                                                onClick={() => setFormData({ ...formData, parkings: parkingStops.map(p => p.stop_id) })}
+                                                className="text-xs text-blue-600 dark:text-blue-400 hover:underline focus:outline-none"
+                                            >Select All</button>
+                                            <button
+                                                type="button"
+                                                onClick={() => setFormData({ ...formData, parkings: [] })}
+                                                className="text-xs text-blue-600 dark:text-blue-400 hover:underline focus:outline-none"
+                                            >Deselect All</button>
+                                        </div>
+                                    )}
+                                </div>
                                 <div className="p-3 bg-gray-50 dark:bg-gray-800 border-gray-200 dark:border-gray-700 rounded-lg max-h-40 overflow-y-auto space-y-2">
                                     {parkingStops.length === 0 ? (
                                         <div className="text-xs text-gray-400 italic">No parking nodes found. Create stops with type "Parking" first.</div>

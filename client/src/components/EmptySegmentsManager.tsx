@@ -51,25 +51,26 @@ const EmptySegmentsManager: React.FC<EmptySegmentsManagerProps> = ({ onClose, se
                         const firstStopId = dir.stops[0].stop_id;
                         const lastStopId = dir.stops[dir.stops.length - 1].stop_id;
 
-                        // Check validity
-                        if (firstStopId === lastStopId) return;
-
                         // Standard Return Trip (A->B, B->A)
-                        newSegments.push({ start: firstStopId, end: lastStopId });
-                        newSegments.push({ start: lastStopId, end: firstStopId });
+                        if (firstStopId !== lastStopId) {
+                            newSegments.push({ start: firstStopId, end: lastStopId });
+                            newSegments.push({ start: lastStopId, end: firstStopId });
+                        }
 
                         // Parking Connections
                         // Connect Start/End to/from each parking
                         parkings.forEach((parkingId: string) => {
-                            if (parkingId === firstStopId || parkingId === lastStopId) return;
+                            if (parkingId !== firstStopId) {
+                                // Start <-> Parking
+                                newSegments.push({ start: firstStopId, end: parkingId });
+                                newSegments.push({ start: parkingId, end: firstStopId });
+                            }
 
-                            // Start <-> Parking
-                            newSegments.push({ start: firstStopId, end: parkingId });
-                            newSegments.push({ start: parkingId, end: firstStopId });
-
-                            // End <-> Parking
-                            newSegments.push({ start: lastStopId, end: parkingId });
-                            newSegments.push({ start: parkingId, end: lastStopId });
+                            if (parkingId !== lastStopId && firstStopId !== lastStopId) {
+                                // End <-> Parking
+                                newSegments.push({ start: lastStopId, end: parkingId });
+                                newSegments.push({ start: parkingId, end: lastStopId });
+                            }
                         });
                     }
                 });
@@ -98,32 +99,48 @@ const EmptySegmentsManager: React.FC<EmptySegmentsManagerProps> = ({ onClose, se
             });
 
             if (segmentsToCreate.length === 0) {
-                alert("No new connections needed.");
+                alert(`No new connections needed. Debug: newSegments=${newSegments.length}, unique=${uniqueSegments.size}, existing=${existingSig.size}, totalRoutes=${routesStructure.length}`);
                 return;
             }
 
             // 3. Create them
             let createdCount = 0;
+            let failedCount = 0;
 
             for (const pair of segmentsToCreate) {
-                await fetch(`${API_URL}/segments`, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({
-                        start_node_id: pair.start,
-                        end_node_id: pair.end,
-                        type: 'empty'
-                    })
-                });
-                createdCount++;
+                try {
+                    const res = await fetch(`${API_URL}/segments`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                            start_node_id: pair.start,
+                            end_node_id: pair.end,
+                            type: 'empty'
+                        })
+                    });
+
+                    if (res.ok) {
+                        createdCount++;
+                    } else {
+                        failedCount++;
+                        console.error(`Failed to create segment ${pair.start} -> ${pair.end}`, await res.text());
+                    }
+                } catch (e) {
+                    failedCount++;
+                    console.error(`Network error creating segment ${pair.start} -> ${pair.end}`, e);
+                }
             }
 
             onRefresh();
-            alert(`Created ${createdCount} empty segments.`);
+            if (failedCount > 0) {
+                alert(`Created ${createdCount} empty segments, but ${failedCount} failed. Check console for details.`);
+            } else {
+                alert(`Successfully created ${createdCount} empty segments.`);
+            }
 
         } catch (err) {
             console.error(err);
-            alert("Failed to generate segments.");
+            alert("Failed to generate segments due to an unexpected error.");
         } finally {
             setIsGenerating(false);
         }
