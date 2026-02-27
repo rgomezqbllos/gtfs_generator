@@ -46,6 +46,8 @@ const TripsManager: React.FC<TripsManagerProps> = ({ route, onClose }) => {
     const [direction, setDirection] = useState<number>(0);
     const [trips, setTrips] = useState<Trip[]>([]);
     const [stops, setStops] = useState<Stop[]>([]);
+    const [stopsDir0, setStopsDir0] = useState<Stop[]>([]);
+    const [stopsDir1, setStopsDir1] = useState<Stop[]>([]);
     const [calendars, setCalendars] = useState<Calendar[]>([]);
     const [loading, setLoading] = useState(false);
     const [saving, setSaving] = useState(false);
@@ -80,9 +82,14 @@ const TripsManager: React.FC<TripsManagerProps> = ({ route, onClose }) => {
     const fetchData = async () => {
         setLoading(true);
         try {
-            // 1. Fetch path (ordered stops) for this direction
-            const pathRes = await fetch(`${API_URL}/routes/${route.route_id}/path?direction_id=${direction}`);
-            const pathData = await pathRes.json();
+            // 1. Fetch path (ordered stops) for both directions
+            const [path0Res, path1Res] = await Promise.all([
+                fetch(`${API_URL}/routes/${route.route_id}/path?direction_id=0`),
+                fetch(`${API_URL}/routes/${route.route_id}/path?direction_id=1`)
+            ]);
+
+            const path0Data = await path0Res.json().catch(() => ({}));
+            const path1Data = await path1Res.json().catch(() => ({}));
 
             // 2. Fetch stops details to get names
             const stopsRes = await fetch(`${API_URL}/stops`); // Optimization: should probably batch fetch or filter
@@ -108,14 +115,20 @@ const TripsManager: React.FC<TripsManagerProps> = ({ route, onClose }) => {
             setSegmentSlots(slotsMap);
 
             // Map ordered IDs to full stop objects
-            const orderedStops = (pathData.ordered_stop_ids || []).map((id: string) =>
+            const orderedStops0 = (path0Data.ordered_stop_ids || []).map((id: string) =>
                 allStops.find(s => s.stop_id === id)
             ).filter(Boolean) as Stop[];
 
-            setStops(orderedStops);
+            const orderedStops1 = (path1Data.ordered_stop_ids || []).map((id: string) =>
+                allStops.find(s => s.stop_id === id)
+            ).filter(Boolean) as Stop[];
 
-            // 3. Fetch Trips for this direction
-            const tripsRes = await fetch(`${API_URL}/routes/${route.route_id}/trips?direction_id=${direction}`);
+            setStopsDir0(orderedStops0);
+            setStopsDir1(orderedStops1);
+            setStops(direction === 0 ? orderedStops0 : orderedStops1);
+
+            // 3. Fetch ALL Trips for this route
+            const tripsRes = await fetch(`${API_URL}/routes/${route.route_id}/trips`);
             const tripsData = await tripsRes.json();
             setTrips(tripsData);
 
@@ -171,7 +184,6 @@ const TripsManager: React.FC<TripsManagerProps> = ({ route, onClose }) => {
     };
 
     const handleStopTimeChange = (tripId: string, stopId: string, field: 'arrival' | 'departure', value: string) => {
-        setLastEditedTripId(tripId);
         setTrips(prev => prev.map(trip => {
             if (trip.trip_id !== tripId) return trip;
 
@@ -284,26 +296,56 @@ const TripsManager: React.FC<TripsManagerProps> = ({ route, onClose }) => {
     };
 
     // Auto Trips Helpers
-    const getTotalTravelTime = () => {
-        let total = 0;
-        for (let i = 0; i < stops.length - 1; i++) {
-            const current = stops[i];
-            const next = stops[i + 1];
-            const seg = segments.find(s => s.start_node_id === current.stop_id && s.end_node_id === next.stop_id);
-            if (seg && seg.travel_time) {
-                total += seg.travel_time;
+    const getCycleTravelTime = () => {
+        let cycleTotal = 0;
+
+        const getPathTime = (pathStops: Stop[]) => {
+            let total = 0;
+            for (let i = 0; i < pathStops.length - 1; i++) {
+                const current = pathStops[i];
+                const next = pathStops[i + 1];
+                const seg = segments.find(s => s.start_node_id === current.stop_id && s.end_node_id === next.stop_id);
+                if (seg && seg.travel_time) total += seg.travel_time;
             }
+            return total;
+        };
+
+        const timeDir0 = getPathTime(stopsDir0);
+        const timeDir1 = getPathTime(stopsDir1);
+
+        cycleTotal += timeDir0 + timeDir1;
+
+        // Add connections
+        if (stopsDir0.length > 0 && stopsDir1.length > 0) {
+            // End of Dir 0 to start of Dir 1
+            const dir0End = stopsDir0[stopsDir0.length - 1].stop_id;
+            const dir1Start = stopsDir1[0].stop_id;
+            const seg0to1 = segments.find(s => s.start_node_id === dir0End && s.end_node_id === dir1Start);
+            if (seg0to1 && seg0to1.travel_time) cycleTotal += seg0to1.travel_time;
+
+            // End of Dir 1 to start of Dir 0
+            const dir1End = stopsDir1[stopsDir1.length - 1].stop_id;
+            const dir0Start = stopsDir0[0].stop_id;
+            const seg1to0 = segments.find(s => s.start_node_id === dir1End && s.end_node_id === dir0Start);
+            if (seg1to0 && seg1to0.travel_time) cycleTotal += seg1to0.travel_time;
+        } else if (stopsDir0.length > 0) {
+            // Just one direction, connect end to start (circuit)
+            const dir0End = stopsDir0[stopsDir0.length - 1].stop_id;
+            const dir0Start = stopsDir0[0].stop_id;
+            const segLoop = segments.find(s => s.start_node_id === dir0End && s.end_node_id === dir0Start);
+            if (segLoop && segLoop.travel_time) cycleTotal += segLoop.travel_time;
         }
-        return total;
+
+        return cycleTotal;
     };
 
-    const generateStopTimesForTrip = (tripId: string, startTime: string) => {
+    const generateStopTimesForTripAndStops = (tripId: string, startTime: string, pathStops: Stop[]) => {
         const newStopTimes: StopTime[] = [];
         let currentTime = startTime;
 
-        stops.forEach((stop, i) => {
+        pathStops.forEach((stop, i) => {
             if (i > 0) {
-                const prevStop = stops[i - 1];
+                const prevStop = pathStops[i - 1];
                 const segment = segments.find(s => s.start_node_id === prevStop.stop_id && s.end_node_id === stop.stop_id);
                 if (segment) {
                     let travelTime = segment.travel_time || 0;
@@ -334,6 +376,10 @@ const TripsManager: React.FC<TripsManagerProps> = ({ route, onClose }) => {
         return newStopTimes;
     };
 
+    const generateStopTimesForTrip = (tripId: string, startTime: string) => {
+        return generateStopTimesForTripAndStops(tripId, startTime, stops);
+    };
+
     const [isClearing, setIsClearing] = useState(false);
     const [showClearConfirm, setShowClearConfirm] = useState(false);
     const [successMessage, setSuccessMessage] = useState<string | null>(null);
@@ -344,8 +390,8 @@ const TripsManager: React.FC<TripsManagerProps> = ({ route, onClose }) => {
         // Check for duplicates in current trips (start time)
         const existingStartTimes = new Set(
             trips
-                .filter(t => t.service_id === serviceIdToUse)
-                .map(t => GetStopTime(t, stops[0]?.stop_id))
+                .filter(t => t.service_id === serviceIdToUse && t.direction_id === 0)
+                .map(t => GetStopTime(t, stopsDir0[0]?.stop_id))
         );
 
         const newTripsData: Trip[] = [];
@@ -357,18 +403,50 @@ const TripsManager: React.FC<TripsManagerProps> = ({ route, onClose }) => {
                 return;
             }
 
-            // 9-digit random ID
-            const tripId = Math.floor(100000000 + Math.random() * 900000000).toString();
+            if (stopsDir0.length > 0) {
+                // Determine start times for Dir 0
+                const tripId0 = Math.floor(100000000 + Math.random() * 900000000).toString();
+                const stopTimes0 = generateStopTimesForTripAndStops(tripId0, startTime, stopsDir0);
 
-            newTripsData.push({
-                trip_id: tripId,
-                route_id: route.route_id,
-                service_id: serviceIdToUse,
-                direction_id: direction,
-                trip_headsign: route.route_long_name || route.route_short_name,
-                shape_id: '',
-                stop_times: generateStopTimesForTrip(tripId, startTime)
-            });
+                newTripsData.push({
+                    trip_id: tripId0,
+                    route_id: route.route_id,
+                    service_id: serviceIdToUse,
+                    direction_id: 0,
+                    trip_headsign: route.route_long_name || route.route_short_name,
+                    shape_id: '',
+                    stop_times: stopTimes0
+                });
+
+                // Determine start times for Dir 1
+                if (stopsDir1.length > 0) {
+                    const dir0EndTime = stopTimes0[stopTimes0.length - 1]?.arrival_time;
+
+                    const dir0End = stopsDir0[stopsDir0.length - 1].stop_id;
+                    const dir1Start = stopsDir1[0].stop_id;
+                    const seg0to1 = segments.find(s => s.start_node_id === dir0End && s.end_node_id === dir1Start);
+
+                    let currTimeDir1 = dir0EndTime;
+                    if (currTimeDir1 && seg0to1 && seg0to1.travel_time) {
+                        currTimeDir1 = addSeconds(currTimeDir1, seg0to1.travel_time);
+                    }
+
+                    if (currTimeDir1) { // Safety check
+                        const tripId1 = Math.floor(100000000 + Math.random() * 900000000).toString();
+                        const stopTimes1 = generateStopTimesForTripAndStops(tripId1, currTimeDir1, stopsDir1);
+
+                        newTripsData.push({
+                            trip_id: tripId1,
+                            route_id: route.route_id,
+                            service_id: serviceIdToUse,
+                            direction_id: 1,
+                            trip_headsign: route.route_long_name || route.route_short_name,
+                            shape_id: '',
+                            stop_times: stopTimes1
+                        });
+                    }
+                }
+            }
         });
 
         if (duplicates.length > 0) {
@@ -478,12 +556,9 @@ const TripsManager: React.FC<TripsManagerProps> = ({ route, onClose }) => {
         setTimeout(() => setSuccessMessage(null), 3000);
     };
 
-    // Track last edited trip to maintain focus if reordered
-    const [lastEditedTripId, setLastEditedTripId] = useState<string | null>(null);
-
     // Filter displayed trips AND Sort them by start time
     const displayedTrips = trips
-        .filter(t => t.service_id === selectedServiceId && t.trip_id !== `t_${route.route_id}_${direction}`)
+        .filter(t => t.service_id === selectedServiceId && t.direction_id === direction && t.trip_id !== `t_${route.route_id}_${direction}`)
         .sort((a, b) => {
             const timeA = GetStopTime(a, stops[0]?.stop_id) || '23:59:59';
             const timeB = GetStopTime(b, stops[0]?.stop_id) || '23:59:59';
@@ -821,7 +896,7 @@ const TripsManager: React.FC<TripsManagerProps> = ({ route, onClose }) => {
                 isOpen={isAutoModalOpen}
                 onClose={() => setIsAutoModalOpen(false)}
                 serviceId={selectedServiceId}
-                totalTravelTime={getTotalTravelTime()}
+                totalTravelTime={getCycleTravelTime()}
                 onGenerate={handleBulkCreateTrips}
             />
 

@@ -37,9 +37,25 @@ const AutoTripsModal: React.FC<AutoTripsModalProps> = ({
     if (!isOpen) return null;
 
     const addRange = () => {
+        let newStartTime = '06:00:00';
+        let newEndTime = '08:00:00';
+
+        if (ranges.length > 0) {
+            const lastRange = ranges[ranges.length - 1];
+            newStartTime = lastRange.end_time;
+
+            const timeParts = lastRange.end_time.split(':');
+            let h = parseInt(timeParts[0] || '0', 10);
+            const m = timeParts[1] || '00';
+            const s = timeParts[2] || '00';
+
+            h += 2;
+            newEndTime = `${h.toString().padStart(2, '0')}:${m}:${s}`;
+        }
+
         setRanges([
             ...ranges,
-            { id: Math.random().toString(36).substr(2, 9), start_time: '09:00:00', end_time: '12:00:00', value: mode === 'interval' ? 15 : 2 }
+            { id: Math.random().toString(36).substr(2, 9), start_time: newStartTime, end_time: newEndTime, value: mode === 'interval' ? 15 : 2 }
         ]);
     };
 
@@ -152,7 +168,7 @@ const AutoTripsModal: React.FC<AutoTripsModalProps> = ({
                         <div className="flex justify-between items-center text-sm font-medium text-gray-700 dark:text-gray-300 border-b border-gray-200 dark:border-gray-700 pb-2">
                             <span>Time Ranges</span>
                             <span className="text-gray-500 font-normal text-xs">
-                                {mode === 'buses' && `Base Travel Time: ${Math.round(totalTravelTime / 60)} min`}
+                                {mode === 'buses' && `Cycle Travel Time: ${Math.round(totalTravelTime / 60)} min`}
                             </span>
                         </div>
 
