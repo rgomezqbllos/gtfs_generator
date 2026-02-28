@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { X, Plus, Trash2, Clock, AlertCircle, ArrowRight } from 'lucide-react';
 import { API_URL } from '../config';
-import { clsx } from 'clsx';
+
 import type { Segment } from '../types';
 
 interface TimeSlot {
@@ -57,23 +57,6 @@ const formatTimeInput = (val: string): string | null => {
     return `${pad(hh)}:${pad(mm)}:${pad(ss)}`;
 };
 
-// Convert HH:MM:SS to seconds
-// eslint-disable-next-line @typescript-eslint/no-unused-vars
-const timeToSeconds = (timeStr: string): number => {
-    const [h, m, s] = timeStr.split(':').map(Number);
-    return (h || 0) * 3600 + (m || 0) * 60 + (s || 0);
-};
-
-// Convert seconds to HH:MM:SS
-// eslint-disable-next-line @typescript-eslint/no-unused-vars
-const secondsToTime = (totalSeconds: number): string => {
-    const h = Math.floor(totalSeconds / 3600);
-    const m = Math.floor((totalSeconds % 3600) / 60);
-    const s = totalSeconds % 60;
-    const pad = (n: number) => n.toString().padStart(2, '0');
-    // Allow > 24h
-    return `${pad(h)}:${pad(m)}:${pad(s)}`;
-};
 
 
 const TimeSlotEditorModal: React.FC<TimeSlotEditorModalProps> = ({ isOpen, onClose, segment }) => {

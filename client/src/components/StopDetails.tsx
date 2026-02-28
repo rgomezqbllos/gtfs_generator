@@ -127,7 +127,7 @@ const StopDetails: React.FC<StopDetailsProps> = ({ stop, onClose, onUpdate, onDe
                                 <select
                                     className="w-full border p-2 rounded bg-white dark:bg-gray-700 dark:border-gray-600 dark:text-white"
                                     value={formData.node_type || 'regular'}
-                                    onChange={e => setFormData({ ...formData, node_type: e.target.value })}
+                                    onChange={e => setFormData({ ...formData, node_type: e.target.value as Stop['node_type'] })}
                                 >
                                     <option value="regular">Regular Stop</option>
                                     <option value="station">Station</option>

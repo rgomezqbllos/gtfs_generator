@@ -2,7 +2,7 @@ import React, { createContext, useContext, useState, type ReactNode } from 'reac
 
 export type InteractionMode = 'idle' | 'add_stop' | 'add_segment' | 'add_empty_segment';
 type ElementType = 'stop' | 'segment' | null;
-type PanelType = 'none' | 'routes' | 'routes_catalog' | 'settings' | 'calendar' | 'trips' | 'empty_segments' | 'external_load';
+type PanelType = 'none' | 'routes' | 'routes_catalog' | 'settings' | 'calendar' | 'trips' | 'empty_segments' | 'external_load' | 'simulation';
 
 interface PickingState {
     isActive: boolean;

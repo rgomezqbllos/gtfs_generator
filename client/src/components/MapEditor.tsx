@@ -19,6 +19,7 @@ import CalendarManager from './CalendarManager';
 import TripsManager from './TripsManager';
 import EmptySegmentsManager from './EmptySegmentsManager';
 import ExternalLoadPanel from './ExternalLoadPanel';
+import { SimulationPanel } from './SimulationPanel';
 
 import { API_URL } from '../config';
 
@@ -928,6 +929,10 @@ const MapEditor: React.FC = () => {
                     routesStructure={routesStructure}
                     onRefresh={fetchData}
                 />
+            )}
+
+            {activePanel === 'simulation' && (
+                <SimulationPanel onClose={() => setActivePanel('none')} />
             )}
 
             {/* Empty State Warning */}

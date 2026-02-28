@@ -17,6 +17,7 @@ export interface Segment {
     type: 'revenue' | 'empty';
     geometry?: string; // GeoJSON LineString stringified
     slots?: any[]; // For time-dependent travel, added 'any' to avoid circular/missing references if moved
+    allowed_transport_modes?: string; // e.g. 'bus,walk'
 }
 
 export interface Route {

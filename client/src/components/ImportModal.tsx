@@ -1,7 +1,6 @@
 import * as React from 'react';
-import { X, Upload, FileArchive, CheckCircle2, AlertTriangle, AlertCircle, Loader2, ChevronRight, ChevronDown, Check, Bus, Calendar } from 'lucide-react';
+import { X, Upload, FileArchive, CheckCircle2, AlertCircle, Loader2, ChevronRight, ChevronDown, Check, Calendar } from 'lucide-react';
 import { clsx } from 'clsx';
-import { useEditor } from '../context/EditorContext';
 
 interface ImportModalProps {
     isOpen: boolean;
@@ -469,7 +468,7 @@ const ImportModal: React.FC<ImportModalProps> = ({ isOpen, onClose }) => {
 
                             <div className="flex justify-between items-center mb-2">
                                 <span className="text-sm font-medium text-gray-500">
-                                    {Array.from(selectedPairs).filter(p => {
+                                    {Array.from(selectedPairs).filter(_p => {
                                         // Only count visible ones ?? Or keep total?
                                         // Currently calculating based on total selection
                                         return true;

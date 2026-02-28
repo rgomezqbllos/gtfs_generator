@@ -12,7 +12,8 @@ import {
     Moon,
     Download,
     Upload,
-    Database
+    Database,
+    PlayCircle
 } from 'lucide-react';
 import { clsx } from 'clsx';
 import ExportModal from '../ExportModal';
@@ -76,6 +77,13 @@ const Sidebar: React.FC = () => {
             icon: RouteIcon, // Reusing RouteIcon or maybe another one? User said "below calendar".
             active: activePanel === 'empty_segments',
             onClick: () => setActivePanel(activePanel === 'empty_segments' ? 'none' : 'empty_segments')
+        },
+        {
+            id: 'simulation',
+            label: 'Simulación',
+            icon: PlayCircle,
+            active: activePanel === 'simulation',
+            onClick: () => setActivePanel(activePanel === 'simulation' ? 'none' : 'simulation')
         },
         {
             id: 'settings',

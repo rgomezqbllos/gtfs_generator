@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { X, Clock, ArrowRight, MoreHorizontal, Bus } from 'lucide-react';
+import { X, Clock, ArrowRight, Bus } from 'lucide-react';
 import { API_URL } from '../config';
 import type { Route, Segment, Stop } from '../types';
 import TimeSlotEditorModal from './TimeSlotEditorModal';
@@ -14,7 +14,7 @@ const TimeSlotsManager: React.FC<TimeSlotsManagerProps> = ({ route, onClose }) =
     const [direction, setDirection] = useState<number>(0);
     const [loading, setLoading] = useState(false);
     const [segments, setSegments] = useState<(Segment & { startName?: string, endName?: string, slots?: any[] })[]>([]);
-    const [stops, setStops] = useState<Stop[]>([]);
+    const [, setStops] = useState<Stop[]>([]);
 
     const [selectedSegment, setSelectedSegment] = useState<(Segment & { startName?: string, endName?: string }) | null>(null);
     const [isEditorOpen, setIsEditorOpen] = useState(false);

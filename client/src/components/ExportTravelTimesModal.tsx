@@ -1,5 +1,5 @@
 import * as React from 'react';
-import { X, Download, CheckSquare, Square, Building2, Calendar, FileText, Bus, Search } from 'lucide-react';
+import { X, Download, CheckSquare, Building2, Calendar, FileText, Bus, Search } from 'lucide-react';
 import { clsx } from 'clsx';
 import { API_URL } from '../config';
 import type { Route } from '../types';
