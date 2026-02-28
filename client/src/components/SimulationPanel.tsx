@@ -187,7 +187,7 @@ export const SimulationPanel: React.FC<{ onClose: () => void }> = ({ onClose }) 
     // Download Helpers
     const handleDownloadCSV = () => {
         if (!engine) return;
-        const csv = engine.generateTrackingTableCSV(logicalBuses);
+        const csv = engine.generateTrackingTableCSV(logicalBuses, allRoutes);
         const blob = new Blob([csv], { type: 'text/csv' });
         const url = URL.createObjectURL(blob);
         const a = document.createElement('a');
@@ -209,10 +209,51 @@ export const SimulationPanel: React.FC<{ onClose: () => void }> = ({ onClose }) 
 
     // Derived KPIs
     const activeBusesCount = engine ? engine.getActiveBusesAtSeconds(logicalBuses, currentSeconds).length : 0;
-    const dispatchedBuses = logicalBuses.filter(b => b.trips.some(t => t.start_time <= currentSeconds)).length;
-    const activeTripsCount = engine ? engine.getActiveBusesAtSeconds(logicalBuses, currentSeconds).filter(b => {
-        return b.trips.some(t => t.type === 'commercial' && currentSeconds >= t.start_time && currentSeconds <= t.end_time);
-    }).length : 0;
+    const dispatchedBusesList = logicalBuses.filter(b => b.trips.some(t => t.start_time <= currentSeconds));
+    const dispatchedBuses = dispatchedBusesList.length;
+    const inactiveBusesCount = dispatchedBuses > 0 ? dispatchedBuses - activeBusesCount : 0;
+
+    let commercialTripsStarted = 0;
+    let emptyTripsStarted = 0;
+    let commercialSeconds = 0;
+    let emptySeconds = 0;
+
+    dispatchedBusesList.forEach(b => {
+        b.trips.forEach(t => {
+            if (t.start_time <= currentSeconds) {
+                const effectiveDuration = Math.min(currentSeconds, t.end_time) - t.start_time;
+                if (t.type === 'commercial') {
+                    commercialTripsStarted++;
+                    commercialSeconds += effectiveDuration;
+                } else {
+                    emptyTripsStarted++;
+                    emptySeconds += effectiveDuration;
+                }
+            }
+        });
+    });
+
+    const commercialKms = (commercialSeconds * (20 / 3600)).toFixed(1);
+    const emptyKms = (emptySeconds * (20 / 3600)).toFixed(1);
+
+    let overtakesCount = 0;
+    if (engine) {
+        const startedTrips = logicalBuses.flatMap(b => b.trips.filter(t => t.type === 'commercial' && t.start_time <= currentSeconds));
+        for (let i = 0; i < startedTrips.length; i++) {
+            for (let j = i + 1; j < startedTrips.length; j++) {
+                const t1 = startedTrips[i];
+                const t2 = startedTrips[j];
+                // Check if they share the same origin and destination to heuristically confirm they are the same route
+                if (t1.start_stop_id === t2.start_stop_id && t1.end_stop_id === t2.end_stop_id) {
+                    const first = t1.start_time < t2.start_time ? t1 : t2;
+                    const second = t1.start_time < t2.start_time ? t2 : t1;
+                    if (first.end_time > second.end_time && currentSeconds >= second.end_time) {
+                        overtakesCount++;
+                    }
+                }
+            }
+        }
+    }
 
     return (
         <div className="fixed inset-0 z-50 flex bg-[#0a0f1d] text-white overflow-hidden animate-in slide-in-from-right duration-300">
@@ -275,18 +316,26 @@ export const SimulationPanel: React.FC<{ onClose: () => void }> = ({ onClose }) 
             {/* Main Area */}
             <div className="flex-1 flex flex-col min-w-0 relative">
                 {/* Header KPIs */}
-                <div className="h-20 bg-[#111827] border-b border-gray-800 flex items-center px-8 gap-12 z-10 shrink-0">
+                <div className="h-20 bg-[#111827] border-b border-gray-800 flex items-center px-8 gap-8 xl:gap-12 z-10 shrink-0">
                     <div>
-                        <div className="text-xs text-gray-400 uppercase tracking-widest">Active Buses</div>
-                        <div className="text-3xl font-light">{activeBusesCount}</div>
+                        <div className="text-[10px] text-gray-400 uppercase tracking-widest whitespace-nowrap">Active / Disp.</div>
+                        <div className="text-2xl font-light">{activeBusesCount} <span className="text-sm text-gray-500">/ {dispatchedBuses}</span></div>
                     </div>
                     <div>
-                        <div className="text-xs text-gray-400 uppercase tracking-widest">Dispatched</div>
-                        <div className="text-3xl font-light">{dispatchedBuses} <span className="text-sm text-gray-500">/ {logicalBuses.length}</span></div>
+                        <div className="text-[10px] text-gray-400 uppercase tracking-widest whitespace-nowrap animate-pulse transition-opacity">Inactive Buses</div>
+                        <div className="text-2xl font-light text-orange-400">{inactiveBusesCount}</div>
                     </div>
                     <div>
-                        <div className="text-xs text-gray-400 uppercase tracking-widest">Trips In Prog.</div>
-                        <div className="text-3xl font-light">{activeTripsCount}</div>
+                        <div className="text-[10px] text-gray-400 uppercase tracking-widest whitespace-nowrap">Comm. Trips / KMs</div>
+                        <div className="text-2xl font-light text-blue-400">{commercialTripsStarted} <span className="text-sm text-gray-500">/ {commercialKms}km</span></div>
+                    </div>
+                    <div>
+                        <div className="text-[10px] text-gray-400 uppercase tracking-widest whitespace-nowrap">Empty Trips / KMs</div>
+                        <div className="text-2xl font-light text-gray-300">{emptyTripsStarted} <span className="text-sm text-gray-500">/ {emptyKms}km</span></div>
+                    </div>
+                    <div>
+                        <div className="text-[10px] text-gray-400 uppercase tracking-widest whitespace-nowrap">Overtakes</div>
+                        <div className="text-2xl font-light text-red-500">{overtakesCount}</div>
                     </div>
                     <div className="ml-auto text-right">
                         <div className="text-xs text-gray-400 uppercase tracking-widest">Sim Time</div>
@@ -310,7 +359,7 @@ export const SimulationPanel: React.FC<{ onClose: () => void }> = ({ onClose }) 
                 </div>
 
                 {/* Timeline Footer */}
-                <div className="h-24 bg-[#111827] border-t border-gray-800 flex flex-col p-4 shrink-0 z-20">
+                <div className="h-32 bg-[#111827] border-t border-gray-800 flex flex-col p-4 shrink-0 z-20">
                     <div className="flex items-center gap-4">
                         <button onClick={() => setIsPlaying(!isPlaying)} className={`p-2 rounded-full ${isPlaying ? 'bg-orange-600' : 'bg-green-600'} text-white`}>
                             {isPlaying ? <Pause size={20} /> : <Play size={20} />}
@@ -334,17 +383,39 @@ export const SimulationPanel: React.FC<{ onClose: () => void }> = ({ onClose }) 
                         </div>
                     </div>
 
-                    <div className="mt-4 flex items-center gap-4">
-                        <span className="text-xs font-mono w-16 text-right">00:00:00</span>
-                        <input
-                            type="range"
-                            min="0"
-                            max={36 * 3600}
-                            value={currentSeconds}
-                            onChange={(e) => setCurrentSeconds(Number(e.target.value))}
-                            className="flex-1 accent-blue-500"
-                        />
-                        <span className="text-xs font-mono w-16 text-left">36:00:00</span>
+                    <div className="mt-4 flex flex-col gap-1">
+                        <div className="flex items-start gap-4">
+                            <span className="text-xs font-mono w-16 text-right mt-1">00:00:00</span>
+                            <div className="flex-1 relative flex flex-col pb-8">
+                                <input
+                                    type="range"
+                                    min="0"
+                                    max={36 * 3600}
+                                    value={currentSeconds}
+                                    onChange={(e) => setCurrentSeconds(Number(e.target.value))}
+                                    className="w-full accent-blue-500 cursor-pointer z-10"
+                                />
+                                {/* Time Ruler Scale */}
+                                <div className="absolute top-5 left-0 right-0 h-6 flex justify-between pointer-events-none px-[1px]">
+                                    {Array.from({ length: 37 }).map((_, i) => {
+                                        const leftPercent = (i / 36) * 100;
+                                        return (
+                                            <div
+                                                key={i}
+                                                className="absolute flex flex-col items-center"
+                                                style={{ left: `${leftPercent}%`, transform: 'translateX(-50%)' }}
+                                            >
+                                                <div className="w-px h-1.5 bg-gray-600" />
+                                                <span className="text-[9px] text-gray-500 mt-0.5 font-mono">
+                                                    {i}
+                                                </span>
+                                            </div>
+                                        );
+                                    })}
+                                </div>
+                            </div>
+                            <span className="text-xs font-mono w-16 text-left mt-1">36:00:00</span>
+                        </div>
                     </div>
                 </div>
             </div>

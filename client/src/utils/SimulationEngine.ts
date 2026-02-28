@@ -32,6 +32,7 @@ export interface LogicalBus {
 export interface AssignedTrip {
     type: 'commercial' | 'empty';
     trip_id?: string; // only for commercial
+    route_id?: string; // only for commercial
     start_stop_id: string;
     end_stop_id: string;
     start_time: number;
@@ -204,6 +205,7 @@ export class SimulationEngine {
         bus.trips.push({
             type: 'commercial',
             trip_id: trip.trip_id,
+            route_id: trip.route_id,
             start_stop_id: trip.stop_times[0].stop_id,
             end_stop_id: trip.stop_times[trip.stop_times.length - 1].stop_id,
             start_time: trip.start_time,
@@ -219,14 +221,27 @@ export class SimulationEngine {
     }
 
     // Export a CSV of the schedule summary
-    public generateTrackingTableCSV(buses: LogicalBus[]): string {
+    public generateTrackingTableCSV(buses: LogicalBus[], allRoutes?: any[]): string {
         let csv = "Bus ID,Route(s),Total Trips,Commercial Time (min),Empty Time (min)\n";
         buses.forEach(b => {
-            const routes = "N/A"; // Could map back to route if stored
+            const routeIds = Array.from(new Set(b.trips.filter(t => t.type === 'commercial' && t.route_id).map(t => t.route_id)));
+            let routesStr = "N/A";
+            if (routeIds.length > 0) {
+                routesStr = routeIds.map(rid => {
+                    if (allRoutes) {
+                        const r = allRoutes.find(ar => ar.route_id === rid);
+                        return r ? r.route_short_name || r.route_long_name || rid : rid;
+                    }
+                    return rid;
+                }).join(' / ');
+            }
+            // Escape quotes inside routesStr for CSV format
+            routesStr = `"${routesStr.replace(/"/g, '""')}"`;
+
             const commercialTripsCount = b.trips.filter(t => t.type === 'commercial').length;
             const comMin = Math.round(b.total_commercial_time / 60);
             const empMin = Math.round(b.total_empty_time / 60);
-            csv += `${b.bus_id},${routes},${commercialTripsCount},${comMin},${empMin}\n`;
+            csv += `${b.bus_id},${routesStr},${commercialTripsCount},${comMin},${empMin}\n`;
         });
         return csv;
     }

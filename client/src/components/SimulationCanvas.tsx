@@ -18,24 +18,86 @@ export const SimulationCanvas: React.FC<SimulationCanvasProps> = ({ routesData, 
     // Canvas dimensions and state
     const containerRef = useRef<HTMLDivElement>(null);
 
-    // Filter which buses are active right now
-    const activeTrips = buses.flatMap(b => {
+    // Filter which buses are active right now and calculate headway
+    const activeTripsWithHeadway = buses.flatMap(b => {
         // Find all trips active at this second
         const eligibleTrips = b.trips.filter(t => currentSeconds >= t.start_time && currentSeconds <= t.end_time);
 
         if (eligibleTrips.length === 0) return [];
 
         // If multiple trips overlap, pick the one that started LATEST.
-        // This handles cases where a new trip starts before the previous one technically 'ends' in the GTFS data.
         const activeTrip = eligibleTrips.reduce((prev, current) => (prev.start_time > current.start_time) ? prev : current);
 
-        return [{
-            bus: b,
-            trip: activeTrip
-        }];
-    });
+        return [{ bus: b, trip: activeTrip }];
+    }).map((item) => {
+        const { trip } = item;
 
-    console.log(`SimulationCanvas render: currentSeconds=${currentSeconds}, activeTrips=${activeTrips.length}`, activeTrips);
+        // Find if there's a bus ahead of this one on the same route and direction
+        let headway = null;
+
+        if (trip.type === 'commercial') {
+            const rData = routesData.find(r => r.trips.some(t => t.trip_id === trip.trip_id));
+            if (rData) {
+                const routeTrip = rData.trips.find(t => t.trip_id === trip.trip_id)!;
+                // Get all trips for the exact route and direction this trip is on, sorted by start_time
+                const routeTripsSorted = rData.trips
+                    .filter(t => t.direction_id === routeTrip.direction_id)
+                    .sort((a, b) => a.start_time - b.start_time);
+
+                const idx = routeTripsSorted.findIndex(t => t.trip_id === routeTrip.trip_id);
+                if (idx > 0) {
+                    const prevTrip = routeTripsSorted[idx - 1];
+
+                    let prevTargetTime = prevTrip.start_time;
+                    let found = false;
+
+                    if (currentSeconds >= prevTrip.end_time) {
+                        prevTargetTime = prevTrip.end_time;
+                        found = true;
+                    } else if (currentSeconds <= routeTrip.start_time) {
+                        prevTargetTime = prevTrip.start_time;
+                        found = true;
+                    } else {
+                        for (let i = 0; i < routeTrip.stop_times.length - 1; i++) {
+                            const curr = routeTrip.stop_times[i];
+                            const next = routeTrip.stop_times[i + 1];
+
+                            if (currentSeconds >= curr.departure_time && currentSeconds <= next.arrival_time) {
+                                const dt = next.arrival_time - curr.departure_time;
+                                const elapsed = currentSeconds - curr.departure_time;
+                                const segmentFraction = dt > 0 ? (elapsed / dt) : 0;
+
+                                if (prevTrip.stop_times[i] && prevTrip.stop_times[i + 1]) {
+                                    const pCurr = prevTrip.stop_times[i];
+                                    const pNext = prevTrip.stop_times[i + 1];
+                                    const pDt = pNext.arrival_time - pCurr.departure_time;
+                                    prevTargetTime = pCurr.departure_time + (pDt * segmentFraction);
+                                    found = true;
+                                    break;
+                                }
+                            } else if (currentSeconds >= curr.arrival_time && currentSeconds <= curr.departure_time) {
+                                if (prevTrip.stop_times[i]) {
+                                    prevTargetTime = prevTrip.stop_times[i].arrival_time;
+                                    found = true;
+                                    break;
+                                }
+                            }
+                        }
+                    }
+
+                    if (!found) {
+                        prevTargetTime = prevTrip.end_time;
+                    }
+
+                    headway = Math.round((currentSeconds - prevTargetTime) / 60);
+                } else {
+                    headway = 0; // First trip of the day
+                }
+            }
+        }
+
+        return { ...item, headway };
+    });
 
     return (
         <div className="flex flex-col gap-6 p-4 overflow-y-auto w-full h-full bg-[#0a0f1d] text-white" ref={containerRef}>
@@ -66,7 +128,7 @@ export const SimulationCanvas: React.FC<SimulationCanvasProps> = ({ routesData, 
                             })}
 
                             {/* Render Buses on Dir 0 */}
-                            {activeTrips.filter(ab => {
+                            {activeTripsWithHeadway.filter(ab => {
                                 if (ab.trip.type === 'commercial') {
                                     const simTrip = rData.trips.find(t => t.trip_id === ab.trip.trip_id);
                                     return simTrip !== undefined && simTrip.direction_id === 0;
@@ -97,16 +159,13 @@ export const SimulationCanvas: React.FC<SimulationCanvasProps> = ({ routesData, 
                                                 const dt = next.arrival_time - curr.departure_time;
                                                 const elapsed = currentSeconds - curr.departure_time;
                                                 const segmentFraction = dt > 0 ? (elapsed / dt) : 0;
-
                                                 const startIdx = rData.path0.findIndex(s => s.stop_id === curr.stop_id);
                                                 const endIdx = rData.path0.findIndex(s => s.stop_id === next.stop_id);
-
                                                 if (startIdx !== -1 && endIdx !== -1) {
                                                     const startPct = (startIdx / totalPathSegments) * 100;
                                                     const endPct = (endIdx / totalPathSegments) * 100;
                                                     leftPercent = startPct + (endPct - startPct) * segmentFraction;
                                                 } else {
-                                                    // Fallback to index-based if stop not found in path
                                                     const startPct = (i / totalPathSegments) * 100;
                                                     const endPct = ((i + 1) / totalPathSegments) * 100;
                                                     leftPercent = startPct + (endPct - startPct) * segmentFraction;
@@ -125,7 +184,6 @@ export const SimulationCanvas: React.FC<SimulationCanvasProps> = ({ routesData, 
                                             }
                                         }
                                         if (!found) {
-                                            // Check if dwelling at terminal stop
                                             const lastStop = simTrip.stop_times[simTrip.stop_times.length - 1];
                                             if (currentSeconds >= lastStop.arrival_time) {
                                                 const stopIdx = rData.path0.findIndex(s => s.stop_id === lastStop.stop_id);
@@ -145,20 +203,22 @@ export const SimulationCanvas: React.FC<SimulationCanvasProps> = ({ routesData, 
                                 }
 
                                 return (
-                                    <div
-                                        key={`bus-0-${ab.bus.bus_id}`}
-                                        className={`absolute z-20 flex items-center justify-center px-3 py-1 min-w-[36px] rounded-full shadow-md text-[10px] font-bold text-white group cursor-pointer ${isCommercial ? '' : 'opacity-75 border-2 border-dashed border-gray-400'}`}
-                                        style={{
-                                            left: `calc(40px + calc(100% - 80px) * ${leftPercent / 100})`,
-                                            top: '50%',
-                                            transform: 'translate(-50%, -50%)',
-                                            backgroundColor: isCommercial ? ab.bus.color : '#374151'
-                                        }}
-                                    >
-                                        {ab.bus.bus_id.split('-')[1]}
-                                        <div className="hidden group-hover:block absolute bottom-full mb-2 bg-gray-900 text-white p-2 rounded text-xs whitespace-nowrap z-50">
-                                            <div>Bus: {ab.bus.bus_id}</div>
-                                            <div>Trip ID: {ab.trip.trip_id}</div>
+                                    <div key={`bus-0-${ab.bus.bus_id}`} className="absolute z-20" style={{ left: `calc(40px + calc(100% - 80px) * ${leftPercent / 100})`, top: '50%', transform: 'translate(-50%, -50%)' }}>
+                                        {ab.headway !== null && (
+                                            <div className={`absolute bottom-full left-1/2 -translate-x-1/2 mb-1 px-1.5 py-0.5 rounded text-[9px] font-mono border border-gray-700 whitespace-nowrap ${ab.headway < 0 ? 'bg-red-600 text-white' : 'bg-gray-900/80 text-gray-300'}`}>
+                                                {ab.headway < 0 ? `⚠️ ${ab.headway}m` : `+${ab.headway}m`}
+
+                                            </div>
+                                        )}
+                                        <div
+                                            className={`flex items-center justify-center px-3 py-1 min-w-[36px] rounded-full shadow-md text-[10px] font-bold text-white group cursor-pointer ${isCommercial ? '' : 'opacity-75 border-2 border-dashed border-gray-400'}`}
+                                            style={{ backgroundColor: isCommercial ? ab.bus.color : '#374151' }}
+                                        >
+                                            {ab.bus.bus_id.split('-')[1]}
+                                            <div className="hidden group-hover:block absolute bottom-full mb-2 bg-gray-900 text-white p-2 rounded text-xs whitespace-nowrap z-50">
+                                                <div>Bus: {ab.bus.bus_id}</div>
+                                                <div>Trip ID: {ab.trip.trip_id}</div>
+                                            </div>
                                         </div>
                                     </div>
                                 );
@@ -172,7 +232,7 @@ export const SimulationCanvas: React.FC<SimulationCanvasProps> = ({ routesData, 
                             <div className="absolute left-0 w-8 text-xs text-gray-400">RET</div>
                             <div className="absolute left-10 right-10 h-1 bg-gray-700 rounded-full" />
 
-                            {/* Render Stops (Reversed visually right-to-left for Return) */}
+                            {/* Render Stops */}
                             {rData.path1.map((stop, i) => {
                                 const leftPercent = 100 - ((i / Math.max(1, rData.path1.length - 1)) * 100);
                                 return (
@@ -186,7 +246,7 @@ export const SimulationCanvas: React.FC<SimulationCanvasProps> = ({ routesData, 
                             })}
 
                             {/* Render Buses on Dir 1 */}
-                            {activeTrips.filter(ab => {
+                            {activeTripsWithHeadway.filter(ab => {
                                 if (ab.trip.type === 'commercial') {
                                     const simTrip = rData.trips.find(t => t.trip_id === ab.trip.trip_id);
                                     return simTrip !== undefined && simTrip.direction_id === 1;
@@ -217,16 +277,13 @@ export const SimulationCanvas: React.FC<SimulationCanvasProps> = ({ routesData, 
                                                 const dt = next.arrival_time - curr.departure_time;
                                                 const elapsed = currentSeconds - curr.departure_time;
                                                 const segmentFraction = dt > 0 ? (elapsed / dt) : 0;
-
                                                 const startIdx = rData.path1.findIndex(s => s.stop_id === curr.stop_id);
                                                 const endIdx = rData.path1.findIndex(s => s.stop_id === next.stop_id);
-
                                                 if (startIdx !== -1 && endIdx !== -1) {
                                                     const startPct = 100 - (startIdx / totalPathSegments) * 100;
                                                     const endPct = 100 - (endIdx / totalPathSegments) * 100;
                                                     leftPercent = startPct + (endPct - startPct) * segmentFraction;
                                                 } else {
-                                                    // Fallback to index-based
                                                     const startPct = 100 - ((i / totalPathSegments) * 100);
                                                     const endPct = 100 - (((i + 1) / totalPathSegments) * 100);
                                                     leftPercent = startPct + (endPct - startPct) * segmentFraction;
@@ -245,14 +302,13 @@ export const SimulationCanvas: React.FC<SimulationCanvasProps> = ({ routesData, 
                                             }
                                         }
                                         if (!found) {
-                                            // Check if dwelling at terminal stop
                                             const lastStop = simTrip.stop_times[simTrip.stop_times.length - 1];
                                             if (currentSeconds >= lastStop.arrival_time) {
                                                 const stopIdx = rData.path1.findIndex(s => s.stop_id === lastStop.stop_id);
                                                 if (stopIdx !== -1) {
                                                     leftPercent = 100 - (stopIdx / totalPathSegments) * 100;
                                                 } else {
-                                                    leftPercent = 0; // 0 means end of RET line visually
+                                                    leftPercent = 0;
                                                 }
                                             }
                                         }
@@ -265,27 +321,27 @@ export const SimulationCanvas: React.FC<SimulationCanvasProps> = ({ routesData, 
                                 }
 
                                 return (
-                                    <div
-                                        key={`bus-1-${ab.bus.bus_id}`}
-                                        className={`absolute z-20 flex items-center justify-center px-3 py-1 min-w-[36px] rounded-full shadow-md text-[10px] font-bold text-white group cursor-pointer ${isCommercial ? '' : 'opacity-75 border-2 border-dashed border-gray-400'}`}
-                                        style={{
-                                            left: `calc(40px + calc(100% - 80px) * ${leftPercent / 100})`,
-                                            top: '50%',
-                                            transform: 'translate(-50%, -50%)',
-                                            backgroundColor: isCommercial ? ab.bus.color : '#374151'
-                                        }}
-                                    >
-                                        {ab.bus.bus_id.split('-')[1]}
-                                        <div className="hidden group-hover:block absolute bottom-full mb-2 bg-gray-900 text-white p-2 rounded text-xs whitespace-nowrap z-50">
-                                            <div>Bus: {ab.bus.bus_id}</div>
-                                            <div>Trip ID: {ab.trip.trip_id}</div>
+                                    <div key={`bus-1-${ab.bus.bus_id}`} className="absolute z-20" style={{ left: `calc(40px + calc(100% - 80px) * ${leftPercent / 100})`, top: '50%', transform: 'translate(-50%, -50%)' }}>
+                                        {ab.headway !== null && (
+                                            <div className={`absolute bottom-full left-1/2 -translate-x-1/2 mb-1 px-1.5 py-0.5 rounded text-[9px] font-mono border border-gray-700 whitespace-nowrap ${ab.headway < 0 ? 'bg-red-600 text-white' : 'bg-gray-900/80 text-gray-300'}`}>
+                                                {ab.headway < 0 ? `⚠️ ${ab.headway}m` : `+${ab.headway}m`}
+                                            </div>
+                                        )}
+                                        <div
+                                            className={`flex items-center justify-center px-3 py-1 min-w-[36px] rounded-full shadow-md text-[10px] font-bold text-white group cursor-pointer ${isCommercial ? '' : 'opacity-75 border-2 border-dashed border-gray-400'}`}
+                                            style={{ backgroundColor: isCommercial ? ab.bus.color : '#374151' }}
+                                        >
+                                            {ab.bus.bus_id.split('-')[1]}
+                                            <div className="hidden group-hover:block absolute bottom-full mb-2 bg-gray-900 text-white p-2 rounded text-xs whitespace-nowrap z-50">
+                                                <div>Bus: {ab.bus.bus_id}</div>
+                                                <div>Trip ID: {ab.trip.trip_id}</div>
+                                            </div>
                                         </div>
                                     </div>
                                 );
                             })}
                         </div>
                     )}
-
                 </div>
             ))}
         </div>
