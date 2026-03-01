@@ -244,15 +244,21 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({ onClose, currentViewState
                                                         method: 'POST',
                                                         body: formData
                                                     });
+                                                    const payload = await res.json().catch(() => ({}));
                                                     if (res.ok) {
-                                                        alert("Database restored successfully! Reloading...");
+                                                        const stats = payload?.stats;
+                                                        const summary = stats
+                                                            ? `\nStops: ${stats.stops}\nRoutes: ${stats.routes}\nTrips: ${stats.trips}\nSegments: ${stats.segments}`
+                                                            : '';
+                                                        alert(`Database restored successfully!${summary}\nReloading...`);
                                                         window.location.reload();
                                                     } else {
-                                                        const err = await res.json();
-                                                        alert("Error: " + (err.error || "Failed reset"));
+                                                        alert("Error: " + (payload.error || "Failed restore"));
                                                     }
                                                 } catch (err) {
                                                     alert("Connection failed");
+                                                } finally {
+                                                    e.target.value = '';
                                                 }
                                             }}
                                         />

@@ -84,9 +84,20 @@ const MapEditor: React.FC = () => {
         try {
             const res = await fetch(`${API_URL}/routes/structure`);
             const data = await res.json();
+            if (!res.ok) {
+                console.error('Error fetching route structure:', data);
+                setRoutesStructure([]);
+                return;
+            }
+            if (!Array.isArray(data)) {
+                console.error('Invalid /routes/structure payload. Expected array:', data);
+                setRoutesStructure([]);
+                return;
+            }
             setRoutesStructure(data);
         } catch (err) {
             console.error('Error fetching route structure:', err);
+            setRoutesStructure([]);
         }
     }, []);
 
@@ -165,13 +176,24 @@ const MapEditor: React.FC = () => {
                 fetch(`${API_URL}/segments`)
             ]);
 
-            const stopsData = await stopsRes.json();
-            const segmentsData = await segmentsRes.json();
+            const [stopsData, segmentsData] = await Promise.all([
+                stopsRes.json(),
+                segmentsRes.json()
+            ]);
 
-            setStops(stopsData);
-            setSegments(segmentsData);
+            if (!stopsRes.ok) {
+                console.error('Error response from /stops:', stopsData);
+            }
+            if (!segmentsRes.ok) {
+                console.error('Error response from /segments:', segmentsData);
+            }
+
+            setStops(Array.isArray(stopsData) ? stopsData : []);
+            setSegments(Array.isArray(segmentsData) ? segmentsData : []);
         } catch (error) {
             console.error('Error fetching data:', error);
+            setStops([]);
+            setSegments([]);
         }
     }, []);
 
@@ -194,8 +216,15 @@ const MapEditor: React.FC = () => {
     }, []);
 
     // Determine what to display
-    const displayStops = filteredStops !== null ? filteredStops : stops;
-    const displaySegments = filteredSegments !== null ? filteredSegments : segments;
+    const displayStops = React.useMemo(() => {
+        const rawStops = filteredStops !== null ? filteredStops : stops;
+        return Array.isArray(rawStops) ? rawStops : [];
+    }, [filteredStops, stops]);
+
+    const displaySegments = React.useMemo(() => {
+        const rawSegments = filteredSegments !== null ? filteredSegments : segments;
+        return Array.isArray(rawSegments) ? rawSegments : [];
+    }, [filteredSegments, segments]);
 
     // Path Editing State
     const [activeRoute, setActiveRoute] = React.useState<Route | null>(null);

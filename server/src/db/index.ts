@@ -5,14 +5,28 @@ import path from 'path';
 const defaultDbPath = path.resolve(__dirname, '../../gtfs.db');
 const dbPath = process.env.DB_PATH ? path.resolve(process.env.DB_PATH) : defaultDbPath;
 const schemaPath = path.resolve(__dirname, 'schema.sql');
+type DBInstance = Database.Database;
 
 // Ensure parent folder exists when DB_PATH points outside the repo tree (e.g. Docker volume).
 fs.mkdirSync(path.dirname(dbPath), { recursive: true });
 
-let db = new Database(dbPath, { verbose: console.log });
-db.pragma('journal_mode = WAL');
+let dbConnection: DBInstance = new Database(dbPath, { verbose: console.log });
+dbConnection.pragma('journal_mode = WAL');
+
+// Stable proxy so imports keep working even if reconnectDB replaces the underlying connection.
+const db = new Proxy({} as DBInstance, {
+    get(_target, prop: string | symbol) {
+        const value = (dbConnection as any)[prop];
+        return typeof value === 'function' ? value.bind(dbConnection) : value;
+    },
+    set(_target, prop: string | symbol, value: unknown) {
+        (dbConnection as any)[prop] = value;
+        return true;
+    }
+}) as DBInstance;
 
 export function initDB() {
+    const db = dbConnection;
     const schema = fs.readFileSync(schemaPath, 'utf8');
     db.exec(schema);
 
@@ -70,12 +84,21 @@ export function initDB() {
 }
 
 export function closeDB() {
-    db.close();
+    if (dbConnection.open) {
+        dbConnection.close();
+    }
 }
 
 export function reconnectDB() {
-    db = new Database(dbPath, { verbose: console.log });
-    db.pragma('journal_mode = WAL');
+    if (dbConnection.open) {
+        dbConnection.close();
+    }
+    dbConnection = new Database(dbPath, { verbose: console.log });
+    dbConnection.pragma('journal_mode = WAL');
+}
+
+export function getDbPath() {
+    return dbPath;
 }
 
 export { db };
