@@ -11,7 +11,15 @@ interface AutoTripsModalProps {
     onGenerate: (config: AutoTripsConfig) => void;
 }
 
+export interface AutoTripsRange {
+    start_time: string;
+    end_time: string;
+    value: number; // Interval (min) or Num Buses
+}
+
 export interface AutoTripsConfig {
+    mode: 'interval' | 'buses';
+    ranges: AutoTripsRange[];
     trips: string[]; // Array of start times "HH:MM:SS"
 }
 
@@ -55,7 +63,12 @@ const AutoTripsModal: React.FC<AutoTripsModalProps> = ({
 
         setRanges([
             ...ranges,
-            { id: Math.random().toString(36).substr(2, 9), start_time: newStartTime, end_time: newEndTime, value: mode === 'interval' ? 15 : 2 }
+            {
+                id: Math.random().toString(36).slice(2, 11),
+                start_time: newStartTime,
+                end_time: newEndTime,
+                value: mode === 'interval' ? 15 : 2
+            }
         ]);
     };
 
@@ -63,60 +76,61 @@ const AutoTripsModal: React.FC<AutoTripsModalProps> = ({
         setRanges(ranges.filter(r => r.id !== id));
     };
 
-    const updateRange = (id: string, field: keyof TimeRange, val: any) => {
+    const updateRange = (id: string, field: keyof TimeRange, val: string | number) => {
         setRanges(ranges.map(r => r.id === id ? { ...r, [field]: val } : r));
     };
 
     const generateTimes = () => {
+        const normalizedRanges = ranges
+            .map((range) => ({
+                start_time: formatTimeInput(range.start_time),
+                end_time: formatTimeInput(range.end_time),
+                value: Number.isFinite(range.value) ? range.value : 0
+            }))
+            .filter(range => range.value > 0)
+            .sort((a, b) => a.start_time.localeCompare(b.start_time));
+
         const generatedTimes: string[] = [];
 
-        ranges.forEach(range => {
-            const startPoints = range.start_time.split(':').map(Number);
-            const endPoints = range.end_time.split(':').map(Number);
+        if (mode === 'interval') {
+            normalizedRanges.forEach(range => {
+                const startPoints = range.start_time.split(':').map(Number);
+                const endPoints = range.end_time.split(':').map(Number);
 
-            // Handle optional seconds
-            const startH = startPoints[0] || 0;
-            const startM = startPoints[1] || 0;
-            const startS = startPoints[2] || 0;
+                const startH = startPoints[0] || 0;
+                const startM = startPoints[1] || 0;
+                const startS = startPoints[2] || 0;
 
-            const endH = endPoints[0] || 0;
-            const endM = endPoints[1] || 0;
-            const endS = endPoints[2] || 0;
+                const endH = endPoints[0] || 0;
+                const endM = endPoints[1] || 0;
+                const endS = endPoints[2] || 0;
 
-            let currentSeconds = (startH * 3600) + (startM * 60) + startS;
-            const endSeconds = (endH * 3600) + (endM * 60) + endS;
+                let currentSeconds = (startH * 3600) + (startM * 60) + startS;
+                const endSeconds = (endH * 3600) + (endM * 60) + endS;
 
-            let intervalSeconds = 0;
+                const intervalSeconds = range.value * 60;
+                if (intervalSeconds <= 0) return;
 
-            if (mode === 'interval') {
-                intervalSeconds = range.value * 60;
-            } else {
-                // By Buses: Interval = TotalTravelTime / NumBuses
-                if (range.value <= 0) return;
-                intervalSeconds = totalTravelTime / range.value;
-            }
+                while (currentSeconds <= endSeconds) {
+                    const h = Math.floor(currentSeconds / 3600);
+                    const m = Math.floor((currentSeconds % 3600) / 60);
+                    const s = Math.floor(currentSeconds % 60);
 
-            if (intervalSeconds <= 0) return;
+                    const formatted = [h, m, s]
+                        .map(v => v.toString().padStart(2, '0'))
+                        .join(':');
 
-            while (currentSeconds <= endSeconds) {
-                // Format to HH:MM:SS
-                const h = Math.floor(currentSeconds / 3600);
-                const m = Math.floor((currentSeconds % 3600) / 60);
-                const s = Math.floor(currentSeconds % 60);
+                    generatedTimes.push(formatted);
+                    currentSeconds += intervalSeconds;
+                }
+            });
+        }
 
-                const formatted = [h, m, s]
-                    .map(v => v.toString().padStart(2, '0'))
-                    .join(':');
-
-                generatedTimes.push(formatted);
-                currentSeconds += intervalSeconds;
-            }
-        });
-
-        // Deduplicate and sort
         const uniqueTimes = Array.from(new Set(generatedTimes)).sort();
 
         onGenerate({
+            mode,
+            ranges: normalizedRanges,
             trips: uniqueTimes
         });
         onClose();
@@ -136,7 +150,6 @@ const AutoTripsModal: React.FC<AutoTripsModalProps> = ({
                 </div>
 
                 <div className="p-6 space-y-6">
-                    {/* Settings */}
                     <div className="grid grid-cols-1 gap-4">
                         <div>
                             <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Generation Mode</label>
@@ -144,8 +157,8 @@ const AutoTripsModal: React.FC<AutoTripsModalProps> = ({
                                 <button
                                     onClick={() => setMode('interval')}
                                     className={clsx(
-                                        "flex-1 py-1.5 text-sm font-medium rounded-md transition-all",
-                                        mode === 'interval' ? "bg-white dark:bg-gray-600 shadow text-blue-600 dark:text-blue-300" : "text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-200"
+                                        'flex-1 py-1.5 text-sm font-medium rounded-md transition-all',
+                                        mode === 'interval' ? 'bg-white dark:bg-gray-600 shadow text-blue-600 dark:text-blue-300' : 'text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-200'
                                     )}
                                 >
                                     By Interval
@@ -153,8 +166,8 @@ const AutoTripsModal: React.FC<AutoTripsModalProps> = ({
                                 <button
                                     onClick={() => setMode('buses')}
                                     className={clsx(
-                                        "flex-1 py-1.5 text-sm font-medium rounded-md transition-all",
-                                        mode === 'buses' ? "bg-white dark:bg-gray-600 shadow text-blue-600 dark:text-blue-300" : "text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-200"
+                                        'flex-1 py-1.5 text-sm font-medium rounded-md transition-all',
+                                        mode === 'buses' ? 'bg-white dark:bg-gray-600 shadow text-blue-600 dark:text-blue-300' : 'text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-200'
                                     )}
                                 >
                                     By Buses
@@ -163,7 +176,6 @@ const AutoTripsModal: React.FC<AutoTripsModalProps> = ({
                         </div>
                     </div>
 
-                    {/* Ranges */}
                     <div className="space-y-3">
                         <div className="flex justify-between items-center text-sm font-medium text-gray-700 dark:text-gray-300 border-b border-gray-200 dark:border-gray-700 pb-2">
                             <span>Time Ranges</span>

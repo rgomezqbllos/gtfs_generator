@@ -2,6 +2,7 @@ export interface SimTrip {
     trip_id: string;
     route_id: string;
     direction_id: number;
+    block_id?: string | null;
     start_time: number; // in seconds
     end_time: number; // in seconds
     stop_times: SimStopTime[];
@@ -95,6 +96,7 @@ export class SimulationEngine {
                 trip_id: t.trip_id,
                 route_id: t.route_id,
                 direction_id: t.direction_id,
+                block_id: t.block_id,
                 start_time: startTime,
                 end_time: endTime,
                 stop_times
@@ -112,7 +114,127 @@ export class SimulationEngine {
         return segment ? segment.travel_time : 600;
     }
 
+    private canChainTrips(previousTrip: SimTrip, nextTrip: SimTrip): boolean {
+        const previousEndStop = previousTrip.stop_times[previousTrip.stop_times.length - 1]?.stop_id;
+        const nextStartStop = nextTrip.stop_times[0]?.stop_id;
+
+        if (!previousEndStop || !nextStartStop) return false;
+
+        const emptyTravelTime = this.getEmptyTravelTime(previousEndStop, nextStartStop);
+        return previousTrip.end_time + emptyTravelTime <= nextTrip.start_time;
+    }
+
+    private buildBusFromAssignedTrips(busId: string, assignedTrips: SimTrip[]): LogicalBus {
+        const orderedTrips = [...assignedTrips].sort((a, b) => a.start_time - b.start_time);
+        const bus: LogicalBus = {
+            bus_id: busId,
+            color: getBusColor(busId),
+            trips: [],
+            total_commercial_time: 0,
+            total_empty_time: 0,
+            is_overtaking: false
+        };
+
+        for (let i = 0; i < orderedTrips.length; i++) {
+            const trip = orderedTrips[i];
+
+            if (i > 0) {
+                const previous = orderedTrips[i - 1];
+                const previousEndStop = previous.stop_times[previous.stop_times.length - 1]?.stop_id;
+                const nextStartStop = trip.stop_times[0]?.stop_id;
+
+                if (previousEndStop && nextStartStop) {
+                    const emptyTravelTime = this.getEmptyTravelTime(previousEndStop, nextStartStop);
+                    const emptyStart = previous.end_time;
+                    const emptyEnd = previous.end_time + emptyTravelTime;
+
+                    if (emptyTravelTime > 0 && emptyEnd <= trip.start_time) {
+                        bus.trips.push({
+                            type: 'empty',
+                            start_stop_id: previousEndStop,
+                            end_stop_id: nextStartStop,
+                            start_time: emptyStart,
+                            end_time: emptyEnd
+                        });
+                        bus.total_empty_time += emptyTravelTime;
+                    }
+                }
+            }
+
+            this.assignTripToBus(bus, trip);
+        }
+
+        return bus;
+    }
+
     public calculateLogicalBuses(): LogicalBus[] {
+        const blockTrips = this.trips.filter(t => !!t.block_id);
+        if (blockTrips.length > 0) {
+            const groups = new Map<string, SimTrip[]>();
+            const leftovers: SimTrip[] = [];
+
+            for (const trip of this.trips) {
+                if (!trip.block_id) {
+                    leftovers.push(trip);
+                    continue;
+                }
+                const blockId = String(trip.block_id);
+                const existing = groups.get(blockId) || [];
+                existing.push(trip);
+                groups.set(blockId, existing);
+            }
+
+            const groupedBuses = Array.from(groups.entries())
+                .sort((a, b) => a[0].localeCompare(b[0]))
+                .flatMap(([blockId, trips]) => {
+                    const ordered = [...trips].sort((a, b) => a.start_time - b.start_time);
+                    const lanes: SimTrip[][] = [];
+
+                    for (const trip of ordered) {
+                        let assigned = false;
+                        for (const lane of lanes) {
+                            const lastTrip = lane[lane.length - 1];
+                            if (this.canChainTrips(lastTrip, trip)) {
+                                lane.push(trip);
+                                assigned = true;
+                                break;
+                            }
+                        }
+
+                        if (!assigned) {
+                            lanes.push([trip]);
+                        }
+                    }
+
+                    return lanes.map((lane, laneIndex) => {
+                        const busId = lanes.length === 1
+                            ? blockId
+                            : `${blockId}-${(laneIndex + 1).toString().padStart(2, '0')}`;
+                        return this.buildBusFromAssignedTrips(busId, lane);
+                    });
+                });
+
+            if (leftovers.length === 0) return groupedBuses;
+
+            // Fallback for legacy/manual trips without block_id: keep previous greedy assignment.
+            const leftoverEngine = new SimulationEngine(leftovers as any[], this.segments as any[]);
+            const leftoverBuses = leftoverEngine.calculateLogicalBuses();
+
+            const existingIds = new Set(groupedBuses.map(b => b.bus_id));
+            for (const bus of leftoverBuses) {
+                let nextId = bus.bus_id;
+                let counter = 1;
+                while (existingIds.has(nextId)) {
+                    nextId = `${bus.bus_id}-L${counter++}`;
+                }
+                bus.bus_id = nextId;
+                bus.color = getBusColor(nextId);
+                existingIds.add(nextId);
+            }
+
+            return [...groupedBuses, ...leftoverBuses];
+        }
+
         const buses: LogicalBus[] = [];
         let busCounter = 1;
 
@@ -222,27 +344,55 @@ export class SimulationEngine {
 
     // Export a CSV of the schedule summary
     public generateTrackingTableCSV(buses: LogicalBus[], allRoutes?: any[]): string {
-        let csv = "Bus ID,Route(s),Total Trips,Commercial Time (min),Empty Time (min)\n";
-        buses.forEach(b => {
-            const routeIds = Array.from(new Set(b.trips.filter(t => t.type === 'commercial' && t.route_id).map(t => t.route_id)));
-            let routesStr = "N/A";
-            if (routeIds.length > 0) {
-                routesStr = routeIds.map(rid => {
-                    if (allRoutes) {
-                        const r = allRoutes.find(ar => ar.route_id === rid);
-                        return r ? r.route_short_name || r.route_long_name || rid : rid;
-                    }
-                    return rid;
-                }).join(' / ');
-            }
-            // Escape quotes inside routesStr for CSV format
-            routesStr = `"${routesStr.replace(/"/g, '""')}"`;
+        let csv = "Ruta - Bus,Ruta,Total Trips,Commercial Time (min),Empty Time (min)\n";
 
-            const commercialTripsCount = b.trips.filter(t => t.type === 'commercial').length;
-            const comMin = Math.round(b.total_commercial_time / 60);
-            const empMin = Math.round(b.total_empty_time / 60);
-            csv += `${b.bus_id},${routesStr},${commercialTripsCount},${comMin},${empMin}\n`;
+        buses.forEach(b => {
+            // Find all unique commercial routes this bus served
+            const commTrips = b.trips.filter(t => t.type === 'commercial' && t.route_id);
+            const routeIds = Array.from(new Set(commTrips.map(t => t.route_id)));
+
+            if (routeIds.length === 0) {
+                // If a bus has no commercial trips, add one row for its empty time
+                csv += `"${b.bus_id}","N/A",0,0,${Math.round(b.total_empty_time / 60)}\n`;
+                return;
+            }
+
+            routeIds.forEach(rid => {
+                const specificTrips = b.trips.filter(t => t.type === 'commercial' && t.route_id === rid);
+                let commDuration = 0;
+                specificTrips.forEach(t => commDuration += (t.end_time - t.start_time));
+
+                // Associate empty trips with this route if they happen before a commercial trip of this route
+                let emptyDuration = 0;
+                b.trips.forEach((t, idx) => {
+                    if (t.type === 'empty') {
+                        const nextComm = b.trips.slice(idx + 1).find(nt => nt.type === 'commercial');
+                        if (nextComm && nextComm.route_id === rid) {
+                            emptyDuration += (t.end_time - t.start_time);
+                        }
+                    }
+                });
+
+                let routeDisplayName = rid || "N/A";
+                if (allRoutes) {
+                    const r = allRoutes.find(ar => ar.route_id === rid);
+                    if (r) {
+                        routeDisplayName = r.route_short_name || r.route_long_name || rid || "N/A";
+                    }
+                }
+
+                // Format values for CSV
+                const rutaOnly = `"${routeDisplayName.toString().replace(/"/g, '""')}"`;
+                const busRuta = `"${routeDisplayName.toString().replace(/"/g, '""')} - ${b.bus_id.replace(/"/g, '""')}"`;
+
+                const tripsCount = specificTrips.length;
+                const cMin = Math.round(commDuration / 60);
+                const eMin = Math.round(emptyDuration / 60);
+
+                csv += `${busRuta},${rutaOnly},${tripsCount},${cMin},${eMin}\n`;
+            });
         });
+
         return csv;
     }
 

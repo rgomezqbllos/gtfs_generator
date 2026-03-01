@@ -9,7 +9,7 @@ const schemaPath = path.resolve(__dirname, 'schema.sql');
 // Ensure parent folder exists when DB_PATH points outside the repo tree (e.g. Docker volume).
 fs.mkdirSync(path.dirname(dbPath), { recursive: true });
 
-const db = new Database(dbPath, { verbose: console.log });
+let db = new Database(dbPath, { verbose: console.log });
 db.pragma('journal_mode = WAL');
 
 export function initDB() {
@@ -54,6 +54,14 @@ export function initDB() {
             db.prepare("ALTER TABLE segments ADD COLUMN type TEXT DEFAULT 'revenue'").run();
             console.log('Migrated: Added type to segments');
         }
+
+        // Settings Migration
+        db.exec(`
+            CREATE TABLE IF NOT EXISTS settings (
+                key TEXT PRIMARY KEY,
+                value TEXT NOT NULL
+            )
+        `);
     } catch (err) {
         console.warn('Migration warning:', err);
     }
@@ -61,4 +69,14 @@ export function initDB() {
     console.log('Database initialized');
 }
 
+export function closeDB() {
+    db.close();
+}
+
+export function reconnectDB() {
+    db = new Database(dbPath, { verbose: console.log });
+    db.pragma('journal_mode = WAL');
+}
+
+export { db };
 export default db;

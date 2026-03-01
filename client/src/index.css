@@ -32,3 +32,49 @@
 body {
   @apply font-sans antialiased text-gray-900 dark:text-gray-100 bg-background-light dark:bg-background-dark transition-colors duration-300;
 }
+
+.sim-time-range {
+  -webkit-appearance: none;
+  appearance: none;
+  height: 18px;
+  background: transparent;
+}
+
+.sim-time-range:focus {
+  outline: none;
+}
+
+.sim-time-range::-webkit-slider-runnable-track {
+  height: 6px;
+  border-radius: 999px;
+  background: linear-gradient(90deg, rgba(16, 185, 129, 0.95), rgba(52, 211, 153, 0.92));
+}
+
+.sim-time-range::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 18px;
+  height: 18px;
+  border-radius: 999px;
+  border: 2px solid rgba(15, 23, 42, 0.9);
+  background: #ecfeff;
+  box-shadow: 0 0 0 2px rgba(16, 185, 129, 0.5);
+  margin-top: -6px;
+  cursor: pointer;
+}
+
+.sim-time-range::-moz-range-track {
+  height: 6px;
+  border-radius: 999px;
+  background: linear-gradient(90deg, rgba(16, 185, 129, 0.95), rgba(52, 211, 153, 0.92));
+}
+
+.sim-time-range::-moz-range-thumb {
+  width: 18px;
+  height: 18px;
+  border-radius: 999px;
+  border: 2px solid rgba(15, 23, 42, 0.9);
+  background: #ecfeff;
+  box-shadow: 0 0 0 2px rgba(16, 185, 129, 0.5);
+  cursor: pointer;
+}

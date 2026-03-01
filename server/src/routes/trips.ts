@@ -8,6 +8,7 @@ interface Trip {
     service_id: string;
     trip_headsign: string;
     direction_id: number;
+    block_id?: string;
     shape_id: string;
 }
 
@@ -61,7 +62,7 @@ export default async function tripsRoutes(server: FastifyInstance) {
     // POST /routes/:route_id/trips - Create a new trip
     server.post<{ Params: { route_id: string }, Body: Partial<Trip> }>('/routes/:route_id/trips', async (request, reply) => {
         const { route_id } = request.params;
-        const { service_id, trip_headsign, direction_id, shape_id, trip_id } = request.body;
+        const { service_id, trip_headsign, direction_id, block_id, shape_id, trip_id } = request.body;
 
         if (!service_id) {
             return reply.status(400).send({ error: 'service_id is required' });
@@ -71,10 +72,10 @@ export default async function tripsRoutes(server: FastifyInstance) {
 
         try {
             const stmt = db.prepare(`
-                INSERT INTO trips (trip_id, route_id, service_id, trip_headsign, direction_id, shape_id)
-                VALUES (?, ?, ?, ?, ?, ?)
+                INSERT INTO trips (trip_id, route_id, service_id, trip_headsign, direction_id, block_id, shape_id)
+                VALUES (?, ?, ?, ?, ?, ?, ?)
             `);
-            stmt.run(newTripId, route_id, service_id, trip_headsign || '', direction_id || 0, shape_id || null);
+            stmt.run(newTripId, route_id, service_id, trip_headsign || '', direction_id || 0, block_id || null, shape_id || null);
             return { message: 'Trip created', trip_id: newTripId };
         } catch (err) {
             server.log.error(err);

@@ -1,6 +1,6 @@
 
 import React, { useState, useEffect } from 'react';
-import { Trash2, AlertTriangle, MapPin } from 'lucide-react';
+import { Trash2, AlertTriangle, MapPin, Download, Upload } from 'lucide-react';
 import ConfirmModal from './ConfirmModal';
 import AgencyManager from './AgencyManager';
 import MapManager from './MapManager';
@@ -202,6 +202,64 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({ onClose, currentViewState
                                     >
                                         Save Changes
                                     </button>
+                                </div>
+                            </div>
+                        </div>
+
+                        {/* Backup & Restore */}
+                        <div>
+                            <h3 className="text-sm font-bold text-gray-900 dark:text-white uppercase tracking-wider mb-4 flex items-center gap-2">
+                                <Download size={16} className="text-emerald-500" /> Database Backup
+                            </h3>
+                            <div className="bg-emerald-50 dark:bg-emerald-900/10 border border-emerald-100 dark:border-emerald-900/50 rounded-xl p-4 space-y-3">
+                                <p className="text-[11px] text-emerald-700/80 dark:text-emerald-300/80 leading-relaxed">
+                                    Download a ZIP with the entire database and current settings to move it to another system.
+                                </p>
+                                <div className="flex gap-2">
+                                    <button
+                                        onClick={async () => {
+                                            window.open(`${API_URL}/admin/backup`, '_blank');
+                                        }}
+                                        className="flex-1 py-2 bg-emerald-600 text-white rounded-lg text-xs font-bold hover:bg-emerald-700 transition-colors shadow-sm flex items-center justify-center gap-2"
+                                    >
+                                        <Download size={14} /> Download (.zip)
+                                    </button>
+
+                                    <label className="flex-1 cursor-pointer">
+                                        <input
+                                            type="file"
+                                            accept=".zip"
+                                            className="hidden"
+                                            onChange={async (e) => {
+                                                const file = e.target.files?.[0];
+                                                if (!file) return;
+
+                                                if (!confirm("Are you sure you want to RESTORE this database? This will OVERWRITE all current data.")) return;
+
+                                                const formData = new FormData();
+                                                formData.append('file', file);
+
+                                                try {
+                                                    const res = await fetch(`${API_URL}/admin/restore`, {
+                                                        method: 'POST',
+                                                        body: formData
+                                                    });
+                                                    if (res.ok) {
+                                                        alert("Database restored successfully! Reloading...");
+                                                        window.location.reload();
+                                                    } else {
+                                                        const err = await res.json();
+                                                        alert("Error: " + (err.error || "Failed reset"));
+                                                    }
+                                                } catch (err) {
+                                                    alert("Connection failed");
+                                                }
+                                            }}
+                                        />
+                                        <div className="w-full h-full py-2 bg-white dark:bg-emerald-900/20 border border-emerald-200 dark:border-emerald-800 text-emerald-600 dark:text-emerald-400 font-bold rounded-lg hover:bg-emerald-50 dark:hover:bg-emerald-900/30 transition-colors text-xs flex items-center justify-center gap-2">
+                                            <Upload size={14} /> Import Backup
+                                        </div>
+                                    </label>
                                 </div>
                             </div>
                         </div>

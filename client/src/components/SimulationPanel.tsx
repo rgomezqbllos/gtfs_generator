@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { Play, Pause, Square, Download, Clock } from 'lucide-react';
 import { API_URL } from '../config';
 import { SimulationEngine, secondsToTime } from '../utils/SimulationEngine';
@@ -9,6 +9,11 @@ import { Route, Stop } from '../types';
 interface Calendar {
     service_id: string;
 }
+
+const SIM_DURATION_SECONDS = 36 * 3600;
+const CHART_VIEWBOX_WIDTH = 1000;
+const CHART_VIEWBOX_HEIGHT = 200;
+const CHART_PADDING = { top: 26, right: 0, bottom: 26, left: 0 };
 
 export const SimulationPanel: React.FC<{ onClose: () => void }> = ({ onClose }) => {
     const [calendars, setCalendars] = useState<Calendar[]>([]);
@@ -22,10 +27,12 @@ export const SimulationPanel: React.FC<{ onClose: () => void }> = ({ onClose }) 
 
     const [isPlaying, setIsPlaying] = useState<boolean>(false);
     const [speedMultiplier, setSpeedMultiplier] = useState(1);
-    const [currentSeconds, setCurrentSeconds] = useState(0); // 0 to 36*3600
+    const [currentSeconds, setCurrentSeconds] = useState(0); // 0 to SIM_DURATION_SECONDS
+    const [hoverSecond, setHoverSecond] = useState<number | null>(null);
 
     const animationRef = useRef<number>(0);
     const lastTimeRef = useRef<number>(Date.now());
+    const chartHoverRef = useRef<HTMLDivElement | null>(null);
 
     // Load initial config
     useEffect(() => {
@@ -121,6 +128,7 @@ export const SimulationPanel: React.FC<{ onClose: () => void }> = ({ onClose }) 
             setLogicalBuses(buses);
             setEngine(newEngine);
             setCurrentSeconds(0);
+            setHoverSecond(null);
 
             console.log("Built simulation. Routes:", rData.length, "Buses:", buses.length, "First trips start times:", buses.map(b => b.trips[0]?.start_time));
 
@@ -136,13 +144,13 @@ export const SimulationPanel: React.FC<{ onClose: () => void }> = ({ onClose }) 
                 }
             }
 
-            let earliestTime = 36 * 3600;
+            let earliestTime = SIM_DURATION_SECONDS;
             buses.forEach(b => {
                 if (b.trips.length > 0 && b.trips[0].start_time < earliestTime) {
                     earliestTime = b.trips[0].start_time;
                 }
             });
-            if (earliestTime < 36 * 3600) {
+            if (earliestTime < SIM_DURATION_SECONDS) {
                 setCurrentSeconds(earliestTime - 600); // start 10 mins before first bus
             }
 
@@ -172,7 +180,7 @@ export const SimulationPanel: React.FC<{ onClose: () => void }> = ({ onClose }) 
             setCurrentSeconds(prev => {
                 const next = prev + simDelta;
                 // console.log("Sim loop tick", next);
-                return Math.min(next, 36 * 3600);
+                return Math.min(next, SIM_DURATION_SECONDS);
             });
 
             animationRef.current = requestAnimationFrame(loop);
@@ -207,9 +215,53 @@ export const SimulationPanel: React.FC<{ onClose: () => void }> = ({ onClose }) 
         a.click();
     };
 
-    // Derived KPIs
-    const activeBusesCount = engine ? engine.getActiveBusesAtSeconds(logicalBuses, currentSeconds).length : 0;
-    const dispatchedBusesList = logicalBuses.filter(b => b.trips.some(t => t.start_time <= currentSeconds));
+    const clampSecond = (value: number) => Math.max(0, Math.min(SIM_DURATION_SECONDS, Math.floor(value)));
+    const currentSecondInt = clampSecond(currentSeconds);
+
+    const activeBusSeries = useMemo(() => {
+        const diff = new Int32Array(SIM_DURATION_SECONDS + 2);
+
+        for (const bus of logicalBuses) {
+            const intervals = bus.trips
+                .map(t => ({
+                    start: Math.max(0, Math.floor(t.start_time)),
+                    end: Math.min(SIM_DURATION_SECONDS, Math.floor(t.end_time))
+                }))
+                .filter(interval => interval.end >= interval.start)
+                .sort((a, b) => a.start - b.start || a.end - b.end);
+
+            if (intervals.length === 0) continue;
+
+            const merged: { start: number; end: number }[] = [intervals[0]];
+            for (let i = 1; i < intervals.length; i++) {
+                const current = intervals[i];
+                const last = merged[merged.length - 1];
+                if (current.start <= last.end + 1) {
+                    last.end = Math.max(last.end, current.end);
+                } else {
+                    merged.push({ ...current });
+                }
+            }
+
+            for (const interval of merged) {
+                diff[interval.start] += 1;
+                if (interval.end + 1 <= SIM_DURATION_SECONDS) {
+                    diff[interval.end + 1] -= 1;
+                }
+            }
+        }
+
+        const series = new Array<number>(SIM_DURATION_SECONDS + 1);
+        let running = 0;
+        for (let second = 0; second <= SIM_DURATION_SECONDS; second++) {
+            running += diff[second];
+            series[second] = running;
+        }
+        return series;
+    }, [logicalBuses]);
+
+    const activeBusesCount = engine ? (activeBusSeries[currentSecondInt] || 0) : 0;
+    const dispatchedBusesList = logicalBuses.filter(b => b.trips.some(t => t.start_time <= currentSecondInt));
     const dispatchedBuses = dispatchedBusesList.length;
     const inactiveBusesCount = dispatchedBuses > 0 ? dispatchedBuses - activeBusesCount : 0;
 
@@ -220,8 +272,8 @@ export const SimulationPanel: React.FC<{ onClose: () => void }> = ({ onClose }) 
 
     dispatchedBusesList.forEach(b => {
         b.trips.forEach(t => {
-            if (t.start_time <= currentSeconds) {
-                const effectiveDuration = Math.min(currentSeconds, t.end_time) - t.start_time;
+            if (t.start_time <= currentSecondInt) {
+                const effectiveDuration = Math.min(currentSecondInt, t.end_time) - t.start_time;
                 if (t.type === 'commercial') {
                     commercialTripsStarted++;
                     commercialSeconds += effectiveDuration;
@@ -238,7 +290,7 @@ export const SimulationPanel: React.FC<{ onClose: () => void }> = ({ onClose }) 
 
     let overtakesCount = 0;
     if (engine) {
-        const startedTrips = logicalBuses.flatMap(b => b.trips.filter(t => t.type === 'commercial' && t.start_time <= currentSeconds));
+        const startedTrips = logicalBuses.flatMap(b => b.trips.filter(t => t.type === 'commercial' && t.start_time <= currentSecondInt));
         for (let i = 0; i < startedTrips.length; i++) {
             for (let j = i + 1; j < startedTrips.length; j++) {
                 const t1 = startedTrips[i];
@@ -247,13 +299,88 @@ export const SimulationPanel: React.FC<{ onClose: () => void }> = ({ onClose }) 
                 if (t1.start_stop_id === t2.start_stop_id && t1.end_stop_id === t2.end_stop_id) {
                     const first = t1.start_time < t2.start_time ? t1 : t2;
                     const second = t1.start_time < t2.start_time ? t2 : t1;
-                    if (first.end_time > second.end_time && currentSeconds >= second.end_time) {
+                    if (first.end_time > second.end_time && currentSecondInt >= second.end_time) {
                         overtakesCount++;
                     }
                 }
             }
         }
     }
+
+    const chartInnerWidth = CHART_VIEWBOX_WIDTH - CHART_PADDING.left - CHART_PADDING.right;
+    const chartInnerHeight = CHART_VIEWBOX_HEIGHT - CHART_PADDING.top - CHART_PADDING.bottom;
+    const chartYMax = Math.max(1, logicalBuses.length);
+
+    const secondToX = (second: number) =>
+        CHART_PADDING.left + (Math.max(0, Math.min(SIM_DURATION_SECONDS, second)) / SIM_DURATION_SECONDS) * chartInnerWidth;
+    const countToY = (count: number) =>
+        CHART_PADDING.top + ((chartYMax - Math.max(0, Math.min(chartYMax, count))) / chartYMax) * chartInnerHeight;
+
+    const activityChangePoints = useMemo(() => {
+        const points: Array<[number, number]> = [];
+        if (activeBusSeries.length === 0) return points;
+
+        points.push([0, activeBusSeries[0] || 0]);
+        for (let second = 1; second <= SIM_DURATION_SECONDS; second++) {
+            if (activeBusSeries[second] !== activeBusSeries[second - 1]) {
+                points.push([second, activeBusSeries[second]]);
+            }
+        }
+        return points;
+    }, [activeBusSeries]);
+
+    const buildStepPathUntil = (targetSecond: number) => {
+        if (activityChangePoints.length === 0) return '';
+
+        const clampedTarget = clampSecond(targetSecond);
+        let lastCount = activeBusSeries[0] || 0;
+        let path = `M ${secondToX(0)} ${countToY(lastCount)}`;
+
+        for (let i = 1; i < activityChangePoints.length; i++) {
+            const [changeSecond, newCount] = activityChangePoints[i];
+            if (changeSecond > clampedTarget) break;
+
+            const x = secondToX(changeSecond);
+            path += ` L ${x} ${countToY(lastCount)}`;
+            path += ` L ${x} ${countToY(newCount)}`;
+            lastCount = newCount;
+        }
+
+        path += ` L ${secondToX(clampedTarget)} ${countToY(lastCount)}`;
+        return path;
+    };
+
+    const progressPath = buildStepPathUntil(currentSecondInt);
+    const progressAreaPath = progressPath
+        ? `${progressPath} L ${secondToX(currentSecondInt)} ${countToY(0)} L ${secondToX(0)} ${countToY(0)} Z`
+        : '';
+
+    const yTickStep = Math.max(1, Math.ceil(chartYMax / 6));
+    const yTicks = Array.from({ length: Math.floor(chartYMax / yTickStep) + 1 }, (_, i) => i * yTickStep)
+        .filter(v => v <= chartYMax);
+    if (yTicks[yTicks.length - 1] !== chartYMax) yTicks.push(chartYMax);
+
+    const hoverSecondClamped = hoverSecond === null ? null : clampSecond(hoverSecond);
+    const hoverCount = hoverSecondClamped === null ? null : (activeBusSeries[hoverSecondClamped] || 0);
+    const hoverX = hoverSecondClamped === null ? 0 : secondToX(hoverSecondClamped);
+    const hoverY = hoverCount === null ? 0 : countToY(hoverCount);
+    const hoverLeftPercent = Math.max(6, Math.min(94, (hoverX / CHART_VIEWBOX_WIDTH) * 100));
+    const hoverTopPercent = Math.max(4, Math.min(96, (hoverY / CHART_VIEWBOX_HEIGHT) * 100));
+    const tooltipShouldRenderBelow = hoverY <= CHART_PADDING.top + 72;
+
+    const currentX = secondToX(currentSecondInt);
+    const currentY = countToY(activeBusesCount);
+
+    const handleChartMouseMove = (event: React.MouseEvent<HTMLDivElement>) => {
+        if (!chartHoverRef.current) return;
+        const rect = chartHoverRef.current.getBoundingClientRect();
+        if (rect.width <= 0) return;
+
+        const relativeX = ((event.clientX - rect.left) / rect.width) * CHART_VIEWBOX_WIDTH;
+        const clampedX = Math.max(CHART_PADDING.left, Math.min(CHART_VIEWBOX_WIDTH - CHART_PADDING.right, relativeX));
+        const ratio = (clampedX - CHART_PADDING.left) / chartInnerWidth;
+        setHoverSecond(Math.round(ratio * SIM_DURATION_SECONDS));
+    };
 
     return (
         <div className="fixed inset-0 z-50 flex bg-[#0a0f1d] text-white overflow-hidden animate-in slide-in-from-right duration-300">
@@ -316,30 +443,30 @@ export const SimulationPanel: React.FC<{ onClose: () => void }> = ({ onClose }) 
             {/* Main Area */}
             <div className="flex-1 flex flex-col min-w-0 relative">
                 {/* Header KPIs */}
-                <div className="h-20 bg-[#111827] border-b border-gray-800 flex items-center px-8 gap-8 xl:gap-12 z-10 shrink-0">
+                <div className="h-16 bg-[#111827] border-b border-gray-800 flex items-center px-6 gap-6 xl:gap-8 z-10 shrink-0">
                     <div>
-                        <div className="text-[10px] text-gray-400 uppercase tracking-widest whitespace-nowrap">Active / Disp.</div>
-                        <div className="text-2xl font-light">{activeBusesCount} <span className="text-sm text-gray-500">/ {dispatchedBuses}</span></div>
+                        <div className="text-[9px] text-gray-400 uppercase tracking-[0.16em] whitespace-nowrap">Active / Disp.</div>
+                        <div className="text-xl font-light leading-tight">{activeBusesCount} <span className="text-xs text-gray-500">/ {dispatchedBuses}</span></div>
                     </div>
                     <div>
-                        <div className="text-[10px] text-gray-400 uppercase tracking-widest whitespace-nowrap animate-pulse transition-opacity">Inactive Buses</div>
-                        <div className="text-2xl font-light text-orange-400">{inactiveBusesCount}</div>
+                        <div className="text-[9px] text-gray-400 uppercase tracking-[0.16em] whitespace-nowrap animate-pulse transition-opacity">Inactive Buses</div>
+                        <div className="text-xl font-light leading-tight text-orange-400">{inactiveBusesCount}</div>
                     </div>
                     <div>
-                        <div className="text-[10px] text-gray-400 uppercase tracking-widest whitespace-nowrap">Comm. Trips / KMs</div>
-                        <div className="text-2xl font-light text-blue-400">{commercialTripsStarted} <span className="text-sm text-gray-500">/ {commercialKms}km</span></div>
+                        <div className="text-[9px] text-gray-400 uppercase tracking-[0.16em] whitespace-nowrap">Comm. Trips / KMs</div>
+                        <div className="text-xl font-light leading-tight text-blue-400">{commercialTripsStarted} <span className="text-xs text-gray-500">/ {commercialKms}km</span></div>
                     </div>
                     <div>
-                        <div className="text-[10px] text-gray-400 uppercase tracking-widest whitespace-nowrap">Empty Trips / KMs</div>
-                        <div className="text-2xl font-light text-gray-300">{emptyTripsStarted} <span className="text-sm text-gray-500">/ {emptyKms}km</span></div>
+                        <div className="text-[9px] text-gray-400 uppercase tracking-[0.16em] whitespace-nowrap">Empty Trips / KMs</div>
+                        <div className="text-xl font-light leading-tight text-gray-300">{emptyTripsStarted} <span className="text-xs text-gray-500">/ {emptyKms}km</span></div>
                     </div>
                     <div>
-                        <div className="text-[10px] text-gray-400 uppercase tracking-widest whitespace-nowrap">Overtakes</div>
-                        <div className="text-2xl font-light text-red-500">{overtakesCount}</div>
+                        <div className="text-[9px] text-gray-400 uppercase tracking-[0.16em] whitespace-nowrap">Overtakes</div>
+                        <div className="text-xl font-light leading-tight text-red-500">{overtakesCount}</div>
                     </div>
                     <div className="ml-auto text-right">
-                        <div className="text-xs text-gray-400 uppercase tracking-widest">Sim Time</div>
-                        <div className="text-3xl font-mono text-emerald-400">{secondsToTime(currentSeconds)}</div>
+                        <div className="text-[10px] text-gray-400 uppercase tracking-[0.16em]">Sim Time</div>
+                        <div className="text-2xl leading-tight font-mono text-emerald-400">{secondsToTime(currentSeconds)}</div>
                     </div>
                 </div>
 
@@ -359,63 +486,199 @@ export const SimulationPanel: React.FC<{ onClose: () => void }> = ({ onClose }) 
                 </div>
 
                 {/* Timeline Footer */}
-                <div className="h-32 bg-[#111827] border-t border-gray-800 flex flex-col p-4 shrink-0 z-20">
-                    <div className="flex items-center gap-4">
-                        <button onClick={() => setIsPlaying(!isPlaying)} className={`p-2 rounded-full ${isPlaying ? 'bg-orange-600' : 'bg-green-600'} text-white`}>
-                            {isPlaying ? <Pause size={20} /> : <Play size={20} />}
-                        </button>
-                        <button onClick={() => { setIsPlaying(false); setCurrentSeconds(0); }} className="p-2 rounded-full bg-gray-700 hover:bg-gray-600">
-                            <Square size={20} />
-                        </button>
-
-                        <div className="h-8 w-px bg-gray-700 mx-2" />
-
-                        <div className="flex gap-1 text-sm bg-gray-800 p-1 rounded overflow-x-auto max-w-full">
-                            {[1, 2, 5, 10, 60, 120, 240, 480].map(s => (
-                                <button
-                                    key={s}
-                                    onClick={() => setSpeedMultiplier(s)}
-                                    className={`px-3 py-1 rounded transition-colors whitespace-nowrap ${speedMultiplier === s ? 'bg-blue-600' : 'hover:bg-gray-700'}`}
-                                >
-                                    x{s}
-                                </button>
-                            ))}
-                        </div>
+                <div className="h-[292px] bg-[#111827] border-t border-gray-800 flex flex-col p-3 shrink-0 z-20 gap-2">
+                    <div className="text-[10px] text-gray-400 uppercase tracking-[0.18em] px-1">
+                        Active Buses Evolution
                     </div>
 
-                    <div className="mt-4 flex flex-col gap-1">
-                        <div className="flex items-start gap-4">
-                            <span className="text-xs font-mono w-16 text-right mt-1">00:00:00</span>
-                            <div className="flex-1 relative flex flex-col pb-8">
+                    <div className="flex items-stretch gap-3">
+                        <div className="w-16" />
+                        <div className="flex-1">
+                            <div className="relative h-[132px] rounded-xl border border-[#1f2d49] bg-[radial-gradient(circle_at_top,rgba(34,197,94,0.12),rgba(6,10,20,0.95)_55%)] overflow-hidden">
+                                <div
+                                    ref={chartHoverRef}
+                                    className="absolute inset-px"
+                                    onMouseMove={handleChartMouseMove}
+                                    onMouseLeave={() => setHoverSecond(null)}
+                                >
+                                    <svg
+                                        viewBox={`0 0 ${CHART_VIEWBOX_WIDTH} ${CHART_VIEWBOX_HEIGHT}`}
+                                        preserveAspectRatio="none"
+                                        className="w-full h-full"
+                                    >
+                                <defs>
+                                    <linearGradient id="activeFillGradient" x1="0" y1="0" x2="0" y2="1">
+                                        <stop offset="0%" stopColor="rgba(34,197,94,0.30)" />
+                                        <stop offset="100%" stopColor="rgba(34,197,94,0.02)" />
+                                    </linearGradient>
+                                    <filter id="activeGlow">
+                                        <feGaussianBlur stdDeviation="2.8" result="blur" />
+                                        <feMerge>
+                                            <feMergeNode in="blur" />
+                                            <feMergeNode in="SourceGraphic" />
+                                        </feMerge>
+                                    </filter>
+                                </defs>
+
+                                {yTicks.map(tick => {
+                                    const y = countToY(tick);
+                                    return (
+                                        <g key={`y-${tick}`}>
+                                            <line
+                                                x1={CHART_PADDING.left}
+                                                y1={y}
+                                                x2={CHART_VIEWBOX_WIDTH - CHART_PADDING.right}
+                                                y2={y}
+                                                stroke="rgba(148,163,184,0.16)"
+                                                strokeWidth="1"
+                                            />
+                                            <text
+                                                x={6}
+                                                y={y + 3}
+                                                textAnchor="start"
+                                                fill="#94a3b8"
+                                                fontSize="10"
+                                                fontFamily="monospace"
+                                            >
+                                                {tick}
+                                            </text>
+                                        </g>
+                                    );
+                                })}
+
+                                {Array.from({ length: 13 }).map((_, i) => {
+                                    const second = (i / 12) * SIM_DURATION_SECONDS;
+                                    const x = secondToX(second);
+                                    return (
+                                        <line
+                                            key={`x-${i}`}
+                                            x1={x}
+                                            y1={CHART_PADDING.top}
+                                            x2={x}
+                                            y2={CHART_VIEWBOX_HEIGHT - CHART_PADDING.bottom}
+                                            stroke="rgba(59,130,246,0.08)"
+                                            strokeWidth="1"
+                                        />
+                                    );
+                                })}
+
+                                {progressAreaPath && (
+                                    <path d={progressAreaPath} fill="url(#activeFillGradient)" />
+                                )}
+
+                                {progressPath && (
+                                    <>
+                                        <path d={progressPath} fill="none" stroke="rgba(74,222,128,0.38)" strokeWidth="5.5" filter="url(#activeGlow)" />
+                                        <path d={progressPath} fill="none" stroke="#39ff93" strokeWidth="2.2" />
+                                    </>
+                                )}
+
+                                {hoverSecondClamped === null && (
+                                    <>
+                                        <line
+                                            x1={currentX}
+                                            y1={CHART_PADDING.top}
+                                            x2={currentX}
+                                            y2={CHART_VIEWBOX_HEIGHT - CHART_PADDING.bottom}
+                                            stroke="rgba(255,255,255,0.25)"
+                                            strokeWidth="1.1"
+                                        />
+                                        <circle cx={currentX} cy={currentY} r="6.2" fill="rgba(255,255,255,0.32)" />
+                                        <circle cx={currentX} cy={currentY} r="3.8" fill="white" />
+                                    </>
+                                )}
+
+                                {hoverSecondClamped !== null && hoverCount !== null && (
+                                    <>
+                                        <line
+                                            x1={hoverX}
+                                            y1={CHART_PADDING.top}
+                                            x2={hoverX}
+                                            y2={CHART_VIEWBOX_HEIGHT - CHART_PADDING.bottom}
+                                            stroke="rgba(255,255,255,0.45)"
+                                            strokeDasharray="4 3"
+                                            strokeWidth="1"
+                                        />
+                                        <circle cx={hoverX} cy={hoverY} r="3.6" fill="white" />
+                                    </>
+                                )}
+                                    </svg>
+                                </div>
+
+                                {hoverSecondClamped !== null && hoverCount !== null && (
+                                    <div
+                                        className="absolute z-20 px-2.5 py-1.5 rounded-md border border-white/15 bg-[#050b1a]/90 text-[11px] font-mono text-gray-100 shadow-lg pointer-events-none"
+                                        style={{
+                                            left: `${hoverLeftPercent}%`,
+                                            top: `${hoverTopPercent}%`,
+                                            transform: tooltipShouldRenderBelow
+                                                ? 'translate(-50%, 8px)'
+                                                : 'translate(-50%, calc(-100% - 8px))'
+                                        }}
+                                    >
+                                        <div>{secondsToTime(hoverSecondClamped)}</div>
+                                        <div className="text-emerald-300">Activos: {hoverCount}</div>
+                                    </div>
+                                )}
+                            </div>
+                        </div>
+                        <div className="w-16" />
+                    </div>
+
+                    <div className="flex items-start gap-3 pt-0.5">
+                        <span className="text-[11px] font-mono w-16 text-right mt-1 text-gray-400">00:00:00</span>
+                        <div className="flex-1 relative pb-7">
+                            <div className="relative">
                                 <input
                                     type="range"
                                     min="0"
-                                    max={36 * 3600}
+                                    max={SIM_DURATION_SECONDS}
                                     value={currentSeconds}
                                     onChange={(e) => setCurrentSeconds(Number(e.target.value))}
-                                    className="w-full accent-blue-500 cursor-pointer z-10"
+                                    className="sim-time-range w-full cursor-pointer z-10"
                                 />
-                                {/* Time Ruler Scale */}
-                                <div className="absolute top-5 left-0 right-0 h-6 flex justify-between pointer-events-none px-[1px]">
-                                    {Array.from({ length: 37 }).map((_, i) => {
-                                        const leftPercent = (i / 36) * 100;
-                                        return (
-                                            <div
-                                                key={i}
-                                                className="absolute flex flex-col items-center"
-                                                style={{ left: `${leftPercent}%`, transform: 'translateX(-50%)' }}
-                                            >
-                                                <div className="w-px h-1.5 bg-gray-600" />
-                                                <span className="text-[9px] text-gray-500 mt-0.5 font-mono">
-                                                    {i}
-                                                </span>
-                                            </div>
-                                        );
-                                    })}
+                                <div className="absolute top-5 left-0 right-0 h-6 pointer-events-none">
+                                    {Array.from({ length: 37 }).map((_, i) => (
+                                        <div
+                                            key={i}
+                                            className="absolute flex flex-col items-center"
+                                            style={{ left: `${(i / 36) * 100}%`, transform: 'translateX(-50%)' }}
+                                        >
+                                            <div className="w-px h-1.5 bg-gray-600" />
+                                            <span className="text-[8px] text-gray-500 mt-0.5 font-mono">{i}</span>
+                                        </div>
+                                    ))}
                                 </div>
                             </div>
-                            <span className="text-xs font-mono w-16 text-left mt-1">36:00:00</span>
                         </div>
+                        <span className="text-[11px] font-mono w-16 text-left mt-1 text-gray-400">36:00:00</span>
+                    </div>
+
+                    <div className="flex items-center gap-3">
+                        <div className="w-16" />
+                        <div className="flex-1 flex items-center gap-4">
+                            <button onClick={() => setIsPlaying(!isPlaying)} className={`p-2.5 rounded-full ${isPlaying ? 'bg-orange-600 hover:bg-orange-500' : 'bg-green-600 hover:bg-green-500'} text-white transition-colors`}>
+                                {isPlaying ? <Pause size={20} /> : <Play size={20} />}
+                            </button>
+                            <button onClick={() => { setIsPlaying(false); setCurrentSeconds(0); }} className="p-2.5 rounded-full bg-gray-700 hover:bg-gray-600 transition-colors">
+                                <Square size={20} />
+                            </button>
+
+                            <div className="h-8 w-px bg-gray-700" />
+
+                            <div className="flex gap-1 text-sm bg-gray-800 p-1 rounded overflow-x-auto max-w-full">
+                                {[1, 2, 3, 4, 5, 10, 60, 120, 240, 480].map(s => (
+                                    <button
+                                        key={s}
+                                        onClick={() => setSpeedMultiplier(s)}
+                                        className={`px-3 py-1 rounded transition-colors whitespace-nowrap ${speedMultiplier === s ? 'bg-emerald-600 text-white' : 'hover:bg-gray-700 text-gray-200'}`}
+                                    >
+                                        x{s}
+                                    </button>
+                                ))}
+                            </div>
+                        </div>
+                        <div className="w-16" />
                     </div>
                 </div>
             </div>

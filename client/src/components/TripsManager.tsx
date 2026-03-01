@@ -17,6 +17,7 @@ interface Trip {
     service_id: string;
     trip_headsign: string;
     direction_id: number;
+    block_id?: string;
     shape_id: string;
     stop_times?: StopTime[];
 }
@@ -38,6 +39,24 @@ interface Stop {
     stop_id: string;
     stop_name: string;
     stop_code?: string;
+}
+
+interface GeneratedTripPlan {
+    stop_times: StopTime[];
+    arrivals: number[];
+    start_seconds: number;
+    end_seconds: number;
+}
+
+interface FleetRangePlan {
+    start_seconds: number;
+    end_seconds: number;
+    buses: number;
+}
+
+interface FleetBusState {
+    fleet_id: number;
+    available_at: number;
 }
 
 import { API_URL } from '../config';
@@ -174,13 +193,28 @@ const TripsManager: React.FC<TripsManagerProps> = ({ route, onClose }) => {
     const [segments, setSegments] = useState<any[]>([]);
     const [segmentSlots, setSegmentSlots] = useState<any[]>([]); // cache for time slots
 
+    const DEADHEAD_FALLBACK_SECONDS = 600;
+    const MIN_STOP_SPACING_SECONDS = 60;
+    const MIN_TERMINAL_HEADWAY_SECONDS = 60;
+    const MAX_BUNCHING_ITERATIONS = 8;
+
+    const timeToSeconds = (timeStr: string) => {
+        if (!timeStr) return 0;
+        const [h, m, s] = timeStr.split(':').map(Number);
+        return (h || 0) * 3600 + (m || 0) * 60 + (s || 0);
+    };
+
+    const secondsToTime = (seconds: number) => {
+        const safeSeconds = Math.max(0, Math.floor(seconds));
+        const h = Math.floor(safeSeconds / 3600);
+        const m = Math.floor((safeSeconds % 3600) / 60);
+        const s = safeSeconds % 60;
+        return `${h.toString().padStart(2, '0')}:${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}`;
+    };
+
     const addSeconds = (timeStr: string, seconds: number) => {
         if (!timeStr) return '';
-        const [h, m, s] = timeStr.split(':').map(Number);
-        const date = new Date();
-        date.setHours(h, m, s);
-        date.setSeconds(date.getSeconds() + seconds);
-        return date.toTimeString().split(' ')[0];
+        return secondsToTime(timeToSeconds(timeStr) + seconds);
     };
 
     const handleStopTimeChange = (tripId: string, stopId: string, field: 'arrival' | 'departure', value: string) => {
@@ -296,16 +330,113 @@ const TripsManager: React.FC<TripsManagerProps> = ({ route, onClose }) => {
     };
 
     // Auto Trips Helpers
+    const findSegment = (startStopId: string, endStopId: string) =>
+        segments.find(s => s.start_node_id === startStopId && s.end_node_id === endStopId);
+
+    const isTimeInsideRange = (value: number, start: number, end: number) => {
+        if (start === end) return true;
+        if (start < end) return value >= start && value < end;
+        // Overnight range support: e.g. 23:00 -> 03:00
+        const normalized = value % 86400;
+        return normalized >= start || normalized < end;
+    };
+
+    const getSegmentTravelTimeAtSeconds = (startStopId: string, endStopId: string, departureSeconds: number) => {
+        const segment = findSegment(startStopId, endStopId);
+        if (!segment) return 0;
+
+        const travelTime = Number(segment.travel_time) || 0;
+        const slotsForSegment = segmentSlots.filter(slot => slot.segment_id === segment.segment_id);
+
+        if (slotsForSegment.length === 0) return travelTime;
+
+        const normalizedDeparture = ((departureSeconds % 86400) + 86400) % 86400;
+        for (const slot of slotsForSegment) {
+            const slotStart = timeToSeconds(slot.start_time);
+            const slotEnd = timeToSeconds(slot.end_time);
+            if (isTimeInsideRange(normalizedDeparture, slotStart, slotEnd)) {
+                const slotTravel = Number(slot.travel_time);
+                if (Number.isFinite(slotTravel) && slotTravel > 0) {
+                    return slotTravel;
+                }
+                return travelTime;
+            }
+        }
+
+        return travelTime;
+    };
+
+    const getDeadheadTravelTimeAtSeconds = (startStopId: string, endStopId: string, departureSeconds: number) => {
+        if (startStopId === endStopId) return 0;
+        const segment = findSegment(startStopId, endStopId);
+        if (!segment) return DEADHEAD_FALLBACK_SECONDS;
+        // Keep deadhead logic aligned with simulation to avoid requiring unexpected extra fleet.
+        return Number(segment.travel_time) || getSegmentTravelTimeAtSeconds(startStopId, endStopId, departureSeconds);
+    };
+
+    const generateStopTimesForTripAndStopsAtSeconds = (tripId: string, startSeconds: number, pathStops: Stop[]): GeneratedTripPlan => {
+        const stopTimes: StopTime[] = [];
+        const arrivals: number[] = [];
+        let currentSeconds = startSeconds;
+
+        for (let i = 0; i < pathStops.length; i++) {
+            const stop = pathStops[i];
+
+            stopTimes.push({
+                trip_id: tripId,
+                stop_id: stop.stop_id,
+                stop_sequence: i + 1,
+                arrival_time: secondsToTime(currentSeconds),
+                departure_time: secondsToTime(currentSeconds)
+            });
+            arrivals.push(currentSeconds);
+
+            if (i < pathStops.length - 1) {
+                const nextStop = pathStops[i + 1];
+                const travelTime = getSegmentTravelTimeAtSeconds(stop.stop_id, nextStop.stop_id, currentSeconds);
+                currentSeconds += travelTime;
+            }
+        }
+
+        return {
+            stop_times: stopTimes,
+            arrivals,
+            start_seconds: startSeconds,
+            end_seconds: arrivals.length > 0 ? arrivals[arrivals.length - 1] : startSeconds
+        };
+    };
+
+    const generateStopTimesForTripAndStops = (tripId: string, startTime: string, pathStops: Stop[]) => {
+        const tripPlan = generateStopTimesForTripAndStopsAtSeconds(tripId, timeToSeconds(startTime), pathStops);
+        return tripPlan.stop_times;
+    };
+
+    const generateStopTimesForTrip = (tripId: string, startTime: string) => {
+        return generateStopTimesForTripAndStops(tripId, startTime, stops);
+    };
+
+    const computeSpacingDelay = (previousArrivals: number[] | null, candidateArrivals: number[]) => {
+        if (!previousArrivals || previousArrivals.length === 0 || candidateArrivals.length === 0) return 0;
+        const comparedStops = Math.min(previousArrivals.length, candidateArrivals.length);
+        let maxDelayNeeded = 0;
+
+        for (let i = 0; i < comparedStops; i++) {
+            const delayNeeded = (previousArrivals[i] + MIN_STOP_SPACING_SECONDS) - candidateArrivals[i];
+            if (delayNeeded > maxDelayNeeded) {
+                maxDelayNeeded = delayNeeded;
+            }
+        }
+
+        return Math.max(0, maxDelayNeeded);
+    };
+
     const getCycleTravelTime = () => {
         let cycleTotal = 0;
 
         const getPathTime = (pathStops: Stop[]) => {
             let total = 0;
             for (let i = 0; i < pathStops.length - 1; i++) {
-                const current = pathStops[i];
-                const next = pathStops[i + 1];
-                const seg = segments.find(s => s.start_node_id === current.stop_id && s.end_node_id === next.stop_id);
-                if (seg && seg.travel_time) total += seg.travel_time;
+                total += getSegmentTravelTimeAtSeconds(pathStops[i].stop_id, pathStops[i + 1].stop_id, 0);
             }
             return total;
         };
@@ -315,69 +446,256 @@ const TripsManager: React.FC<TripsManagerProps> = ({ route, onClose }) => {
 
         cycleTotal += timeDir0 + timeDir1;
 
-        // Add connections
         if (stopsDir0.length > 0 && stopsDir1.length > 0) {
-            // End of Dir 0 to start of Dir 1
             const dir0End = stopsDir0[stopsDir0.length - 1].stop_id;
             const dir1Start = stopsDir1[0].stop_id;
-            const seg0to1 = segments.find(s => s.start_node_id === dir0End && s.end_node_id === dir1Start);
-            if (seg0to1 && seg0to1.travel_time) cycleTotal += seg0to1.travel_time;
+            cycleTotal += getDeadheadTravelTimeAtSeconds(dir0End, dir1Start, 0);
 
-            // End of Dir 1 to start of Dir 0
             const dir1End = stopsDir1[stopsDir1.length - 1].stop_id;
             const dir0Start = stopsDir0[0].stop_id;
-            const seg1to0 = segments.find(s => s.start_node_id === dir1End && s.end_node_id === dir0Start);
-            if (seg1to0 && seg1to0.travel_time) cycleTotal += seg1to0.travel_time;
+            cycleTotal += getDeadheadTravelTimeAtSeconds(dir1End, dir0Start, 0);
         } else if (stopsDir0.length > 0) {
-            // Just one direction, connect end to start (circuit)
             const dir0End = stopsDir0[stopsDir0.length - 1].stop_id;
             const dir0Start = stopsDir0[0].stop_id;
-            const segLoop = segments.find(s => s.start_node_id === dir0End && s.end_node_id === dir0Start);
-            if (segLoop && segLoop.travel_time) cycleTotal += segLoop.travel_time;
+            cycleTotal += getDeadheadTravelTimeAtSeconds(dir0End, dir0Start, 0);
         }
 
         return cycleTotal;
     };
 
-    const generateStopTimesForTripAndStops = (tripId: string, startTime: string, pathStops: Stop[]) => {
-        const newStopTimes: StopTime[] = [];
-        let currentTime = startTime;
+    const buildFleetRanges = (ranges: AutoTripsConfig['ranges']): FleetRangePlan[] => {
+        return ranges
+            .map(range => {
+                const normalizedStart = timeToSeconds(formatTimeInput(range.start_time));
+                let normalizedEnd = timeToSeconds(formatTimeInput(range.end_time));
+                if (normalizedEnd <= normalizedStart) normalizedEnd += 86400;
 
-        pathStops.forEach((stop, i) => {
-            if (i > 0) {
-                const prevStop = pathStops[i - 1];
-                const segment = segments.find(s => s.start_node_id === prevStop.stop_id && s.end_node_id === stop.stop_id);
-                if (segment) {
-                    let travelTime = segment.travel_time || 0;
-                    // Check for slot based on currentTime (arrival at prev stop)
-                    const activeSlot = segmentSlots.find(slot =>
-                        slot.segment_id === segment.segment_id &&
-                        currentTime >= slot.start_time &&
-                        currentTime < slot.end_time
-                    );
+                return {
+                    start_seconds: normalizedStart,
+                    end_seconds: normalizedEnd,
+                    buses: Math.max(0, Math.floor(range.value))
+                };
+            })
+            .filter(range => range.buses > 0 && range.end_seconds > range.start_seconds)
+            .sort((a, b) => a.start_seconds - b.start_seconds);
+    };
 
-                    if (activeSlot) {
-                        travelTime = activeSlot.travel_time;
-                    }
+    const buildTripEntity = (
+        tripId: string,
+        serviceIdToUse: string,
+        directionId: number,
+        plan: GeneratedTripPlan,
+        blockId?: string
+    ): Trip => ({
+        trip_id: tripId,
+        route_id: route.route_id,
+        service_id: serviceIdToUse,
+        direction_id: directionId,
+        block_id: blockId,
+        trip_headsign: route.route_long_name || route.route_short_name,
+        shape_id: '',
+        stop_times: plan.stop_times.map(st => ({ ...st, trip_id: tripId }))
+    });
 
-                    currentTime = addSeconds(currentTime, travelTime);
+    const estimateCycleFromDir0Start = (startSeconds: number) => {
+        if (stopsDir0.length === 0) return 0;
+
+        const dir0Plan = generateStopTimesForTripAndStopsAtSeconds('__probe_dir0__', startSeconds, stopsDir0);
+        const dir0EndStop = stopsDir0[stopsDir0.length - 1]?.stop_id;
+        const dir0StartStop = stopsDir0[0]?.stop_id;
+
+        if (!dir0EndStop || !dir0StartStop) return 0;
+
+        if (stopsDir1.length > 0) {
+            const dir1StartStop = stopsDir1[0]?.stop_id;
+            const dir1EndStop = stopsDir1[stopsDir1.length - 1]?.stop_id;
+            if (!dir1StartStop || !dir1EndStop) return Math.max(0, dir0Plan.end_seconds - startSeconds);
+
+            const travelToDir1 = getDeadheadTravelTimeAtSeconds(dir0EndStop, dir1StartStop, dir0Plan.end_seconds);
+            const dir1StartSeconds = dir0Plan.end_seconds + travelToDir1;
+            const dir1Plan = generateStopTimesForTripAndStopsAtSeconds('__probe_dir1__', dir1StartSeconds, stopsDir1);
+            const returnToDir0 = getDeadheadTravelTimeAtSeconds(dir1EndStop, dir0StartStop, dir1Plan.end_seconds);
+
+            return Math.max(0, (dir1Plan.end_seconds + returnToDir0) - startSeconds);
+        }
+
+        const loopReturn = getDeadheadTravelTimeAtSeconds(dir0EndStop, dir0StartStop, dir0Plan.end_seconds);
+        return Math.max(0, (dir0Plan.end_seconds + loopReturn) - startSeconds);
+    };
+
+    const buildCoupledPlans = (
+        proposedStartSeconds: number,
+        previousDir0Arrivals: number[] | null,
+        previousDir1Arrivals: number[] | null
+    ) => {
+        const dir0EndStop = stopsDir0[stopsDir0.length - 1]?.stop_id;
+        const dir0StartStop = stopsDir0[0]?.stop_id;
+        const dir1StartStop = stopsDir1[0]?.stop_id;
+        const dir1EndStop = stopsDir1[stopsDir1.length - 1]?.stop_id;
+
+        let startSeconds = proposedStartSeconds;
+        let dir0Plan = generateStopTimesForTripAndStopsAtSeconds('__tmp_dir0__', startSeconds, stopsDir0);
+        let dir1Plan: GeneratedTripPlan | null = null;
+
+        for (let i = 0; i < MAX_BUNCHING_ITERATIONS; i++) {
+            dir0Plan = generateStopTimesForTripAndStopsAtSeconds('__tmp_dir0__', startSeconds, stopsDir0);
+
+            if (stopsDir1.length > 0 && dir0EndStop && dir1StartStop) {
+                const travelToDir1 = getDeadheadTravelTimeAtSeconds(dir0EndStop, dir1StartStop, dir0Plan.end_seconds);
+                dir1Plan = generateStopTimesForTripAndStopsAtSeconds('__tmp_dir1__', dir0Plan.end_seconds + travelToDir1, stopsDir1);
+            } else {
+                dir1Plan = null;
+            }
+
+            const delayForDir0 = computeSpacingDelay(previousDir0Arrivals, dir0Plan.arrivals);
+            const delayForDir1 = dir1Plan ? computeSpacingDelay(previousDir1Arrivals, dir1Plan.arrivals) : 0;
+            const requiredDelay = Math.max(delayForDir0, delayForDir1);
+
+            if (requiredDelay <= 0) {
+                break;
+            }
+            startSeconds += requiredDelay;
+        }
+
+        // Rebuild once with the final delayed departure to avoid stale plans when the loop ends by iteration cap.
+        dir0Plan = generateStopTimesForTripAndStopsAtSeconds('__tmp_dir0__', startSeconds, stopsDir0);
+        if (stopsDir1.length > 0 && dir0EndStop && dir1StartStop) {
+            const travelToDir1 = getDeadheadTravelTimeAtSeconds(dir0EndStop, dir1StartStop, dir0Plan.end_seconds);
+            dir1Plan = generateStopTimesForTripAndStopsAtSeconds('__tmp_dir1__', dir0Plan.end_seconds + travelToDir1, stopsDir1);
+        } else {
+            dir1Plan = null;
+        }
+
+        let nextAvailableAt = dir0Plan.end_seconds;
+        if (dir1Plan && dir1EndStop && dir0StartStop) {
+            nextAvailableAt = dir1Plan.end_seconds + getDeadheadTravelTimeAtSeconds(dir1EndStop, dir0StartStop, dir1Plan.end_seconds);
+        } else if (dir0EndStop && dir0StartStop) {
+            nextAvailableAt = dir0Plan.end_seconds + getDeadheadTravelTimeAtSeconds(dir0EndStop, dir0StartStop, dir0Plan.end_seconds);
+        }
+
+        return {
+            start_seconds: startSeconds,
+            dir0Plan,
+            dir1Plan,
+            next_available_at: nextAvailableAt
+        };
+    };
+
+    const generateTripsFromStarts = (
+        serviceIdToUse: string,
+        startTimes: string[],
+        existingStartTimes: Set<string>,
+        duplicates: string[]
+    ) => {
+        const newTripsData: Trip[] = [];
+
+        for (const startTimeRaw of startTimes) {
+            const startTime = formatTimeInput(startTimeRaw);
+            if (existingStartTimes.has(startTime)) {
+                duplicates.push(startTime);
+                continue;
+            }
+
+            if (stopsDir0.length === 0) continue;
+            const startSeconds = timeToSeconds(startTime);
+
+            const dir0TripId = Math.floor(100000000 + Math.random() * 900000000).toString();
+            const dir0Plan = generateStopTimesForTripAndStopsAtSeconds(dir0TripId, startSeconds, stopsDir0);
+            newTripsData.push(buildTripEntity(dir0TripId, serviceIdToUse, 0, dir0Plan));
+
+            if (stopsDir1.length > 0) {
+                const dir0EndStop = stopsDir0[stopsDir0.length - 1]?.stop_id;
+                const dir1StartStop = stopsDir1[0]?.stop_id;
+                if (dir0EndStop && dir1StartStop) {
+                    const travelToDir1 = getDeadheadTravelTimeAtSeconds(dir0EndStop, dir1StartStop, dir0Plan.end_seconds);
+                    const dir1TripId = Math.floor(100000000 + Math.random() * 900000000).toString();
+                    const dir1Plan = generateStopTimesForTripAndStopsAtSeconds(dir1TripId, dir0Plan.end_seconds + travelToDir1, stopsDir1);
+                    newTripsData.push(buildTripEntity(dir1TripId, serviceIdToUse, 1, dir1Plan));
+                }
+            }
+        }
+
+        return newTripsData;
+    };
+
+    const generateTripsByFixedFleet = (serviceIdToUse: string, ranges: FleetRangePlan[]) => {
+        if (stopsDir0.length === 0 || ranges.length === 0) return [];
+
+        const newTripsData: Trip[] = [];
+        const activeFleet: FleetBusState[] = [];
+        const parkedFleet: FleetBusState[] = [];
+        let nextFleetId = 1;
+        let previousDir0Arrivals: number[] | null = null;
+        let previousDir1Arrivals: number[] | null = null;
+        let previousDir0Departure: number | null = null;
+
+        for (const range of ranges) {
+            while (activeFleet.length < range.buses) {
+                parkedFleet.sort((a, b) => a.available_at - b.available_at);
+                const reused = parkedFleet.shift();
+                if (reused) {
+                    reused.available_at = Math.max(reused.available_at, range.start_seconds);
+                    activeFleet.push(reused);
+                } else {
+                    activeFleet.push({ fleet_id: nextFleetId++, available_at: range.start_seconds });
                 }
             }
 
-            newStopTimes.push({
-                trip_id: tripId,
-                stop_id: stop.stop_id,
-                stop_sequence: i + 1,
-                arrival_time: currentTime,
-                departure_time: currentTime
-            });
-        });
+            while (activeFleet.length > range.buses) {
+                activeFleet.sort((a, b) => b.available_at - a.available_at || b.fleet_id - a.fleet_id);
+                const removed = activeFleet.shift();
+                if (removed) parkedFleet.push(removed);
+            }
 
-        return newStopTimes;
-    };
+            let guard = 0;
+            while (activeFleet.length > 0 && guard < 10000) {
+                guard++;
 
-    const generateStopTimesForTrip = (tripId: string, startTime: string) => {
-        return generateStopTimesForTripAndStops(tripId, startTime, stops);
+                activeFleet.sort((a, b) => a.available_at - b.available_at || a.fleet_id - b.fleet_id);
+                const bus = activeFleet[0];
+                const earliestBusStart = Math.max(bus.available_at, range.start_seconds);
+
+                if (earliestBusStart >= range.end_seconds) break;
+
+                const cycleEstimate = Math.max(1, estimateCycleFromDir0Start(earliestBusStart));
+                const targetHeadway = Math.max(
+                    MIN_TERMINAL_HEADWAY_SECONDS,
+                    Math.round(cycleEstimate / Math.max(1, range.buses))
+                );
+                const nextHeadwayDeparture = previousDir0Departure === null
+                    ? range.start_seconds
+                    : previousDir0Departure + targetHeadway;
+
+                const baseStart = Math.max(earliestBusStart, nextHeadwayDeparture, range.start_seconds);
+                const planned = buildCoupledPlans(baseStart, previousDir0Arrivals, previousDir1Arrivals);
+
+                if (planned.start_seconds >= range.end_seconds) {
+                    bus.available_at = Math.max(bus.available_at, range.end_seconds);
+                    continue;
+                }
+
+                if (previousDir0Departure !== null && planned.start_seconds <= previousDir0Departure) {
+                    bus.available_at = previousDir0Departure + MIN_TERMINAL_HEADWAY_SECONDS;
+                    continue;
+                }
+
+                const blockId = `BUS-${bus.fleet_id.toString().padStart(4, '0')}`;
+                const dir0TripId = Math.floor(100000000 + Math.random() * 900000000).toString();
+                newTripsData.push(buildTripEntity(dir0TripId, serviceIdToUse, 0, planned.dir0Plan, blockId));
+
+                if (planned.dir1Plan) {
+                    const dir1TripId = Math.floor(100000000 + Math.random() * 900000000).toString();
+                    newTripsData.push(buildTripEntity(dir1TripId, serviceIdToUse, 1, planned.dir1Plan, blockId));
+                    previousDir1Arrivals = planned.dir1Plan.arrivals;
+                }
+
+                bus.available_at = planned.next_available_at;
+                previousDir0Departure = planned.start_seconds;
+                previousDir0Arrivals = planned.dir0Plan.arrivals;
+            }
+        }
+
+        return newTripsData;
     };
 
     const [isClearing, setIsClearing] = useState(false);
@@ -385,95 +703,58 @@ const TripsManager: React.FC<TripsManagerProps> = ({ route, onClose }) => {
     const [successMessage, setSuccessMessage] = useState<string | null>(null);
 
     const handleBulkCreateTrips = async (config: AutoTripsConfig) => {
-        const serviceIdToUse = selectedServiceId; // Force global ID
+        const serviceIdToUse = selectedServiceId;
+        const patternTripIds = new Set([`t_${route.route_id}_0`, `t_${route.route_id}_1`]);
+        const existingTripsForService = trips.filter(t =>
+            t.service_id === serviceIdToUse &&
+            t.route_id === route.route_id &&
+            !patternTripIds.has(t.trip_id)
+        );
 
-        // Check for duplicates in current trips (start time)
         const existingStartTimes = new Set(
-            trips
-                .filter(t => t.service_id === serviceIdToUse && t.direction_id === 0)
+            existingTripsForService
+                .filter(t => t.direction_id === 0)
                 .map(t => GetStopTime(t, stopsDir0[0]?.stop_id))
         );
 
-        const newTripsData: Trip[] = [];
         const duplicates: string[] = [];
+        let newTripsData: Trip[] = [];
 
-        config.trips.forEach(startTime => {
-            if (existingStartTimes.has(startTime)) {
-                duplicates.push(startTime);
+        if (config.mode === 'buses') {
+            if (existingTripsForService.length > 0) {
+                alert('By Buses requiere una tabla vacía para garantizar flota exacta. Limpia el horario y vuelve a generar.');
                 return;
             }
-
-            if (stopsDir0.length > 0) {
-                // Determine start times for Dir 0
-                const tripId0 = Math.floor(100000000 + Math.random() * 900000000).toString();
-                const stopTimes0 = generateStopTimesForTripAndStops(tripId0, startTime, stopsDir0);
-
-                newTripsData.push({
-                    trip_id: tripId0,
-                    route_id: route.route_id,
-                    service_id: serviceIdToUse,
-                    direction_id: 0,
-                    trip_headsign: route.route_long_name || route.route_short_name,
-                    shape_id: '',
-                    stop_times: stopTimes0
-                });
-
-                // Determine start times for Dir 1
-                if (stopsDir1.length > 0) {
-                    const dir0EndTime = stopTimes0[stopTimes0.length - 1]?.arrival_time;
-
-                    const dir0End = stopsDir0[stopsDir0.length - 1].stop_id;
-                    const dir1Start = stopsDir1[0].stop_id;
-                    const seg0to1 = segments.find(s => s.start_node_id === dir0End && s.end_node_id === dir1Start);
-
-                    let currTimeDir1 = dir0EndTime;
-                    if (currTimeDir1 && seg0to1 && seg0to1.travel_time) {
-                        currTimeDir1 = addSeconds(currTimeDir1, seg0to1.travel_time);
-                    }
-
-                    if (currTimeDir1) { // Safety check
-                        const tripId1 = Math.floor(100000000 + Math.random() * 900000000).toString();
-                        const stopTimes1 = generateStopTimesForTripAndStops(tripId1, currTimeDir1, stopsDir1);
-
-                        newTripsData.push({
-                            trip_id: tripId1,
-                            route_id: route.route_id,
-                            service_id: serviceIdToUse,
-                            direction_id: 1,
-                            trip_headsign: route.route_long_name || route.route_short_name,
-                            shape_id: '',
-                            stop_times: stopTimes1
-                        });
-                    }
-                }
-            }
-        });
+            const fleetRanges = buildFleetRanges(config.ranges);
+            newTripsData = generateTripsByFixedFleet(serviceIdToUse, fleetRanges);
+        } else {
+            const orderedStarts = [...config.trips].sort((a, b) => timeToSeconds(a) - timeToSeconds(b));
+            newTripsData = generateTripsFromStarts(serviceIdToUse, orderedStarts, existingStartTimes, duplicates);
+        }
 
         if (duplicates.length > 0) {
             alert(`Skipped ${duplicates.length} duplicate trips at: ${duplicates.join(', ')}`);
         }
 
-        if (newTripsData.length === 0) return;
+        if (newTripsData.length === 0) {
+            alert('No fue posible generar viajes con la configuración actual.');
+            return;
+        }
 
         setSaving(true);
         try {
-            // Persist all new trips immediately
-            // We'll use a Promise.all to save them. ideally we'd have a bulk create endpoint.
-            // For now, loop through.
             const savePromises = newTripsData.map(async (trip) => {
-                // 1. Create Trip
                 const tripRes = await fetch(`${API_URL}/routes/${route.route_id}/trips`, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({
                         ...trip,
-                        stop_times: undefined // Don't send stop_times in trip creation if API doesn't support it yet
+                        stop_times: undefined
                     })
                 });
 
                 if (!tripRes.ok) throw new Error(`Failed to create trip ${trip.trip_id}`);
 
-                // 2. Create Stop Times
                 if (trip.stop_times && trip.stop_times.length > 0) {
                     await fetch(`${API_URL}/trips/${trip.trip_id}/stop_times`, {
                         method: 'POST',
@@ -485,7 +766,6 @@ const TripsManager: React.FC<TripsManagerProps> = ({ route, onClose }) => {
 
             await Promise.all(savePromises);
 
-            // Update local state only after success
             setTrips(prev => [...prev, ...newTripsData]);
             setSuccessMessage(`Successfully created ${newTripsData.length} trips!`);
             setTimeout(() => setSuccessMessage(null), 3000);
@@ -914,4 +1194,3 @@ const TripsManager: React.FC<TripsManagerProps> = ({ route, onClose }) => {
 };
 
 export default TripsManager;
-
