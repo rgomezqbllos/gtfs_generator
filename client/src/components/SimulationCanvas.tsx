@@ -1,6 +1,8 @@
 import React, { useRef } from 'react';
 import type { Stop } from '../types';
 import type { LogicalBus, SimTrip } from '../utils/SimulationEngine';
+import { SimulationKpiStrip } from './SimulationKpiStrip';
+import type { SimulationKpiSnapshot } from '../utils/simulationKpis';
 
 interface SimulationCanvasProps {
     routesData: {
@@ -12,9 +14,22 @@ interface SimulationCanvasProps {
     }[];
     buses: LogicalBus[];
     currentSeconds: number;
+    routeKpisByRoute: Record<string, SimulationKpiSnapshot>;
 }
 
-export const SimulationCanvas: React.FC<SimulationCanvasProps> = ({ routesData, buses, currentSeconds }) => {
+const EMPTY_ROUTE_KPI: SimulationKpiSnapshot = {
+    activeBusesCount: 0,
+    dispatchedBuses: 0,
+    inactiveBusesCount: 0,
+    commercialTripsStarted: 0,
+    commercialKms: 0,
+    emptyTripsStarted: 0,
+    emptyKms: 0,
+    overtakesCount: 0,
+    simTime: '00:00:00'
+};
+
+export const SimulationCanvas: React.FC<SimulationCanvasProps> = ({ routesData, buses, currentSeconds, routeKpisByRoute }) => {
     // Canvas dimensions and state
     const containerRef = useRef<HTMLDivElement>(null);
 
@@ -103,9 +118,17 @@ export const SimulationCanvas: React.FC<SimulationCanvasProps> = ({ routesData, 
         <div className="flex flex-col gap-6 p-4 overflow-y-auto w-full h-full bg-[#0a0f1d] text-white" ref={containerRef}>
             {routesData.map(rData => (
                 <div key={rData.route_id} className="flex flex-col gap-4 border-b border-gray-800 pb-6">
-                    <div className="flex flex-col">
-                        <h3 className="text-xl font-bold">{rData.route_short_name}</h3>
-                        <span className="text-xs text-gray-500 uppercase tracking-wider">Route View</span>
+                    <div className="flex items-end gap-4">
+                        <div className="flex flex-col shrink-0">
+                            <h3 className="text-xl font-bold">{rData.route_short_name}</h3>
+                            <span className="text-xs text-gray-500 uppercase tracking-wider">Route View</span>
+                        </div>
+                        <div className="flex-1 min-w-0 pb-0.5">
+                            <SimulationKpiStrip
+                                data={routeKpisByRoute[rData.route_id] || EMPTY_ROUTE_KPI}
+                                scope="route"
+                            />
+                        </div>
                     </div>
 
                     {/* Direction 0 Track */}

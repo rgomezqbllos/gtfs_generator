@@ -4,6 +4,9 @@ import { API_URL } from '../config';
 import { SimulationEngine, secondsToTime } from '../utils/SimulationEngine';
 import type { LogicalBus } from '../utils/SimulationEngine';
 import { SimulationCanvas } from './SimulationCanvas';
+import { SimulationKpiStrip } from './SimulationKpiStrip';
+import { computeSimulationKpiState, getZeroSimulationKpiSnapshot } from '../utils/simulationKpis';
+import type { SimulationKpiSnapshot } from '../utils/simulationKpis';
 import { Route, Stop } from '../types';
 
 interface Calendar {
@@ -217,6 +220,21 @@ export const SimulationPanel: React.FC<{ onClose: () => void }> = ({ onClose }) 
 
     const clampSecond = (value: number) => Math.max(0, Math.min(SIM_DURATION_SECONDS, Math.floor(value)));
     const currentSecondInt = clampSecond(currentSeconds);
+    const simTimeLabel = secondsToTime(currentSeconds);
+    const routeIds = useMemo(() => routesData.map((route: any) => route.route_id), [routesData]);
+
+    const computedKpiState = useMemo(() => computeSimulationKpiState({
+        buses: logicalBuses,
+        currentSecond: currentSecondInt,
+        simTime: simTimeLabel,
+        routeIds
+    }), [logicalBuses, currentSecondInt, simTimeLabel, routeIds]);
+
+    const generalKpis = engine
+        ? computedKpiState.general
+        : getZeroSimulationKpiSnapshot(simTimeLabel);
+    const routeKpisByRoute: Record<string, SimulationKpiSnapshot> = engine ? computedKpiState.byRoute : {};
+    const activeBusesCount = generalKpis.activeBusesCount;
 
     const activeBusSeries = useMemo(() => {
         const diff = new Int32Array(SIM_DURATION_SECONDS + 2);
@@ -259,53 +277,6 @@ export const SimulationPanel: React.FC<{ onClose: () => void }> = ({ onClose }) 
         }
         return series;
     }, [logicalBuses]);
-
-    const activeBusesCount = engine ? (activeBusSeries[currentSecondInt] || 0) : 0;
-    const dispatchedBusesList = logicalBuses.filter(b => b.trips.some(t => t.start_time <= currentSecondInt));
-    const dispatchedBuses = dispatchedBusesList.length;
-    const inactiveBusesCount = dispatchedBuses > 0 ? dispatchedBuses - activeBusesCount : 0;
-
-    let commercialTripsStarted = 0;
-    let emptyTripsStarted = 0;
-    let commercialSeconds = 0;
-    let emptySeconds = 0;
-
-    dispatchedBusesList.forEach(b => {
-        b.trips.forEach(t => {
-            if (t.start_time <= currentSecondInt) {
-                const effectiveDuration = Math.min(currentSecondInt, t.end_time) - t.start_time;
-                if (t.type === 'commercial') {
-                    commercialTripsStarted++;
-                    commercialSeconds += effectiveDuration;
-                } else {
-                    emptyTripsStarted++;
-                    emptySeconds += effectiveDuration;
-                }
-            }
-        });
-    });
-
-    const commercialKms = (commercialSeconds * (20 / 3600)).toFixed(1);
-    const emptyKms = (emptySeconds * (20 / 3600)).toFixed(1);
-
-    let overtakesCount = 0;
-    if (engine) {
-        const startedTrips = logicalBuses.flatMap(b => b.trips.filter(t => t.type === 'commercial' && t.start_time <= currentSecondInt));
-        for (let i = 0; i < startedTrips.length; i++) {
-            for (let j = i + 1; j < startedTrips.length; j++) {
-                const t1 = startedTrips[i];
-                const t2 = startedTrips[j];
-                // Check if they share the same origin and destination to heuristically confirm they are the same route
-                if (t1.start_stop_id === t2.start_stop_id && t1.end_stop_id === t2.end_stop_id) {
-                    const first = t1.start_time < t2.start_time ? t1 : t2;
-                    const second = t1.start_time < t2.start_time ? t2 : t1;
-                    if (first.end_time > second.end_time && currentSecondInt >= second.end_time) {
-                        overtakesCount++;
-                    }
-                }
-            }
-        }
-    }
 
     const chartInnerWidth = CHART_VIEWBOX_WIDTH - CHART_PADDING.left - CHART_PADDING.right;
     const chartInnerHeight = CHART_VIEWBOX_HEIGHT - CHART_PADDING.top - CHART_PADDING.bottom;
@@ -444,30 +415,7 @@ export const SimulationPanel: React.FC<{ onClose: () => void }> = ({ onClose }) 
             <div className="flex-1 flex flex-col min-w-0 relative">
                 {/* Header KPIs */}
                 <div className="h-16 bg-[#111827] border-b border-gray-800 flex items-center px-6 gap-6 xl:gap-8 z-10 shrink-0">
-                    <div>
-                        <div className="text-[9px] text-gray-400 uppercase tracking-[0.16em] whitespace-nowrap">Active / Disp.</div>
-                        <div className="text-xl font-light leading-tight">{activeBusesCount} <span className="text-xs text-gray-500">/ {dispatchedBuses}</span></div>
-                    </div>
-                    <div>
-                        <div className="text-[9px] text-gray-400 uppercase tracking-[0.16em] whitespace-nowrap animate-pulse transition-opacity">Inactive Buses</div>
-                        <div className="text-xl font-light leading-tight text-orange-400">{inactiveBusesCount}</div>
-                    </div>
-                    <div>
-                        <div className="text-[9px] text-gray-400 uppercase tracking-[0.16em] whitespace-nowrap">Comm. Trips / KMs</div>
-                        <div className="text-xl font-light leading-tight text-blue-400">{commercialTripsStarted} <span className="text-xs text-gray-500">/ {commercialKms}km</span></div>
-                    </div>
-                    <div>
-                        <div className="text-[9px] text-gray-400 uppercase tracking-[0.16em] whitespace-nowrap">Empty Trips / KMs</div>
-                        <div className="text-xl font-light leading-tight text-gray-300">{emptyTripsStarted} <span className="text-xs text-gray-500">/ {emptyKms}km</span></div>
-                    </div>
-                    <div>
-                        <div className="text-[9px] text-gray-400 uppercase tracking-[0.16em] whitespace-nowrap">Overtakes</div>
-                        <div className="text-xl font-light leading-tight text-red-500">{overtakesCount}</div>
-                    </div>
-                    <div className="ml-auto text-right">
-                        <div className="text-[10px] text-gray-400 uppercase tracking-[0.16em]">Sim Time</div>
-                        <div className="text-2xl leading-tight font-mono text-emerald-400">{secondsToTime(currentSeconds)}</div>
-                    </div>
+                    <SimulationKpiStrip data={generalKpis} scope="general" />
                 </div>
 
                 {/* Simulation Canvas */}
@@ -481,6 +429,7 @@ export const SimulationPanel: React.FC<{ onClose: () => void }> = ({ onClose }) 
                             routesData={routesData}
                             buses={logicalBuses}
                             currentSeconds={currentSeconds}
+                            routeKpisByRoute={routeKpisByRoute}
                         />
                     )}
                 </div>
