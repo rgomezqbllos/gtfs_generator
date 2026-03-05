@@ -3,7 +3,7 @@ import * as React from 'react';
 interface ConfirmModalProps {
     isOpen: boolean;
     title: string;
-    message: string;
+    message: React.ReactNode;
     onConfirm: () => void;
     onCancel: () => void;
     isError?: boolean; // If true, only show "Close" or similar, or just style differently

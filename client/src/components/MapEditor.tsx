@@ -20,6 +20,8 @@ import TripsManager from './TripsManager';
 import EmptySegmentsManager from './EmptySegmentsManager';
 import ExternalLoadPanel from './ExternalLoadPanel';
 import { SimulationPanel } from './SimulationPanel';
+import StopsCatalog from './StopsCatalog';
+import SegmentsCatalog from './SegmentsCatalog';
 
 import { API_URL } from '../config';
 
@@ -888,6 +890,27 @@ const MapEditor: React.FC = () => {
                         setActivePanel('none');
                     }}
                     onDataUpdate={fetchRouteStructure}
+                />
+            )}
+
+            {activePanel === 'stops_catalog' && (
+                <StopsCatalog
+                    onClose={() => setActivePanel('none')}
+                    onUpdateStop={handleStopClick}
+                    onAddOnMap={() => {
+                        setActivePanel('none');
+                        setMode('add_stop');
+                    }}
+                />
+            )}
+
+            {activePanel === 'segments_catalog' && (
+                <SegmentsCatalog
+                    onClose={() => setActivePanel('none')}
+                    onAddOnMap={() => {
+                        setActivePanel('none');
+                        setMode('add_segment');
+                    }}
                 />
             )}
 

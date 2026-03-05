@@ -1,10 +1,8 @@
 import React from 'react';
 import {
-    MapPin,
     Route as RouteIcon,
     Settings,
     MousePointer2,
-    PlusCircle,
     Bus,
     UserCircle2,
     CalendarDays,
@@ -13,7 +11,9 @@ import {
     Download,
     Upload,
     Database,
-    PlayCircle
+    PlayCircle,
+    List,
+    GitBranch
 } from 'lucide-react';
 import { clsx } from 'clsx';
 import ExportModal from '../ExportModal';
@@ -38,24 +38,18 @@ const Sidebar: React.FC = () => {
             }
         },
         {
-            id: 'add_stop',
-            label: 'Add Stops',
-            icon: MapPin,
-            active: mode === 'add_stop',
-            onClick: () => {
-                setMode('add_stop');
-                setActivePanel('none');
-            }
+            id: 'stops_catalog',
+            label: 'Catálogo de Nodos',
+            icon: List,
+            active: activePanel === 'stops_catalog',
+            onClick: () => setActivePanel('stops_catalog')
         },
         {
-            id: 'add_segment',
-            label: 'Connect Stops',
-            icon: PlusCircle,
-            active: mode === 'add_segment',
-            onClick: () => {
-                setMode('add_segment');
-                setActivePanel('none');
-            }
+            id: 'segments_catalog',
+            label: 'Catálogo de Aristas',
+            icon: GitBranch,
+            active: activePanel === 'segments_catalog',
+            onClick: () => setActivePanel('segments_catalog')
         },
         {
             id: 'routes',
