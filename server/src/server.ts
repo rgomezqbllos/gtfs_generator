@@ -12,9 +12,11 @@ import tripsRoutes from './routes/trips';
 import agencyRoutes from './routes/agency';
 import mapsRoutes from './routes/maps';
 import importRoutes from './routes/import';
+import projectsRoutes from './routes/projects';
 import fastifyStatic from '@fastify/static';
 import fastifyMultipart from '@fastify/multipart';
 import path from 'path';
+import { authenticate } from './middleware/auth';
 
 const server = Fastify({
     logger: true
@@ -42,6 +44,13 @@ console.log('Serving static files from:', DIST_PATH);
 server.register(fastifyStatic, {
     root: DIST_PATH,
     prefix: '/', // optional: default '/'
+    setHeaders: (res, path) => {
+        if (path.endsWith('.html')) {
+            res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
+            res.setHeader('Pragma', 'no-cache');
+            res.setHeader('Expires', '0');
+        }
+    }
 });
 
 // IMPORTANT: Catch-all for SPA (return index.html for non-API routes)
@@ -50,6 +59,15 @@ server.setNotFoundHandler(async (request, reply) => {
         return reply.code(404).send({ error: 'API endpoint not found' });
     }
     return reply.sendFile('index.html');
+});
+
+// Protect all /api endpoints
+server.addHook('preHandler', async (request, reply) => {
+    if (request.url.startsWith('/api')) {
+        // Exclude /api/ping or auth-related webhooks if needed
+        if (request.url === '/api/ping') return;
+        return authenticate(request, reply);
+    }
 });
 
 server.register(stopsRoutes, { prefix: '/api' });
@@ -62,6 +80,7 @@ server.register(tripsRoutes, { prefix: '/api' });
 server.register(agencyRoutes, { prefix: '/api' });
 server.register(mapsRoutes, { prefix: '/api' });
 server.register(importRoutes, { prefix: '/api' });
+server.register(projectsRoutes, { prefix: '/api' });
 
 // Initialize DB
 try {

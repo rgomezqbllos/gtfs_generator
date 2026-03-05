@@ -4,7 +4,6 @@ import {
     Settings,
     MousePointer2,
     Bus,
-    UserCircle2,
     CalendarDays,
     Sun,
     Moon,
@@ -13,18 +12,28 @@ import {
     Database,
     PlayCircle,
     List,
-    GitBranch
+    GitBranch,
+    LogOut
 } from 'lucide-react';
 import { clsx } from 'clsx';
 import ExportModal from '../ExportModal';
 import ImportModal from '../ImportModal';
 import { useEditor } from '../../context/EditorContext';
 import { useTheme } from '../../context/ThemeContext';
+import { useAuth } from '../../context/AuthContext';
 
 const Sidebar: React.FC = () => {
     const { mode, setMode, activePanel, setActivePanel } = useEditor();
+    const { theme, setTheme } = useTheme();
+    const { user, logout, isSuperAdmin, isTenantAdmin } = useAuth();
     const [isExportOpen, setIsExportOpen] = React.useState(false);
     const [isImportOpen, setIsImportOpen] = React.useState(false);
+
+    const userInitials = user?.username
+        ? user.username.substring(0, 2).toUpperCase()
+        : (user?.email ? user.email.substring(0, 2).toUpperCase() : 'US');
+
+    const roleText = isSuperAdmin ? 'SuperAdmin' : (isTenantAdmin ? 'TenantAdmin' : 'Operador');
 
     const MENU_ITEMS = [
         {
@@ -95,7 +104,15 @@ const Sidebar: React.FC = () => {
         }
     ];
 
-    const { theme, setTheme } = useTheme();
+    if (isSuperAdmin || isTenantAdmin) {
+        MENU_ITEMS.push({
+            id: 'admin_panel',
+            label: 'Panel Control',
+            icon: Settings, // or another lucide icon, Settings is fine
+            active: activePanel === 'admin_panel',
+            onClick: () => setActivePanel(activePanel === 'admin_panel' ? 'none' : 'admin_panel')
+        });
+    }
 
     return (
         <aside className="group relative z-20 flex h-full w-20 flex-col items-center bg-[#1a1e2e] py-6 transition-all duration-300 hover:w-64 shadow-2xl">
@@ -110,14 +127,14 @@ const Sidebar: React.FC = () => {
                 </div>
             </div>
 
-            {/* Navigation Menu */}
-            <nav className="flex w-full flex-1 flex-col gap-2 px-3">
+            {/* Navigation Menu (Scrollable) */}
+            <nav className="flex w-full flex-1 flex-col gap-2 px-3 overflow-y-auto no-scrollbar py-2">
                 {MENU_ITEMS.map((item) => (
                     <button
                         key={item.id}
                         onClick={item.onClick}
                         className={clsx(
-                            "flex h-12 w-full items-center rounded-lg px-3 transition-all duration-200",
+                            "flex min-h-[48px] h-12 w-full items-center rounded-lg px-3 transition-all duration-200",
                             item.active
                                 ? "bg-[#1337ec] text-white shadow-md shadow-blue-900/20"
                                 : "text-slate-400 hover:bg-white/10 hover:text-white"
@@ -135,11 +152,11 @@ const Sidebar: React.FC = () => {
                 ))}
             </nav>
 
-            {/* Theme Toggle */}
-            <div className="w-full px-3 mb-2 space-y-2">
+            {/* Theme & Extras */}
+            <div className="w-full px-3 mb-2 space-y-2 shrink-0 pt-4 border-t border-[#2d3248]">
                 <button
                     onClick={() => setIsImportOpen(true)}
-                    className="flex h-12 w-full items-center rounded-lg px-3 text-slate-400 hover:bg-white/10 hover:text-white transition-all duration-200"
+                    className="flex min-h-[48px] h-12 w-full items-center rounded-lg px-3 text-slate-400 hover:bg-white/10 hover:text-white transition-all duration-200"
                     title="Import GTFS"
                 >
                     <Upload size={22} className="shrink-0" />
@@ -150,7 +167,7 @@ const Sidebar: React.FC = () => {
 
                 <button
                     onClick={() => setIsExportOpen(true)}
-                    className="flex h-12 w-full items-center rounded-lg px-3 text-slate-400 hover:bg-white/10 hover:text-white transition-all duration-200"
+                    className="flex min-h-[48px] h-12 w-full items-center rounded-lg px-3 text-slate-400 hover:bg-white/10 hover:text-white transition-all duration-200"
                     title="Export GTFS"
                 >
                     <Download size={22} className="shrink-0" />
@@ -161,7 +178,7 @@ const Sidebar: React.FC = () => {
 
                 <button
                     onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')}
-                    className="flex h-12 w-full items-center rounded-lg px-3 text-slate-400 hover:bg-white/10 hover:text-white transition-all duration-200"
+                    className="flex min-h-[48px] h-12 w-full items-center rounded-lg px-3 text-slate-400 hover:bg-white/10 hover:text-white transition-all duration-200"
                     title={`Switch to ${theme === 'dark' ? 'Light' : 'Dark'} Mode`}
                 >
                     {theme === 'dark' ? <Sun size={22} className="shrink-0" /> : <Moon size={22} className="shrink-0" />}
@@ -175,16 +192,27 @@ const Sidebar: React.FC = () => {
             <ImportModal isOpen={isImportOpen} onClose={() => setIsImportOpen(false)} />
 
             {/* User Profile Section */}
-            <div className="mt-6 flex w-full border-t border-white/10 p-3">
-                <div className="flex w-full items-center rounded-lg px-1 py-2 text-slate-400 transition-colors hover:bg-white/10 hover:text-white cursor-pointer">
-                    <div className="h-9 w-9 shrink-0 rounded-full bg-[#1337ec]/20 flex items-center justify-center border border-[#1337ec]/30 text-[#1337ec]">
-                        <UserCircle2 size={20} />
+            <div className="mt-6 flex flex-col w-full border-t border-[#2d3248] p-3 shadow-inner">
+                <div className="flex w-full items-center rounded-lg px-1 py-1 text-slate-400 transition-colors">
+                    <div className="h-10 w-10 shrink-0 rounded-full bg-gradient-to-br from-[#1337ec] to-blue-400 flex items-center justify-center text-white font-bold tracking-widest shadow-lg shadow-blue-500/20">
+                        {userInitials}
                     </div>
-                    <div className="ml-3 overflow-hidden opacity-0 transition-opacity duration-300 group-hover:opacity-100">
-                        <p className="whitespace-nowrap text-sm font-medium text-white">Alex Rivera</p>
-                        <p className="whitespace-nowrap text-xs text-slate-400">Project Admin</p>
+                    <div className="ml-3 overflow-hidden opacity-0 transition-opacity duration-300 group-hover:opacity-100 flex-1">
+                        <p className="whitespace-nowrap text-sm font-medium text-white leading-tight">{user?.username || 'Usuario'}</p>
+                        <p className="whitespace-nowrap text-xs text-blue-300">{roleText}</p>
                     </div>
                 </div>
+
+                <button
+                    onClick={logout}
+                    className="mt-3 flex h-10 w-full items-center rounded-lg px-2 text-red-400 hover:bg-red-500/10 hover:text-red-300 transition-all duration-200"
+                    title="Cerrar Sesión"
+                >
+                    <LogOut size={20} className="shrink-0" />
+                    <span className="ml-4 overflow-hidden whitespace-nowrap opacity-0 transition-opacity duration-300 group-hover:opacity-100 font-medium text-sm">
+                        Cerrar Sesión
+                    </span>
+                </button>
             </div>
         </aside>
     );

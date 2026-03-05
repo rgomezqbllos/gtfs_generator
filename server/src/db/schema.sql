@@ -1,16 +1,45 @@
+CREATE TABLE IF NOT EXISTS projects (
+    id TEXT PRIMARY KEY,
+    name TEXT NOT NULL,
+    description TEXT,
+    map_center_lat REAL DEFAULT 4.6097, -- Default Bogota
+    map_center_lon REAL DEFAULT -74.0817,
+    routing_engine_url TEXT, -- e.g., http://localhost:8002/route
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS users (
+    id TEXT PRIMARY KEY,
+    username TEXT,
+    email TEXT,
+    last_login DATETIME DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS user_projects (
+    user_id TEXT NOT NULL, -- UUID from Keycloak
+    project_id TEXT NOT NULL,
+    role TEXT DEFAULT 'editor',
+    PRIMARY KEY (user_id, project_id),
+    FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE,
+    FOREIGN KEY(project_id) REFERENCES projects(id) ON DELETE CASCADE
+);
+
 -- GTFS Tables
 CREATE TABLE IF NOT EXISTS agency (
     agency_id TEXT PRIMARY KEY,
+    project_id TEXT NOT NULL,
     agency_name TEXT NOT NULL,
     agency_url TEXT NOT NULL,
     agency_timezone TEXT NOT NULL,
     agency_lang TEXT,
     agency_phone TEXT,
-    agency_email TEXT
+    agency_email TEXT,
+    FOREIGN KEY(project_id) REFERENCES projects(id) ON DELETE CASCADE
 );
 
 CREATE TABLE IF NOT EXISTS stops (
     stop_id TEXT PRIMARY KEY,
+    project_id TEXT NOT NULL,
     stop_code TEXT,
     stop_name TEXT,
     stop_desc TEXT,
@@ -26,11 +55,13 @@ CREATE TABLE IF NOT EXISTS stops (
     platform_code TEXT,
     
     -- Custom fields for "Node" types
-    node_type TEXT -- 'commercial', 'checkpoint', 'operative', etc.
+    node_type TEXT, -- 'commercial', 'checkpoint', 'operative', etc.
+    FOREIGN KEY(project_id) REFERENCES projects(id) ON DELETE CASCADE
 );
 
 CREATE TABLE IF NOT EXISTS routes (
     route_id TEXT PRIMARY KEY,
+    project_id TEXT NOT NULL,
     agency_id TEXT,
     route_short_name TEXT,
     route_long_name TEXT,
@@ -42,7 +73,8 @@ CREATE TABLE IF NOT EXISTS routes (
     route_sort_order INTEGER,
     
     -- Custom fields
-    allowed_materials TEXT -- 'buses', 'trains', etc.
+    allowed_materials TEXT, -- 'buses', 'trains', etc.
+    FOREIGN KEY(project_id) REFERENCES projects(id) ON DELETE CASCADE
 );
 
 CREATE TABLE IF NOT EXISTS trips (
@@ -77,6 +109,7 @@ CREATE TABLE IF NOT EXISTS stop_times (
 
 CREATE TABLE IF NOT EXISTS calendar (
     service_id TEXT PRIMARY KEY,
+    project_id TEXT NOT NULL,
     monday INTEGER NOT NULL,
     tuesday INTEGER NOT NULL,
     wednesday INTEGER NOT NULL,
@@ -85,16 +118,19 @@ CREATE TABLE IF NOT EXISTS calendar (
     saturday INTEGER NOT NULL,
     sunday INTEGER NOT NULL,
     start_date TEXT NOT NULL, -- YYYYMMDD
-    end_date TEXT NOT NULL    -- YYYYMMDD
+    end_date TEXT NOT NULL,    -- YYYYMMDD
+    FOREIGN KEY(project_id) REFERENCES projects(id) ON DELETE CASCADE
 );
 
 CREATE TABLE IF NOT EXISTS shapes (
     shape_id TEXT NOT NULL,
+    project_id TEXT NOT NULL,
     shape_pt_lat REAL NOT NULL,
     shape_pt_lon REAL NOT NULL,
     shape_pt_sequence INTEGER NOT NULL,
     shape_dist_traveled REAL,
-    PRIMARY KEY(shape_id, shape_pt_sequence)
+    PRIMARY KEY(shape_id, shape_pt_sequence, project_id),
+    FOREIGN KEY(project_id) REFERENCES projects(id) ON DELETE CASCADE
 );
 
 -- Custom table for Segments / "Tramos" metadata
@@ -102,6 +138,7 @@ CREATE TABLE IF NOT EXISTS shapes (
 -- A segment can be defined by a start_node and end_node, or associated with a shape.
 CREATE TABLE IF NOT EXISTS segments (
     segment_id TEXT PRIMARY KEY,
+    project_id TEXT NOT NULL,
     start_node_id TEXT NOT NULL,
     end_node_id TEXT NOT NULL,
     distance REAL,
@@ -110,6 +147,7 @@ CREATE TABLE IF NOT EXISTS segments (
     custom_attributes TEXT, -- JSON string for other user-defined props
     geometry TEXT, -- GeoJSON LineString if needed, or reference shapes
     type TEXT DEFAULT 'revenue', -- 'revenue' or 'empty'
+    FOREIGN KEY(project_id) REFERENCES projects(id) ON DELETE CASCADE,
     FOREIGN KEY(start_node_id) REFERENCES stops(stop_id),
     FOREIGN KEY(end_node_id) REFERENCES stops(stop_id)
 );

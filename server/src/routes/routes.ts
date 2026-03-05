@@ -21,13 +21,14 @@ interface RouteBody {
 export default async function routesRoutes(fastify: FastifyInstance) {
 
     // GET all routes
-    fastify.get('/routes', async () => {
+    fastify.get('/routes', async (request: any) => {
         const stmt = db.prepare(`
             SELECT r.*, a.agency_name 
             FROM routes r
             LEFT JOIN agency a ON r.agency_id = a.agency_id
+            WHERE r.project_id = ?
         `);
-        const routes = stmt.all() as any[];
+        const routes = stmt.all(request.projectId) as any[];
 
         // Fetch parkings for each route
         // Could be done with a join/group_concat or individual queries. 
@@ -47,15 +48,15 @@ export default async function routesRoutes(fastify: FastifyInstance) {
     });
 
     // GET route by id
-    fastify.get('/routes/:id', async (request, reply) => {
+    fastify.get('/routes/:id', async (request: any, reply: any) => {
         const { id } = request.params as { id: string };
         const stmt = db.prepare(`
             SELECT r.*, a.agency_name
             FROM routes r
             LEFT JOIN agency a ON r.agency_id = a.agency_id
-            WHERE r.route_id = ?
+            WHERE r.route_id = ? AND r.project_id = ?
         `);
-        const route = stmt.get(id);
+        const route = stmt.get(id, request.projectId);
         if (!route) {
             return reply.code(404).send({ error: 'Route not found' });
         }
@@ -63,23 +64,26 @@ export default async function routesRoutes(fastify: FastifyInstance) {
     });
 
     // GET route structure for filtering - HIGHLY OPTIMIZED
-    fastify.get('/routes/structure', async () => {
+    fastify.get('/routes/structure', async (request: any) => {
         try {
             // 1. Fetch Routes (Lightweight)
             const routes = db.prepare(`
                 SELECT r.route_id, r.route_short_name, r.route_long_name, r.route_color, a.agency_name 
                 FROM routes r
                 LEFT JOIN agency a ON r.agency_id = a.agency_id
-            `).all() as any[];
+                WHERE r.project_id = ?
+            `).all(request.projectId) as any[];
 
             // 2. Fetch Representative Trips ONLY (One per direction per route)
             // We use MIN(trip_id) or similar to pick one. 
             // Ideally we'd pick the "most common" one but for structure visualization, any valid trip works.
             const trips = db.prepare(`
-                SELECT route_id, direction_id, trip_id 
-                FROM trips 
-                GROUP BY route_id, direction_id
-            `).all() as any[];
+                SELECT t.route_id, t.direction_id, t.trip_id 
+                FROM trips t
+                JOIN routes r ON t.route_id = r.route_id
+                WHERE r.project_id = ?
+                GROUP BY t.route_id, t.direction_id
+            `).all(request.projectId) as any[];
 
             // Create a set of trip_ids to fetch stop_times for
             const relevantTripIds = trips.map(t => t.trip_id);
@@ -108,7 +112,7 @@ export default async function routesRoutes(fastify: FastifyInstance) {
                 ORDER BY st.trip_id, st.stop_sequence
             `).all() as any[];
 
-            const segments = db.prepare('SELECT segment_id, start_node_id, end_node_id, distance FROM segments').all() as any[];
+            const segments = db.prepare('SELECT segment_id, start_node_id, end_node_id, distance FROM segments WHERE project_id = ?').all(request.projectId) as any[];
 
             // 4. Data Structures for Fast Lookup
             const tripsByRoute = new Map<string, any[]>();
@@ -179,7 +183,7 @@ export default async function routesRoutes(fastify: FastifyInstance) {
     });
 
     // CREATE route
-    fastify.post('/routes', async (request, reply) => {
+    fastify.post('/routes', async (request: any, reply: any) => {
         const body = request.body as RouteBody;
         const {
             route_short_name, route_long_name, route_type,
@@ -195,15 +199,15 @@ export default async function routesRoutes(fastify: FastifyInstance) {
         let agency_id_to_use = agency_id || null;
 
         if (!agency_id_to_use && agency_name) {
-            const existingAgency = db.prepare('SELECT agency_id FROM agency WHERE agency_name = ?').get(agency_name) as { agency_id: string };
+            const existingAgency = db.prepare('SELECT agency_id FROM agency WHERE agency_name = ? AND project_id = ?').get(agency_name, request.projectId) as { agency_id: string };
             if (existingAgency) {
                 agency_id_to_use = existingAgency.agency_id;
             } else {
                 const newAgencyId = randomUUID();
                 db.prepare(`
-                    INSERT INTO agency (agency_id, agency_name, agency_url, agency_timezone)
-                    VALUES (?, ?, 'http://example.com', 'America/Los_Angeles')
-                 `).run(newAgencyId, agency_name);
+                    INSERT INTO agency (agency_id, project_id, agency_name, agency_url, agency_timezone)
+                    VALUES (?, ?, ?, 'http://example.com', 'America/Los_Angeles')
+                 `).run(newAgencyId, request.projectId, agency_name);
                 agency_id_to_use = newAgencyId;
             }
         }
@@ -211,15 +215,16 @@ export default async function routesRoutes(fastify: FastifyInstance) {
         const insertTransaction = db.transaction(() => {
             const stmt = db.prepare(`
                 INSERT INTO routes (
-                    route_id, route_short_name, route_long_name, route_type, 
+                    route_id, project_id, route_short_name, route_long_name, route_type, 
                     route_color, route_text_color, route_desc, route_url, route_sort_order,
                     allowed_materials, agency_id
                 )
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             `);
 
             stmt.run(
                 route_id,
+                request.projectId,
                 route_short_name || '',
                 route_long_name || '',
                 route_type,
@@ -247,7 +252,7 @@ export default async function routesRoutes(fastify: FastifyInstance) {
     });
 
     // UPDATE route
-    fastify.put('/routes/:id', async (request, reply) => {
+    fastify.put('/routes/:id', async (request: any, reply: any) => {
         const { id } = request.params as { id: string };
         const body = request.body as RouteBody;
         const {
@@ -263,13 +268,13 @@ export default async function routesRoutes(fastify: FastifyInstance) {
             if (agency_id_to_use === null && !agency_name) {
                 // If neither provided, keep existing? Or allow clearing?
                 // Usually existing logic kept it if not provided.
-                const currentRoute = db.prepare('SELECT agency_id FROM routes WHERE route_id = ?').get(id) as { agency_id: string };
+                const currentRoute = db.prepare('SELECT agency_id FROM routes WHERE route_id = ? AND project_id = ?').get(id, request.projectId) as { agency_id: string };
                 if (currentRoute) {
                     agency_id_to_use = currentRoute.agency_id;
                 }
             } else if (!agency_id_to_use && agency_name) {
                 // Check if agency exists logic matching POST...
-                const existingAgency = db.prepare('SELECT agency_id FROM agency WHERE agency_name = ?').get(agency_name) as { agency_id: string };
+                const existingAgency = db.prepare('SELECT agency_id FROM agency WHERE agency_name = ? AND project_id = ?').get(agency_name, request.projectId) as { agency_id: string };
 
                 if (existingAgency) {
                     agency_id_to_use = existingAgency.agency_id;
@@ -278,9 +283,9 @@ export default async function routesRoutes(fastify: FastifyInstance) {
                     const newAgencyId = randomUUID();
                     // Basic insert for agency
                     db.prepare(`
-                        INSERT INTO agency (agency_id, agency_name, agency_url, agency_timezone)
-                        VALUES (?, ?, 'http://example.com', 'America/Los_Angeles')
-                    `).run(newAgencyId, agency_name);
+                        INSERT INTO agency (agency_id, project_id, agency_name, agency_url, agency_timezone)
+                        VALUES (?, ?, ?, 'http://example.com', 'America/Los_Angeles')
+                    `).run(newAgencyId, request.projectId, agency_name);
                     agency_id_to_use = newAgencyId;
                 }
             }
@@ -299,7 +304,7 @@ export default async function routesRoutes(fastify: FastifyInstance) {
                         route_sort_order = COALESCE(?, route_sort_order),
                         allowed_materials = COALESCE(?, allowed_materials),
                         agency_id = ?
-                    WHERE route_id = ?
+                    WHERE route_id = ? AND project_id = ?
                 `);
 
                 stmt.run(
@@ -313,7 +318,8 @@ export default async function routesRoutes(fastify: FastifyInstance) {
                     route_sort_order,
                     allowed_materials,
                     agency_id_to_use,
-                    id
+                    id,
+                    request.projectId
                 );
 
                 // Update Parkings
@@ -344,12 +350,12 @@ export default async function routesRoutes(fastify: FastifyInstance) {
     });
 
     // DELETE route
-    fastify.delete('/routes/:id', async (request, reply) => {
+    fastify.delete('/routes/:id', async (request: any, reply: any) => {
         const { id } = request.params as { id: string };
 
         try {
             // Check if route exists
-            const check = db.prepare('SELECT route_id FROM routes WHERE route_id = ?').get(id);
+            const check = db.prepare('SELECT route_id FROM routes WHERE route_id = ? AND project_id = ?').get(id, request.projectId);
             if (!check) {
                 return reply.code(404).send({ error: 'Route not found' });
             }
@@ -438,9 +444,9 @@ export default async function routesRoutes(fastify: FastifyInstance) {
 
         // 1. Create/Update Trip
         const service_id = 'c_1'; // Default service for now
-        // ensure calendar exists
-        db.prepare(`INSERT OR IGNORE INTO calendar (service_id, monday, tuesday, wednesday, thursday, friday, saturday, sunday, start_date, end_date)
-                  VALUES (?, 1, 1, 1, 1, 1, 1, 1, '20240101', '20241231')`).run(service_id);
+        // ensure calendar exists (note: calendar table also has project_id now)
+        db.prepare(`INSERT OR IGNORE INTO calendar (service_id, project_id, monday, tuesday, wednesday, thursday, friday, saturday, sunday, start_date, end_date)
+                  VALUES (?, ?, 1, 1, 1, 1, 1, 1, 1, '20240101', '20241231')`).run(service_id, request.projectId);
 
         const trip_id = `t_${id}_${direction_id}`;
 
@@ -469,8 +475,8 @@ export default async function routesRoutes(fastify: FastifyInstance) {
         const startStop = getStop.get(ordered_stop_ids[0]) as { stop_lat: number, stop_lon: number };
 
         if (startStop) {
-            db.prepare('INSERT INTO shapes (shape_id, shape_pt_lat, shape_pt_lon, shape_pt_sequence, shape_dist_traveled) VALUES (?, ?, ?, ?, ?)')
-                .run(shape_id, startStop.stop_lat, startStop.stop_lon, shape_sequence++, 0);
+            db.prepare('INSERT INTO shapes (shape_id, project_id, shape_pt_lat, shape_pt_lon, shape_pt_sequence, shape_dist_traveled) VALUES (?, ?, ?, ?, ?, ?)')
+                .run(shape_id, request.projectId, startStop.stop_lat, startStop.stop_lon, shape_sequence++, 0);
         }
 
         // Clear existing stop_times for this trip
@@ -493,9 +499,10 @@ export default async function routesRoutes(fastify: FastifyInstance) {
             // Look for segment in either direction
             let segment = db.prepare(`
                 SELECT * FROM segments 
-                WHERE (start_node_id = ? AND end_node_id = ?)
-                   OR (start_node_id = ? AND end_node_id = ?)
-            `).get(fromId, toId, toId, fromId) as any;
+                WHERE ((start_node_id = ? AND end_node_id = ?)
+                   OR (start_node_id = ? AND end_node_id = ?))
+                  AND project_id = ?
+            `).get(fromId, toId, toId, fromId, request.projectId) as any;
 
             let isReverse = false;
 
@@ -516,9 +523,11 @@ export default async function routesRoutes(fastify: FastifyInstance) {
 
                 try {
                     if (fromNode && toNode) {
+                        const project = db.prepare('SELECT routing_engine_url FROM projects WHERE project_id = ?').get(request.projectId) as any;
                         const routeData = await fetchRoute(
                             [fromNode.stop_lon, fromNode.stop_lat],
-                            [toNode.stop_lon, toNode.stop_lat]
+                            [toNode.stop_lon, toNode.stop_lat],
+                            project?.routing_engine_url
                         );
                         if (routeData) {
                             dist = routeData.distance;
@@ -549,8 +558,8 @@ export default async function routesRoutes(fastify: FastifyInstance) {
                     dist = R * c;
                 }
 
-                db.prepare('INSERT INTO segments (segment_id, start_node_id, end_node_id, distance, travel_time, geometry) VALUES (?, ?, ?, ?, ?, ?)')
-                    .run(segId, fromId, toId, dist, time, geom);
+                db.prepare('INSERT INTO segments (segment_id, project_id, start_node_id, end_node_id, distance, travel_time, geometry) VALUES (?, ?, ?, ?, ?, ?, ?)')
+                    .run(segId, request.projectId, fromId, toId, dist, time, geom);
 
                 segment = { distance: dist, geometry: geom, start_node_id: fromId, end_node_id: toId };
             }
@@ -593,8 +602,8 @@ export default async function routesRoutes(fastify: FastifyInstance) {
 
                             total_dist += segmentStepDist;
 
-                            db.prepare('INSERT INTO shapes (shape_id, shape_pt_lat, shape_pt_lon, shape_pt_sequence, shape_dist_traveled) VALUES (?, ?, ?, ?, ?)')
-                                .run(shape_id, coord[1], coord[0], shape_sequence++, total_dist);
+                            db.prepare('INSERT INTO shapes (shape_id, project_id, shape_pt_lat, shape_pt_lon, shape_pt_sequence, shape_dist_traveled) VALUES (?, ?, ?, ?, ?, ?)')
+                                .run(shape_id, request.projectId, coord[1], coord[0], shape_sequence++, total_dist);
                         }
                     }
                 } catch (e) {
@@ -624,8 +633,8 @@ export default async function routesRoutes(fastify: FastifyInstance) {
                 total_dist += straightDist;
 
                 if (toStop) {
-                    db.prepare('INSERT INTO shapes (shape_id, shape_pt_lat, shape_pt_lon, shape_pt_sequence, shape_dist_traveled) VALUES (?, ?, ?, ?, ?)')
-                        .run(shape_id, toStop.stop_lat, toStop.stop_lon, shape_sequence++, total_dist);
+                    db.prepare('INSERT INTO shapes (shape_id, project_id, shape_pt_lat, shape_pt_lon, shape_pt_sequence, shape_dist_traveled) VALUES (?, ?, ?, ?, ?, ?)')
+                        .run(shape_id, request.projectId, toStop.stop_lat, toStop.stop_lon, shape_sequence++, total_dist);
                 }
             }
 

@@ -5,6 +5,8 @@ import ConfirmModal from './ConfirmModal';
 import AgencyManager from './AgencyManager';
 import MapManager from './MapManager';
 import { useSettings } from '../context/SettingsContext';
+import { useEditor } from '../context/EditorContext';
+import { useAuth } from '../context/AuthContext';
 import { clsx } from 'clsx';
 
 interface SettingsPanelProps {
@@ -23,6 +25,10 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({ onClose, currentViewState
     const [activeTab, setActiveTab] = useState<'general' | 'agency' | 'map'>('general');
     const [showResetConfirm, setShowResetConfirm] = useState(false);
     const [isResetting, setIsResetting] = useState(false);
+
+    const { setActivePanel } = useEditor();
+    const { user } = useAuth();
+    const isAdmin = user?.roles?.includes('admin');
 
     // General Settings State
     const [cityName, setCityName] = useState(defaultLocation.cityName);
@@ -269,6 +275,26 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({ onClose, currentViewState
                                 </div>
                             </div>
                         </div>
+
+                        {/* Admin Linking */}
+                        {isAdmin && (
+                            <div>
+                                <h3 className="text-sm font-bold text-gray-900 dark:text-white uppercase tracking-wider mb-4 flex items-center gap-2">
+                                    ⚙️ Advanced Actions
+                                </h3>
+                                <div className="bg-blue-50 dark:bg-blue-900/10 border border-blue-100 dark:border-blue-900/50 rounded-xl p-4">
+                                    <p className="text-xs text-blue-600/80 dark:text-blue-400/80 mb-3 leading-relaxed">
+                                        Manage User limits, create new accounts and control GTFS Project assignment.
+                                    </p>
+                                    <button
+                                        onClick={() => setActivePanel('admin_panel')}
+                                        className="w-full py-2 bg-blue-600 text-white font-bold rounded-lg hover:bg-blue-700 transition-colors text-sm flex items-center justify-center gap-2"
+                                    >
+                                        Go to Admin Panel
+                                    </button>
+                                </div>
+                            </div>
+                        )}
 
                         {/* Danger Zone */}
                         <div>

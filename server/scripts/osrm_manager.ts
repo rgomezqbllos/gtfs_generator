@@ -16,7 +16,9 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 const isDist = __dirname.includes('dist');
-const DATA_DIR = path.resolve(__dirname, isDist ? '../../../osrm-data' : '../../osrm-data');
+const IN_DOCKER = !!process.env.HOST_PROJECT_PATH;
+const HOST_PROJECT_PATH = process.env.HOST_PROJECT_PATH || path.resolve(__dirname, isDist ? '../../../' : '../../');
+const DATA_DIR = IN_DOCKER ? '/data' : path.join(HOST_PROJECT_PATH, 'gtfs_data');
 const CONTAINER_NAME = 'gtfs-osrm-server';
 const PORT = 5001;
 
@@ -234,8 +236,11 @@ ${Object.keys(REGIONS).map(k => ` - ${k}`).join('\n')}
     console.log('--- Processing Map Data (This uses Docker) ---');
 
     // Using absolute path for volume mount
-    const volume = `${DATA_DIR}:/data`;
-    const profilesVolume = `${path.join(__dirname, 'osrm-profiles')}:/profiles`;
+    const hostDataParam = IN_DOCKER ? `${HOST_PROJECT_PATH}/gtfs_data` : DATA_DIR;
+    const volume = `${hostDataParam}:/data`;
+
+    const hostProfilesParam = IN_DOCKER ? `${HOST_PROJECT_PATH}/server/scripts/osrm-profiles` : path.join(__dirname, 'osrm-profiles');
+    const profilesVolume = `${hostProfilesParam}:/profiles`;
     const edgesPath = path.join(DATA_DIR, `${osrmName}.osrm.edges`);
 
     if (fs.existsSync(osrmPath) && !fs.existsSync(edgesPath)) {

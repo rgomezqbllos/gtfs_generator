@@ -10,7 +10,9 @@ import { URL } from 'url';
 const execAsync = promisify(exec);
 
 // Configuration
-const DATA_DIR = path.resolve(__dirname, '../../../osrm-data');
+const IN_DOCKER = !!process.env.HOST_PROJECT_PATH;
+const HOST_PROJECT_PATH = process.env.HOST_PROJECT_PATH || path.resolve(__dirname, '../../../');
+const DATA_DIR = IN_DOCKER ? '/data' : path.join(HOST_PROJECT_PATH, 'gtfs_data');
 console.log('OSRM SERVICE: Resolved DATA_DIR:', DATA_DIR);
 
 // ... (inside class)
@@ -304,9 +306,12 @@ class OsrmService {
             const osrmName = filename.replace('.osm.pbf', '');
             const osrmPath = path.join(DATA_DIR, `${osrmName}.osrm`);
             const edgesPath = path.join(DATA_DIR, `${osrmName}.osrm.edges`);
-            const volume = `${DATA_DIR.replace(/\\/g, '/')}:/data`;
-            const scriptDir = path.resolve(__dirname, '../../scripts');
-            const profilesVolume = `${path.join(scriptDir, 'osrm-profiles').replace(/\\/g, '/')}:/profiles`;
+
+            const hostDataParam = IN_DOCKER ? `${HOST_PROJECT_PATH}/gtfs_data` : DATA_DIR.replace(/\\/g, '/');
+            const volume = `${hostDataParam}:/data`;
+
+            const hostProfilesParam = IN_DOCKER ? `${HOST_PROJECT_PATH}/server/scripts/osrm-profiles` : path.join(HOST_PROJECT_PATH, 'server/scripts/osrm-profiles').replace(/\\/g, '/');
+            const profilesVolume = `${hostProfilesParam}:/profiles`;
 
             // Detect and clean corrupt data
             if (fs.existsSync(osrmPath) && !fs.existsSync(edgesPath)) {

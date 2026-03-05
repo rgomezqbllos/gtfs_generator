@@ -15,16 +15,16 @@ interface StopBody {
 export default async function stopsRoutes(fastify: FastifyInstance) {
 
     // GET all stops
-    fastify.get('/stops', async () => {
-        const stmt = db.prepare('SELECT * FROM stops');
-        return stmt.all();
+    fastify.get('/stops', async (request: any) => {
+        const stmt = db.prepare('SELECT * FROM stops WHERE project_id = ?');
+        return stmt.all(request.projectId);
     });
 
     // GET stop by id
-    fastify.get('/stops/:id', async (request, reply) => {
+    fastify.get('/stops/:id', async (request: any, reply: any) => {
         const { id } = request.params as { id: string };
-        const stmt = db.prepare('SELECT * FROM stops WHERE stop_id = ?');
-        const stop = stmt.get(id);
+        const stmt = db.prepare('SELECT * FROM stops WHERE stop_id = ? AND project_id = ?');
+        const stop = stmt.get(id, request.projectId);
         if (!stop) {
             return reply.code(404).send({ error: 'Stop not found' });
         }
@@ -32,7 +32,7 @@ export default async function stopsRoutes(fastify: FastifyInstance) {
     });
 
     // CREATE stop
-    fastify.post('/stops', async (request, reply) => {
+    fastify.post('/stops', async (request: any, reply: any) => {
         console.log('Received POST /stops request');
         const body = request.body as StopBody;
         console.log('Body:', body);
@@ -53,11 +53,11 @@ export default async function stopsRoutes(fastify: FastifyInstance) {
 
         try {
             const stmt = db.prepare(`
-          INSERT INTO stops (stop_id, stop_code, stop_name, stop_lat, stop_lon, node_type, location_type)
-          VALUES (?, ?, ?, ?, ?, ?, ?)
+          INSERT INTO stops (stop_id, project_id, stop_code, stop_name, stop_lat, stop_lon, node_type, location_type)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?)
         `);
 
-            stmt.run(stop_id, stop_code, stop_name, stop_lat, stop_lon, node_type || 'regular', location_type || 0);
+            stmt.run(stop_id, request.projectId, stop_code, stop_name, stop_lat, stop_lon, node_type || 'regular', location_type || 0);
 
             console.log('Stop created successfully:', stop_id);
             return { stop_id, stop_code, ...body };
@@ -68,13 +68,13 @@ export default async function stopsRoutes(fastify: FastifyInstance) {
     });
 
     // UPDATE stop
-    fastify.put('/stops/:id', async (request, reply) => {
+    fastify.put('/stops/:id', async (request: any, reply: any) => {
         const { id } = request.params as { id: string };
         const body = request.body as Partial<StopBody>;
 
         // Check if exists
-        const check = db.prepare('SELECT stop_id, stop_lat, stop_lon FROM stops WHERE stop_id = ?').get(id) as { stop_id: string, stop_lat: number, stop_lon: number };
-        if (!check) return reply.code(404).send({ error: 'Stop not found' });
+        const check = db.prepare('SELECT stop_id, stop_lat, stop_lon FROM stops WHERE stop_id = ? AND project_id = ?').get(id, request.projectId) as { stop_id: string, stop_lat: number, stop_lon: number };
+        if (!check) return reply.code(404).send({ error: 'Stop not found in this project' });
 
         const fields = [];
         const values = [];
@@ -88,8 +88,8 @@ export default async function stopsRoutes(fastify: FastifyInstance) {
 
         if (fields.length === 0) return reply.send({ message: 'No changes' });
 
-        values.push(id);
-        const stmt = db.prepare(`UPDATE stops SET ${fields.join(', ')} WHERE stop_id = ?`);
+        values.push(id, request.projectId);
+        const stmt = db.prepare(`UPDATE stops SET ${fields.join(', ')} WHERE stop_id = ? AND project_id = ?`);
         stmt.run(...values);
 
 
@@ -108,8 +108,8 @@ export default async function stopsRoutes(fastify: FastifyInstance) {
                 FROM segments s
                 JOIN stops start ON s.start_node_id = start.stop_id
                 JOIN stops end ON s.end_node_id = end.stop_id
-                WHERE s.start_node_id = ? OR s.end_node_id = ?
-             `).all(id, id) as any[];
+                WHERE (s.start_node_id = ? OR s.end_node_id = ?) AND s.project_id = ?
+             `).all(id, id, request.projectId) as any[];
 
             console.log(`Stop ${id} moved. Recalculating ${connectedSegments.length} segments...`);
 
@@ -131,7 +131,8 @@ export default async function stopsRoutes(fastify: FastifyInstance) {
                 }
 
                 try {
-                    const routeData = await fetchRoute(startCoords, endCoords);
+                    const project = db.prepare('SELECT routing_engine_url FROM projects WHERE project_id = ?').get(request.projectId) as any;
+                    const routeData = await fetchRoute(startCoords, endCoords, project?.routing_engine_url);
                     if (routeData) {
                         const updateStmt = db.prepare(`
                             UPDATE segments 
@@ -151,22 +152,22 @@ export default async function stopsRoutes(fastify: FastifyInstance) {
     });
 
     // DELETE stop
-    fastify.delete('/stops/:id', async (request, reply) => {
+    fastify.delete('/stops/:id', async (request: any, reply: any) => {
         const { id } = request.params as { id: string };
 
         // Check dependencies
-        const segmentsDeps = db.prepare('SELECT count(*) as count FROM segments WHERE start_node_id = ? OR end_node_id = ?').get(id, id) as { count: number };
+        const segmentsDeps = db.prepare('SELECT count(*) as count FROM segments WHERE (start_node_id = ? OR end_node_id = ?) AND project_id = ?').get(id, id, request.projectId) as { count: number };
         if (segmentsDeps.count > 0) {
             return reply.code(409).send({ error: `Cannot delete stop: used in ${segmentsDeps.count} segments.` });
         }
 
-        const stopTimesDeps = db.prepare('SELECT count(*) as count FROM stop_times WHERE stop_id = ?').get(id) as { count: number };
+        const stopTimesDeps = db.prepare('SELECT count(*) as count FROM stop_times st JOIN trips t ON st.trip_id = t.trip_id JOIN routes r ON t.route_id = r.route_id WHERE st.stop_id = ? AND r.project_id = ?').get(id, request.projectId) as { count: number };
         if (stopTimesDeps.count > 0) {
             return reply.code(409).send({ error: `Cannot delete stop: used in ${stopTimesDeps.count} trips (stop_times).` });
         }
 
-        const stmt = db.prepare('DELETE FROM stops WHERE stop_id = ?');
-        const result = stmt.run(id);
+        const stmt = db.prepare('DELETE FROM stops WHERE stop_id = ? AND project_id = ?');
+        const result = stmt.run(id, request.projectId);
 
         if (result.changes === 0) {
             return reply.code(404).send({ error: 'Stop not found' });

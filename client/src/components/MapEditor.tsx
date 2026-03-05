@@ -22,12 +22,15 @@ import ExternalLoadPanel from './ExternalLoadPanel';
 import { SimulationPanel } from './SimulationPanel';
 import StopsCatalog from './StopsCatalog';
 import SegmentsCatalog from './SegmentsCatalog';
+import { AdminPanel } from './AdminPanel';
+import { useAuth } from '../context/AuthContext';
 
 import { API_URL } from '../config';
 
 const MapEditor: React.FC = () => {
     const { mode, setMode, selectedElementId, selectedElementType, selectElement, clearSelection, activePanel, setActivePanel, pickingState } = useEditor();
     const { defaultLocation } = useSettings();
+    const { activeProject } = useAuth();
 
     const { theme } = useTheme();
 
@@ -52,10 +55,20 @@ const MapEditor: React.FC = () => {
     const [loading, setLoading] = React.useState(false);
 
     const [viewState, setViewState] = React.useState({
-        longitude: defaultLocation.longitude,
-        latitude: defaultLocation.latitude,
+        longitude: activeProject?.map_center_lon || defaultLocation.longitude,
+        latitude: activeProject?.map_center_lat || defaultLocation.latitude,
         zoom: defaultLocation.zoom
     });
+
+    React.useEffect(() => {
+        if (activeProject) {
+            setViewState(prev => ({
+                ...prev,
+                longitude: activeProject.map_center_lon,
+                latitude: activeProject.map_center_lat
+            }));
+        }
+    }, [activeProject]);
 
     // Dark Mode Map Style (CSS Filter)
     const mapContainerStyle = React.useMemo(() => {
@@ -912,6 +925,18 @@ const MapEditor: React.FC = () => {
                         setMode('add_segment');
                     }}
                 />
+            )}
+
+            {activePanel === 'admin_panel' && (
+                <div className="absolute inset-0 z-50 flex">
+                    <AdminPanel />
+                    <button
+                        onClick={() => setActivePanel('none')}
+                        className="absolute top-4 right-4 bg-red-600 hover:bg-red-500 text-white rounded p-2"
+                    >
+                        Cerrar Panel
+                    </button>
+                </div>
             )}
 
             {activePanel === 'settings' && (

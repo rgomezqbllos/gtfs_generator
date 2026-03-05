@@ -3,6 +3,7 @@ import { createRoot } from 'react-dom/client';
 import './index.css';
 import App from './App';
 import { SettingsProvider } from './context/SettingsContext';
+import { AuthProvider } from './context/AuthContext';
 import ErrorBoundary from './components/ErrorBoundary';
 
 // console.log("Main.tsx executing...");
@@ -14,7 +15,9 @@ createRoot(rootElement).render(
   <StrictMode>
     <SettingsProvider>
       <ErrorBoundary>
-        <App />
+        <AuthProvider>
+          <App />
+        </AuthProvider>
       </ErrorBoundary>
     </SettingsProvider>
   </StrictMode>

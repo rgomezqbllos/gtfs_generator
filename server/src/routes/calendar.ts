@@ -18,9 +18,9 @@ interface Calendar {
 export default async function calendarRoutes(server: FastifyInstance) {
 
     // GET /calendar - List all
-    server.get('/calendar', async (request, reply) => {
+    server.get('/calendar', async (request: any, reply: any) => {
         try {
-            const calendars = db.prepare('SELECT * FROM calendar ORDER BY service_id').all();
+            const calendars = db.prepare('SELECT * FROM calendar WHERE project_id = ? ORDER BY service_id').all(request.projectId);
             return calendars;
         } catch (err) {
             server.log.error(err);
@@ -29,7 +29,7 @@ export default async function calendarRoutes(server: FastifyInstance) {
     });
 
     // POST /calendar - Create new
-    server.post<{ Body: Calendar }>('/calendar', async (request, reply) => {
+    server.post<{ Body: Calendar }>('/calendar', async (request: any, reply: any) => {
         const { service_id, monday, tuesday, wednesday, thursday, friday, saturday, sunday, start_date, end_date } = request.body;
 
         if (!service_id || !start_date || !end_date) {
@@ -38,10 +38,10 @@ export default async function calendarRoutes(server: FastifyInstance) {
 
         try {
             const stmt = db.prepare(`
-                INSERT INTO calendar (service_id, monday, tuesday, wednesday, thursday, friday, saturday, sunday, start_date, end_date)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                INSERT INTO calendar (service_id, project_id, monday, tuesday, wednesday, thursday, friday, saturday, sunday, start_date, end_date)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             `);
-            stmt.run(service_id, monday, tuesday, wednesday, thursday, friday, saturday, sunday, start_date, end_date);
+            stmt.run(service_id, request.projectId, monday, tuesday, wednesday, thursday, friday, saturday, sunday, start_date, end_date);
             return { message: 'Calendar created', service_id };
         } catch (err: any) {
             if (err.code === 'SQLITE_CONSTRAINT_PRIMARYKEY') {
@@ -53,14 +53,14 @@ export default async function calendarRoutes(server: FastifyInstance) {
     });
 
     // PUT /calendar/:service_id - Update
-    server.put<{ Params: { service_id: string }, Body: Calendar }>('/calendar/:service_id', async (request, reply) => {
+    server.put<{ Params: { service_id: string }, Body: Calendar }>('/calendar/:service_id', async (request: any, reply: any) => {
         const { service_id: old_service_id } = request.params;
         const { service_id: new_service_id, monday, tuesday, wednesday, thursday, friday, saturday, sunday, start_date, end_date } = request.body;
 
         try {
             // If renaming, check if new ID exists
             if (new_service_id !== old_service_id) {
-                const existing = db.prepare('SELECT service_id FROM calendar WHERE service_id = ?').get(new_service_id);
+                const existing = db.prepare('SELECT service_id FROM calendar WHERE service_id = ? AND project_id = ?').get(new_service_id, request.projectId);
                 if (existing) {
                     return reply.status(409).send({ error: 'New Service ID already exists' });
                 }
@@ -71,9 +71,9 @@ export default async function calendarRoutes(server: FastifyInstance) {
                 const stmt = db.prepare(`
                     UPDATE calendar 
                     SET service_id = ?, monday = ?, tuesday = ?, wednesday = ?, thursday = ?, friday = ?, saturday = ?, sunday = ?, start_date = ?, end_date = ?
-                    WHERE service_id = ?
+                    WHERE service_id = ? AND project_id = ?
                 `);
-                const info = stmt.run(new_service_id, monday, tuesday, wednesday, thursday, friday, saturday, sunday, start_date, end_date, old_service_id);
+                const info = stmt.run(new_service_id, monday, tuesday, wednesday, thursday, friday, saturday, sunday, start_date, end_date, old_service_id, request.projectId);
 
                 if (info.changes === 0) {
                     throw new Error('Calendar not found');
@@ -97,13 +97,13 @@ export default async function calendarRoutes(server: FastifyInstance) {
     });
 
     // DELETE /calendar/:service_id - Delete
-    server.delete<{ Params: { service_id: string } }>('/calendar/:service_id', async (request, reply) => {
+    server.delete<{ Params: { service_id: string } }>('/calendar/:service_id', async (request: any, reply: any) => {
         const { service_id } = request.params;
         try {
             // Check for dependencies in trips table? For now, just delete.
             // Ideally we should alert if used, but simple delete for now.
-            const stmt = db.prepare('DELETE FROM calendar WHERE service_id = ?');
-            const info = stmt.run(service_id);
+            const stmt = db.prepare('DELETE FROM calendar WHERE service_id = ? AND project_id = ?');
+            const info = stmt.run(service_id, request.projectId);
 
             if (info.changes === 0) {
                 return reply.status(404).send({ error: 'Calendar not found' });

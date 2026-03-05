@@ -1,6 +1,6 @@
 import { FastifyInstance } from 'fastify';
 import db from '../db';
-import { v4 as uuidv4 } from 'uuid';
+import { randomUUID as uuidv4 } from 'crypto';
 
 interface AgencyBody {
     agency_id?: string;

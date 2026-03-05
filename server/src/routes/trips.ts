@@ -23,13 +23,13 @@ interface StopTime {
 export default async function tripsRoutes(server: FastifyInstance) {
 
     // GET /routes/:route_id/trips - Fetch all trips + stop_times for a route
-    server.get<{ Params: { route_id: string }, Querystring: { direction_id?: number } }>('/routes/:route_id/trips', async (request, reply) => {
+    server.get<{ Params: { route_id: string }, Querystring: { direction_id?: number } }>('/routes/:route_id/trips', async (request: any, reply: any) => {
         const { route_id } = request.params;
         const { direction_id } = request.query;
 
         try {
-            let sql = 'SELECT * FROM trips WHERE route_id = ?';
-            const params: any[] = [route_id];
+            let sql = 'SELECT * FROM trips WHERE route_id = ? AND route_id IN (SELECT route_id FROM routes WHERE project_id = ?)';
+            const params: any[] = [route_id, request.projectId];
 
             if (direction_id !== undefined) {
                 sql += ' AND direction_id = ?';
@@ -60,7 +60,7 @@ export default async function tripsRoutes(server: FastifyInstance) {
     });
 
     // POST /routes/:route_id/trips - Create a new trip
-    server.post<{ Params: { route_id: string }, Body: Partial<Trip> }>('/routes/:route_id/trips', async (request, reply) => {
+    server.post<{ Params: { route_id: string }, Body: Partial<Trip> }>('/routes/:route_id/trips', async (request: any, reply: any) => {
         const { route_id } = request.params;
         const { service_id, trip_headsign, direction_id, block_id, shape_id, trip_id } = request.body;
 
@@ -71,6 +71,10 @@ export default async function tripsRoutes(server: FastifyInstance) {
         const newTripId = trip_id || randomUUID();
 
         try {
+            // Check if route exists in project
+            const check = db.prepare('SELECT route_id FROM routes WHERE route_id = ? AND project_id = ?').get(route_id, request.projectId);
+            if (!check) return reply.status(404).send({ error: 'Route not found in project' });
+
             const stmt = db.prepare(`
                 INSERT INTO trips (trip_id, route_id, service_id, trip_headsign, direction_id, block_id, shape_id)
                 VALUES (?, ?, ?, ?, ?, ?, ?)
@@ -84,7 +88,7 @@ export default async function tripsRoutes(server: FastifyInstance) {
     });
 
     // PUT /trips/:trip_id - Update trip details
-    server.put<{ Params: { trip_id: string }, Body: Partial<Trip> }>('/trips/:trip_id', async (request, reply) => {
+    server.put<{ Params: { trip_id: string }, Body: Partial<Trip> }>('/trips/:trip_id', async (request: any, reply: any) => {
         const { trip_id } = request.params;
         const { service_id, trip_headsign, shape_id } = request.body;
 
@@ -98,8 +102,8 @@ export default async function tripsRoutes(server: FastifyInstance) {
 
             if (updates.length === 0) return { message: 'No changes' };
 
-            params.push(trip_id);
-            const sql = `UPDATE trips SET ${updates.join(', ')} WHERE trip_id = ?`;
+            params.push(trip_id, request.projectId);
+            const sql = `UPDATE trips SET ${updates.join(', ')} WHERE trip_id = ? AND route_id IN (SELECT route_id FROM routes WHERE project_id = ?)`;
 
             db.prepare(sql).run(...params);
             return { message: 'Trip updated' };
@@ -112,13 +116,16 @@ export default async function tripsRoutes(server: FastifyInstance) {
     // POST /trips/:trip_id/stop_times - Save stop times for a trip
     // This expects a full list of stop times for the trip to replace existing ones, or upsert.
     // For simplicity, we'll delete existing and insert new ones (full replace) for that trip.
-    server.post<{ Params: { trip_id: string }, Body: { stop_times: StopTime[] } }>('/trips/:trip_id/stop_times', async (request, reply) => {
+    server.post<{ Params: { trip_id: string }, Body: { stop_times: StopTime[] } }>('/trips/:trip_id/stop_times', async (request: any, reply: any) => {
         const { trip_id } = request.params;
         const { stop_times } = request.body;
 
         if (!Array.isArray(stop_times)) {
             return reply.status(400).send({ error: 'stop_times must be an array' });
         }
+
+        const check = db.prepare('SELECT trip_id FROM trips t JOIN routes r ON t.route_id = r.route_id WHERE t.trip_id = ? AND r.project_id = ?').get(trip_id, request.projectId);
+        if (!check) return reply.status(404).send({ error: 'Trip not found in project' });
 
         const insertStmt = db.prepare(`
             INSERT INTO stop_times (trip_id, stop_id, stop_sequence, arrival_time, departure_time, shape_dist_traveled)
@@ -144,9 +151,13 @@ export default async function tripsRoutes(server: FastifyInstance) {
     });
 
     // DELETE /trips/:trip_id
-    server.delete<{ Params: { trip_id: string } }>('/trips/:trip_id', async (request, reply) => {
+    server.delete<{ Params: { trip_id: string } }>('/trips/:trip_id', async (request: any, reply: any) => {
         const { trip_id } = request.params;
+
         try {
+            const check = db.prepare('SELECT trip_id FROM trips t JOIN routes r ON t.route_id = r.route_id WHERE t.trip_id = ? AND r.project_id = ?').get(trip_id, request.projectId);
+            if (!check) return reply.status(404).send({ error: 'Trip not found in project' });
+
             db.prepare('DELETE FROM stop_times WHERE trip_id = ?').run(trip_id);
             db.prepare('DELETE FROM trips WHERE trip_id = ?').run(trip_id);
             return { message: 'Trip deleted' };

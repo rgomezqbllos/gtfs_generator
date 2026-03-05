@@ -6,6 +6,47 @@ services:
       - "3001:3001"
     volumes:
       - ./gtfs_data:/data
+      - /var/run/docker.sock:/var/run/docker.sock
     environment:
+      - HOST_PROJECT_PATH=${PWD:-/Volumes/ssd_256/Proyectos/gtfs_generator}
       - PORT=3001
       - DB_PATH=/data/gtfs.db
+      - KEYCLOAK_URL=http://keycloak:8080
+      - KEYCLOAK_ADMIN=superadmin
+      - KEYCLOAK_ADMIN_PASSWORD=superadmin
+
+  keycloak:
+    image: quay.io/keycloak/keycloak:26.1.1
+    command: start-dev --import-realm
+    environment:
+      KC_DB: postgres
+      KC_DB_URL: jdbc:postgresql://postgres:5432/keycloak
+      KC_DB_USERNAME: keycloak
+      KC_DB_PASSWORD: password
+      KEYCLOAK_ADMIN: superadmin
+      KEYCLOAK_ADMIN_PASSWORD: superadmin
+      KC_HEALTH_ENABLED: 'true'
+      KC_METRICS_ENABLED: 'true'
+      KC_HTTP_PORT: 8080
+    volumes:
+      - ./import:/opt/keycloak/data/import
+    ports:
+      - "8080:8080"
+    depends_on:
+      - postgres
+    networks:
+      - default
+
+  postgres:
+    image: postgres:15
+    environment:
+      POSTGRES_DB: keycloak
+      POSTGRES_USER: keycloak
+      POSTGRES_PASSWORD: password
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    networks:
+      - default
+
+volumes:
+  postgres_data:

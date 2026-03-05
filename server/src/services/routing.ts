@@ -6,8 +6,8 @@ const agent = new https.Agent({
     rejectUnauthorized: false
 });
 
-export async function fetchRoute(start: [number, number], end: [number, number]) {
-    const OSRM_API = process.env.OSRM_API_URL || 'https://router.project-osrm.org/route/v1/driving';
+export async function fetchRoute(start: [number, number], end: [number, number], routingUrl?: string) {
+    const OSRM_API = routingUrl || process.env.OSRM_API_URL || 'https://router.project-osrm.org/route/v1/driving';
     try {
         const url = `${OSRM_API}/${start[0]},${start[1]};${end[0]},${end[1]}?overview=full&geometries=geojson`;
         console.log(`Fetching OSRM route URL: ${url}`);

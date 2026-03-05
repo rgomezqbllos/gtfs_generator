@@ -15,7 +15,7 @@ interface SegmentBody {
 export default async function segmentsRoutes(fastify: FastifyInstance) {
 
     // GET all segments
-    fastify.get('/segments', async (request) => {
+    fastify.get('/segments', async (request: any) => {
         const { type } = request.query as { type?: string };
         let query = `
       SELECT s.*, 
@@ -24,10 +24,11 @@ export default async function segmentsRoutes(fastify: FastifyInstance) {
       FROM segments s
       JOIN stops start ON s.start_node_id = start.stop_id
       JOIN stops end ON s.end_node_id = end.stop_id
+      WHERE s.project_id = ?
     `;
-        const params: string[] = [];
+        const params: string[] = [request.projectId];
         if (type) {
-            query += ' WHERE s.type = ?';
+            query += ' AND s.type = ?';
             params.push(type);
         }
 
@@ -36,7 +37,7 @@ export default async function segmentsRoutes(fastify: FastifyInstance) {
     });
 
     // CREATE segment
-    fastify.post('/segments', async (request, reply) => {
+    fastify.post('/segments', async (request: any, reply: any) => {
         const body = request.body as SegmentBody & { type?: string };
         const { start_node_id, end_node_id, allowed_transport_modes, custom_attributes, type } = body;
 
@@ -45,8 +46,8 @@ export default async function segmentsRoutes(fastify: FastifyInstance) {
         }
 
         // Check if nodes exist
-        const checkStmt = db.prepare('SELECT stop_id, stop_lat, stop_lon FROM stops WHERE stop_id IN (?, ?)');
-        const nodes = checkStmt.all(start_node_id, end_node_id) as { stop_id: string, stop_lat: number, stop_lon: number }[];
+        const checkStmt = db.prepare('SELECT stop_id, stop_lat, stop_lon FROM stops WHERE stop_id IN (?, ?) AND project_id = ?');
+        const nodes = checkStmt.all(start_node_id, end_node_id, request.projectId) as { stop_id: string, stop_lat: number, stop_lon: number }[];
 
         if (nodes.length < 2 && start_node_id !== end_node_id) {
             return reply.code(400).send({ error: 'One or both nodes do not exist' });
@@ -61,9 +62,11 @@ export default async function segmentsRoutes(fastify: FastifyInstance) {
         let geometry = null;
 
         try {
+            const project = db.prepare('SELECT routing_engine_url FROM projects WHERE project_id = ?').get(request.projectId) as any;
             const routeData = await fetchRoute(
                 [startNode.stop_lon, startNode.stop_lat],
-                [endNode.stop_lon, endNode.stop_lat]
+                [endNode.stop_lon, endNode.stop_lat],
+                project?.routing_engine_url
             );
 
             if (routeData) {
@@ -100,12 +103,13 @@ export default async function segmentsRoutes(fastify: FastifyInstance) {
         const segmentType = type || 'revenue';
 
         const stmt = db.prepare(`
-          INSERT INTO segments (segment_id, start_node_id, end_node_id, distance, travel_time, allowed_transport_modes, custom_attributes, geometry, type)
-          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+          INSERT INTO segments (segment_id, project_id, start_node_id, end_node_id, distance, travel_time, allowed_transport_modes, custom_attributes, geometry, type)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         `);
 
         stmt.run(
             segment_id,
+            request.projectId,
             start_node_id,
             end_node_id,
             distance,
@@ -120,13 +124,13 @@ export default async function segmentsRoutes(fastify: FastifyInstance) {
     });
 
     // UPDATE segment
-    fastify.put('/segments/:id', async (request, reply) => {
+    fastify.put('/segments/:id', async (request: any, reply: any) => {
         const { id } = request.params as { id: string };
         const body = request.body as Partial<SegmentBody>;
 
         // Check if exists
-        const check = db.prepare('SELECT segment_id FROM segments WHERE segment_id = ?').get(id);
-        if (!check) return reply.code(404).send({ error: 'Segment not found' });
+        const check = db.prepare('SELECT segment_id FROM segments WHERE segment_id = ? AND project_id = ?').get(id, request.projectId);
+        if (!check) return reply.code(404).send({ error: 'Segment not found in project' });
 
         const fields = [];
         const values = [];
@@ -138,18 +142,18 @@ export default async function segmentsRoutes(fastify: FastifyInstance) {
 
         if (fields.length === 0) return reply.send({ message: 'No changes' });
 
-        values.push(id);
-        const stmt = db.prepare(`UPDATE segments SET ${fields.join(', ')} WHERE segment_id = ?`);
+        values.push(id, request.projectId);
+        const stmt = db.prepare(`UPDATE segments SET ${fields.join(', ')} WHERE segment_id = ? AND project_id = ?`);
         stmt.run(...values);
 
         return { message: 'Segment updated' };
     });
 
     // DELETE segment
-    fastify.delete('/segments/:id', async (request, reply) => {
+    fastify.delete('/segments/:id', async (request: any, reply: any) => {
         const { id } = request.params as { id: string };
 
-        const segment = db.prepare('SELECT start_node_id, end_node_id FROM segments WHERE segment_id = ?').get(id) as { start_node_id: string, end_node_id: string };
+        const segment = db.prepare('SELECT start_node_id, end_node_id FROM segments WHERE segment_id = ? AND project_id = ?').get(id, request.projectId) as { start_node_id: string, end_node_id: string };
 
         if (!segment) {
             return reply.code(404).send({ error: 'Segment not found' });
@@ -173,8 +177,8 @@ export default async function segmentsRoutes(fastify: FastifyInstance) {
             return reply.code(409).send({ error: `Cannot delete segment: used in ${usageCheck.count} trip path(s). Delete the Route first.` });
         }
 
-        const stmt = db.prepare('DELETE FROM segments WHERE segment_id = ?');
-        const result = stmt.run(id);
+        const stmt = db.prepare('DELETE FROM segments WHERE segment_id = ? AND project_id = ?');
+        const result = stmt.run(id, request.projectId);
 
         return { message: 'Segment deleted' };
     });
