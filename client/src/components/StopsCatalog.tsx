@@ -10,9 +10,10 @@ interface StopsCatalogProps {
     onClose: () => void;
     onUpdateStop: (stop: Stop) => void;
     onAddOnMap: () => void;
+    onDataChange?: () => void;
 }
 
-export default function StopsCatalog({ onClose, onUpdateStop, onAddOnMap }: StopsCatalogProps) {
+export default function StopsCatalog({ onClose, onUpdateStop, onAddOnMap, onDataChange }: StopsCatalogProps) {
     const [stops, setStops] = useState<Stop[]>([]);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
@@ -59,6 +60,7 @@ export default function StopsCatalog({ onClose, onUpdateStop, onAddOnMap }: Stop
             // Success
             setStops(prev => prev.filter(s => s.stop_id !== stopToDelete.stop_id));
             setStopToDelete(null);
+            if (onDataChange) onDataChange();
         } catch (err: any) {
             setDeleteError("Hubo un error de conexión al eliminar.");
         }

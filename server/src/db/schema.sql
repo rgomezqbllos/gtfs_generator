@@ -143,6 +143,7 @@ CREATE TABLE IF NOT EXISTS segments (
     end_node_id TEXT NOT NULL,
     distance REAL,
     travel_time INTEGER, -- seconds
+    routing_profile TEXT DEFAULT 'bus_mixed',
     allowed_transport_modes TEXT, -- e.g., "bus,tram"
     custom_attributes TEXT, -- JSON string for other user-defined props
     geometry TEXT, -- GeoJSON LineString if needed, or reference shapes

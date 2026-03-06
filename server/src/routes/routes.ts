@@ -2,6 +2,7 @@ import { FastifyInstance } from 'fastify';
 import db from '../db';
 import { randomUUID } from 'crypto';
 import { fetchRoute } from '../services/routing';
+import { mapToOsrmProfile, normalizeRoutingProfile, RoutingProfile } from '../constants/routingProfiles';
 
 interface RouteBody {
     route_short_name: string;
@@ -395,6 +396,7 @@ export default async function routesRoutes(fastify: FastifyInstance) {
     interface PathBody {
         direction_id: number; // 0 or 1
         ordered_stop_ids: string[];
+        routing_profile?: RoutingProfile;
     }
 
     // GET Route Path (Sequence of Stops)
@@ -433,7 +435,7 @@ export default async function routesRoutes(fastify: FastifyInstance) {
 
     fastify.post('/routes/:id/path', async (request, reply) => {
         const { id } = request.params as { id: string };
-        const { direction_id, ordered_stop_ids } = request.body as PathBody;
+        const { direction_id, ordered_stop_ids, routing_profile } = request.body as PathBody;
 
         if (direction_id !== 0 && direction_id !== 1) {
             return reply.code(400).send({ error: 'direction_id must be 0 or 1' });
@@ -441,6 +443,8 @@ export default async function routesRoutes(fastify: FastifyInstance) {
         if (!ordered_stop_ids || ordered_stop_ids.length < 2) {
             return reply.code(400).send({ error: 'ordered_stop_ids must have at least 2 stops' });
         }
+        const normalizedPathProfile = normalizeRoutingProfile(routing_profile);
+        const osrmProfileForPath = mapToOsrmProfile(normalizedPathProfile);
 
         // 1. Create/Update Trip
         const service_id = 'c_1'; // Default service for now
@@ -523,11 +527,12 @@ export default async function routesRoutes(fastify: FastifyInstance) {
 
                 try {
                     if (fromNode && toNode) {
-                        const project = db.prepare('SELECT routing_engine_url FROM projects WHERE project_id = ?').get(request.projectId) as any;
+                        const project = db.prepare('SELECT routing_engine_url FROM projects WHERE id = ?').get(request.projectId) as any;
                         const routeData = await fetchRoute(
                             [fromNode.stop_lon, fromNode.stop_lat],
                             [toNode.stop_lon, toNode.stop_lat],
-                            project?.routing_engine_url
+                            project?.routing_engine_url,
+                            osrmProfileForPath
                         );
                         if (routeData) {
                             dist = routeData.distance;
@@ -558,10 +563,10 @@ export default async function routesRoutes(fastify: FastifyInstance) {
                     dist = R * c;
                 }
 
-                db.prepare('INSERT INTO segments (segment_id, project_id, start_node_id, end_node_id, distance, travel_time, geometry) VALUES (?, ?, ?, ?, ?, ?, ?)')
-                    .run(segId, request.projectId, fromId, toId, dist, time, geom);
+                db.prepare('INSERT INTO segments (segment_id, project_id, start_node_id, end_node_id, distance, travel_time, routing_profile, geometry) VALUES (?, ?, ?, ?, ?, ?, ?, ?)')
+                    .run(segId, request.projectId, fromId, toId, dist, time, normalizedPathProfile, geom);
 
-                segment = { distance: dist, geometry: geom, start_node_id: fromId, end_node_id: toId };
+                segment = { distance: dist, geometry: geom, start_node_id: fromId, end_node_id: toId, routing_profile: normalizedPathProfile };
             }
 
             // Add to shape

@@ -1,3 +1,5 @@
+import type { RoutingProfile } from './constants/routingProfiles';
+
 export interface Stop {
     stop_id: string;
     stop_code: string;
@@ -18,6 +20,7 @@ export interface Segment {
     geometry?: string; // GeoJSON LineString stringified
     slots?: any[]; // For time-dependent travel, added 'any' to avoid circular/missing references if moved
     allowed_transport_modes?: string; // e.g. 'bus,walk'
+    routing_profile?: RoutingProfile;
 }
 
 export interface Route {
@@ -41,3 +44,4 @@ export interface Route {
 export const Segment = {};
 export const Stop = {};
 export const Route = {};
+export type { RoutingProfile };

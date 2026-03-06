@@ -68,6 +68,8 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     const [user, setUser] = useState<UserProfile | null>(null);
     const [myProjects, setMyProjects] = useState<Project[]>([]);
     const [activeProject, setActiveProject] = useState<Project | null>(null);
+    const activeProjectRef = React.useRef<Project | null>(activeProject);
+    activeProjectRef.current = activeProject; // Synchronous update during render
 
     // Patch global fetch to include Authorization and X-Project-Id headers
     useEffect(() => {
@@ -85,9 +87,9 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
                     (config.headers as any)['Authorization'] = `Bearer ${keycloak.token}`;
                 }
 
-                // Active project injection
-                if (activeProject) {
-                    (config.headers as any)['X-Project-Id'] = activeProject.id;
+                // Active project injection using synchronously updated ref
+                if (activeProjectRef.current) {
+                    (config.headers as any)['X-Project-Id'] = activeProjectRef.current.id;
                 }
             }
             return originalFetch(resource, config);
@@ -96,8 +98,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         return () => {
             window.fetch = originalFetch;
         };
-    }, [activeProject, token]);
-
+    }, []); // Only run once on mount!
     useEffect(() => {
         const initKeycloak = async () => {
             try {

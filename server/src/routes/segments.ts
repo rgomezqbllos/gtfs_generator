@@ -2,6 +2,7 @@ import { FastifyInstance } from 'fastify';
 import db from '../db';
 import { randomUUID } from 'crypto';
 import { fetchRoute } from '../services/routing';
+import { mapToOsrmProfile, normalizeRoutingProfile, RoutingProfile } from '../constants/routingProfiles';
 
 interface SegmentBody {
     start_node_id: string;
@@ -9,6 +10,7 @@ interface SegmentBody {
     distance?: number;
     travel_time?: number;
     allowed_transport_modes?: string;
+    routing_profile?: RoutingProfile;
     custom_attributes?: string;
 }
 
@@ -39,7 +41,7 @@ export default async function segmentsRoutes(fastify: FastifyInstance) {
     // CREATE segment
     fastify.post('/segments', async (request: any, reply: any) => {
         const body = request.body as SegmentBody & { type?: string };
-        const { start_node_id, end_node_id, allowed_transport_modes, custom_attributes, type } = body;
+        const { start_node_id, end_node_id, allowed_transport_modes, routing_profile, custom_attributes, type } = body;
 
         if (!start_node_id || !end_node_id) {
             return reply.code(400).send({ error: 'Start and End nodes are required' });
@@ -60,13 +62,18 @@ export default async function segmentsRoutes(fastify: FastifyInstance) {
         let distance = body.distance || 0;
         let travel_time = body.travel_time || 0;
         let geometry = null;
+        
+        const normalizedProfile = normalizeRoutingProfile(routing_profile);
+        const osrmProfile = mapToOsrmProfile(normalizedProfile);
 
         try {
-            const project = db.prepare('SELECT routing_engine_url FROM projects WHERE project_id = ?').get(request.projectId) as any;
+            const project = db.prepare('SELECT routing_engine_url FROM projects WHERE id = ?').get(request.projectId) as any;
+
             const routeData = await fetchRoute(
                 [startNode.stop_lon, startNode.stop_lat],
                 [endNode.stop_lon, endNode.stop_lat],
-                project?.routing_engine_url
+                project?.routing_engine_url,
+                osrmProfile
             );
 
             if (routeData) {
@@ -103,8 +110,8 @@ export default async function segmentsRoutes(fastify: FastifyInstance) {
         const segmentType = type || 'revenue';
 
         const stmt = db.prepare(`
-          INSERT INTO segments (segment_id, project_id, start_node_id, end_node_id, distance, travel_time, allowed_transport_modes, custom_attributes, geometry, type)
-          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+          INSERT INTO segments (segment_id, project_id, start_node_id, end_node_id, distance, travel_time, routing_profile, allowed_transport_modes, custom_attributes, geometry, type)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         `);
 
         stmt.run(
@@ -114,6 +121,7 @@ export default async function segmentsRoutes(fastify: FastifyInstance) {
             end_node_id,
             distance,
             travel_time,
+            normalizedProfile,
             allowed_transport_modes || 'bus',
             custom_attributes || '{}',
             geometry,
@@ -137,6 +145,10 @@ export default async function segmentsRoutes(fastify: FastifyInstance) {
 
         if (body.distance !== undefined) { fields.push('distance = ?'); values.push(body.distance); }
         if (body.travel_time !== undefined) { fields.push('travel_time = ?'); values.push(body.travel_time); }
+        if (body.routing_profile !== undefined) {
+            fields.push('routing_profile = ?');
+            values.push(normalizeRoutingProfile(body.routing_profile));
+        }
         if (body.allowed_transport_modes !== undefined) { fields.push('allowed_transport_modes = ?'); values.push(body.allowed_transport_modes); }
         if (body.custom_attributes !== undefined) { fields.push('custom_attributes = ?'); values.push(body.custom_attributes); }
 

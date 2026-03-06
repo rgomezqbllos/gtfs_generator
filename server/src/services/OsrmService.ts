@@ -18,8 +18,15 @@ console.log('OSRM SERVICE: Resolved DATA_DIR:', DATA_DIR);
 // ... (inside class)
 
 
-const CONTAINER_NAME = process.env.OSRM_CONTAINER_NAME || 'gtfs-osrm-server';
-const PORT = Number(process.env.OSRM_PORT) || 5001;
+const CONTAINER_PREFIX = process.env.OSRM_CONTAINER_PREFIX || 'gtfs-osrm';
+const BASE_PORT = Number(process.env.OSRM_BASE_PORT) || 5000;
+
+const PROFILES = ['bus_mixed', 'bus_mixed_exclusive', 'bus_trunk'];
+const PROFILE_PORTS: Record<string, number> = {
+    'bus_mixed': 5001,
+    'bus_mixed_exclusive': 5002,
+    'bus_trunk': 5003
+};
 
 interface RegionInfo {
     name: string;
@@ -31,10 +38,9 @@ interface RegionInfo {
 const REGIONS: Record<string, RegionInfo> = {
     'bogota': {
         name: 'Bogotá, Colombia',
-        url: 'https://download.geofabrik.de/south-america/colombia-latest.osm.pbf',
+        url: 'https://download.bbbike.org/osm/bbbike/Bogota/Bogota.osm.pbf',
         mirrors: [
-            'https://download.bbbike.org/osm/bbbike/Bogota/Bogota.osm.pbf',
-            'https://osm-internal.download.geofabrik.de/south-america/colombia-latest.osm.pbf'
+            'https://download.geofabrik.de/south-america/colombia-latest.osm.pbf'
         ]
     },
     'medellin': {
@@ -107,6 +113,10 @@ let currentStatus: OsrmStatus = {
     activeRegion: 'unknown'
 };
 
+// Tracking variables for cancellation
+let activeHttpRequest: http.ClientRequest | null = null;
+let activeSetupRegion: string | null = null; // To know which region's setup containers to kill
+
 class OsrmService {
 
     async getStatus() {
@@ -165,6 +175,14 @@ class OsrmService {
         return localMaps;
     }
 
+    getProfiles() {
+        return PROFILES;
+    }
+
+    getDataDir() {
+        return DATA_DIR;
+    }
+
     getAvailableRegions() {
         const localMaps = this.getLocalMaps();
         // localMaps already contains all customized info including downloaded status and active status
@@ -204,84 +222,101 @@ class OsrmService {
 
         const osrmName = filename.replace('.osm.pbf', '');
 
+        // Stop existing containers for this region (or globally if using generic names)
+        currentStatus = { status: 'processing', message: 'Stopping OSRM containers...', activeRegion: regionKey, progress: 100 };
+        for (const profile of PROFILES) {
+            try {
+                await execAsync(`docker rm -f ${CONTAINER_PREFIX}-${profile}`);
+            } catch (e) { /* ignore */ }
+        }
+
         // Delete all related files
         if (fs.existsSync(DATA_DIR)) {
             const files = fs.readdirSync(DATA_DIR);
-            let deletedCount = 0;
             files.forEach(f => {
                 if (f.startsWith(osrmName)) {
                     try {
                         fs.unlinkSync(path.join(DATA_DIR, f));
-                        deletedCount++;
                     } catch (e) {
                         console.error('Error deleting file', f, e);
                     }
                 }
             });
-            // if (deletedCount === 0) throw new Error('No files found to delete');
         }
 
-        // Reset active state if we deleted the active map
-        if (currentStatus.activeRegion === regionKey) {
-            currentStatus.activeRegion = 'unknown';
-            if (currentStatus.status !== 'downloading' && currentStatus.status !== 'processing') {
-                currentStatus.status = 'idle';
-                currentStatus.message = 'No Map Active';
-            }
+        // Reset active state
+        if (currentStatus.activeRegion === regionKey || currentStatus.status === 'processing') {
+            currentStatus = { status: 'idle', message: 'No Map Active', activeRegion: 'unknown' };
         }
 
         return { message: `Map files for ${regionKey} deleted` };
     }
 
-    async downloadAndSetup(regionKey: string, customUrl?: string, customName?: string, force: boolean = false) {
+    async downloadMap(regionKey: string, customUrl?: string, customName?: string, force: boolean = false) {
         if (currentStatus.status === 'downloading' || currentStatus.status === 'processing') {
             throw new Error('A process is already running');
         }
 
         let url: string;
-        let name: string;
         let filename: string;
         let mirrors: string[] = [];
 
         if (customUrl) {
-            // Custom Mode
             try {
                 const u = new URL(customUrl);
                 if (!u.pathname.endsWith('.osm.pbf')) {
                     // warning but allow
                 }
                 url = customUrl;
-                name = customName || 'Custom Map';
                 filename = path.basename(u.pathname) || 'custom.osm.pbf';
             } catch (e) {
                 throw new Error('Invalid URL');
             }
         } else {
-            // Region Mode
             if (!REGIONS[regionKey]) throw new Error('Invalid region key');
             const info = REGIONS[regionKey];
             url = info.url;
-            name = info.name;
             filename = path.basename(url);
             mirrors = info.mirrors;
         }
 
         const pbfPath = path.join(DATA_DIR, filename);
-        // Update active region tracking
         const activeKey = customUrl ? filename : regionKey;
 
-        this.runSetupProcess(activeKey, url, filename, pbfPath, mirrors, force);
+        this.runDownloadProcess(activeKey, url, filename, pbfPath, mirrors, force);
 
-        return { message: 'Setup process started' };
+        return { message: 'Download process started' };
+    }
+
+    async activateMap(regionKey: string) {
+        if (currentStatus.status === 'downloading' || currentStatus.status === 'processing') {
+            throw new Error('A process is already running');
+        }
+
+        let filename: string;
+
+        if (REGIONS[regionKey]) {
+            filename = path.basename(REGIONS[regionKey].url);
+        } else {
+            // Assume regionKey is the filename for custom maps
+            filename = regionKey;
+        }
+
+        const pbfPath = path.join(DATA_DIR, filename);
+        if (!fs.existsSync(pbfPath)) {
+            throw new Error(`Map file not found: ${filename}`);
+        }
+
+        this.runActivationProcess(regionKey, filename, pbfPath).catch(console.error);
+        return { message: 'Activation process started' };
     }
 
     // --- Private Process Logic ---
 
-    private async runSetupProcess(regionKey: string, url: string, filename: string, pbfPath: string, mirrors: string[], force: boolean) {
+    private async runDownloadProcess(regionKey: string, url: string, filename: string, pbfPath: string, mirrors: string[], force: boolean) {
         try {
             if (!fs.existsSync(DATA_DIR)) fs.mkdirSync(DATA_DIR, { recursive: true });
 
-            // 1. Download
             let shouldDownload = true;
             if (!force && fs.existsSync(pbfPath)) {
                 const stats = fs.statSync(pbfPath);
@@ -296,16 +331,31 @@ class OsrmService {
                 await this.downloadFileWithRetry(url, mirrors || [], pbfPath);
             }
 
-            // 2. Stop existing container
-            currentStatus = { status: 'processing', message: 'Stopping existing OSRM container...', activeRegion: regionKey, progress: 100 };
-            try {
-                await execAsync(`docker rm -f ${CONTAINER_NAME}`);
-            } catch (e) { /* ignore */ }
+            // After download finishes, return to idle. Activation is a separate step now.
+            currentStatus = { status: 'idle', message: `Download complete: ${filename}`, activeRegion: currentStatus.activeRegion };
 
-            // 3. Process Data
+        } catch (error: any) {
+            console.error('Download Failed:', error);
+            if (error?.message === 'Download manually cancelled') {
+                currentStatus = { status: 'idle', message: 'Download cancelled', activeRegion: 'unknown' };
+            } else {
+                currentStatus = { status: 'error', message: error instanceof Error ? error.message : 'Unknown error', activeRegion: regionKey };
+            }
+        }
+    }
+
+    private async runActivationProcess(regionKey: string, filename: string, pbfPath: string) {
+        try {
+            // 2. Stop existing containers
+            // 2. Stop ALL existing OSRM containers (wildcard)
+            currentStatus = { status: 'processing', message: 'Cleaning up OSRM environment...', activeRegion: regionKey, progress: 100 };
+            try {
+                // Kill both servers and setup containers with a single command
+                await execAsync(`docker rm -f $(docker ps -aq --filter "name=${CONTAINER_PREFIX}")`);
+            } catch (e) { /* ignore if no containers found */ }
+
+            // 3. Process Data for each profile
             const osrmName = filename.replace('.osm.pbf', '');
-            const osrmPath = path.join(DATA_DIR, `${osrmName}.osrm`);
-            const edgesPath = path.join(DATA_DIR, `${osrmName}.osrm.edges`);
 
             const hostDataParam = IN_DOCKER ? `${HOST_PROJECT_PATH}/gtfs_data` : DATA_DIR.replace(/\\/g, '/');
             const volume = `${hostDataParam}:/data`;
@@ -313,42 +363,72 @@ class OsrmService {
             const hostProfilesParam = IN_DOCKER ? `${HOST_PROJECT_PATH}/server/scripts/osrm-profiles` : path.join(HOST_PROJECT_PATH, 'server/scripts/osrm-profiles').replace(/\\/g, '/');
             const profilesVolume = `${hostProfilesParam}:/profiles`;
 
-            // Detect and clean corrupt data
-            if (fs.existsSync(osrmPath) && !fs.existsSync(edgesPath)) {
-                console.log("Found base .osrm file but missing index files (.edges). Data is corrupt. Re-extracting...");
-                currentStatus = { status: 'processing', message: 'Cleaning corrupt map data...', activeRegion: regionKey };
-                try {
-                    fs.readdirSync(DATA_DIR).forEach(file => {
-                        if (file.startsWith(osrmName) && file !== filename) {
-                            fs.unlinkSync(path.join(DATA_DIR, file));
-                        }
-                    });
-                } catch (e) {
-                    console.warn("Could not delete some corrupt files.", e);
+            for (const profile of PROFILES) {
+                const profilePbfName = `${osrmName}-${profile}.osm.pbf`;
+                const profilePbfPath = path.join(DATA_DIR, profilePbfName);
+                const profileOsrmPath = path.join(DATA_DIR, `${osrmName}-${profile}.osrm`);
+                const profileEdgesPath = path.join(DATA_DIR, `${osrmName}-${profile}.osrm.edges`);
+
+                // Detect and clean corrupt data for this profile
+                if (fs.existsSync(profileOsrmPath) && !fs.existsSync(profileEdgesPath)) {
+                    console.log(`Found base .osrm file for ${profile} but missing index files. Cleaning...`);
+                    try {
+                        fs.readdirSync(DATA_DIR).forEach(file => {
+                            if (file.startsWith(`${osrmName}-${profile}`)) {
+                                fs.unlinkSync(path.join(DATA_DIR, file));
+                            }
+                        });
+                    } catch (e) { /* ignore */ }
+                }
+
+                // Setup OSRM if not already extracted for this profile
+                if (!fs.existsSync(profileOsrmPath) || !fs.existsSync(profileEdgesPath)) {
+                    // Create a profile-specific copy of the PBF to ensure predictable output filenames
+                    if (!fs.existsSync(profilePbfPath)) {
+                        console.log(`Creating profile copy: ${profilePbfName}`);
+                        fs.copyFileSync(pbfPath, profilePbfPath);
+                    }
+
+                    currentStatus = { status: 'processing', message: `Extracting ${profile} map data...`, activeRegion: regionKey };
+                    activeSetupRegion = regionKey;
+                    
+                    try { await execAsync(`docker rm -f gtfs-osrm-setup-${profile}`); } catch(e) {}
+                    await execAsync(`docker run --name gtfs-osrm-setup-${profile} --platform linux/amd64 -t -v "${volume}" -v "${profilesVolume}" osrm/osrm-backend osrm-extract -p /profiles/${profile}.lua /data/${profilePbfName}`);
+
+                    currentStatus = { status: 'processing', message: `Partitioning ${profile} map data...`, activeRegion: regionKey };
+                    try { await execAsync(`docker rm -f gtfs-osrm-setup-${profile}`); } catch(e) {}
+                    await execAsync(`docker run --name gtfs-osrm-setup-${profile} --platform linux/amd64 -t -v "${volume}" osrm/osrm-backend osrm-partition /data/${osrmName}-${profile}`);
+
+                    currentStatus = { status: 'processing', message: `Customizing ${profile} map data...`, activeRegion: regionKey };
+                    try { await execAsync(`docker rm -f gtfs-osrm-setup-${profile}`); } catch(e) {}
+                    await execAsync(`docker run --name gtfs-osrm-setup-${profile} --platform linux/amd64 -t -v "${volume}" osrm/osrm-backend osrm-customize /data/${osrmName}-${profile}`);
+                    
+                    try { await execAsync(`docker rm -f gtfs-osrm-setup-${profile}`); } catch(e) {}
+                    activeSetupRegion = null;
+
+                    // Optional: Remove temporary profile PBF to save space
+                    // try { fs.unlinkSync(profilePbfPath); } catch(e) {}
                 }
             }
 
-            // Setup OSRM if not already extracted
-            if (!fs.existsSync(osrmPath) || !fs.existsSync(edgesPath)) {
-                currentStatus = { status: 'processing', message: 'Extracting map data (this may take a while)...', activeRegion: regionKey };
-                await execAsync(`docker run -t -v "${volume}" -v "${profilesVolume}" osrm/osrm-backend osrm-extract -p /profiles/bus.lua /data/${filename}`);
-
-                currentStatus = { status: 'processing', message: 'Partitioning map data...', activeRegion: regionKey };
-                await execAsync(`docker run -t -v "${volume}" osrm/osrm-backend osrm-partition /data/${osrmName}`);
-
-                currentStatus = { status: 'processing', message: 'Customizing map data...', activeRegion: regionKey };
-                await execAsync(`docker run -t -v "${volume}" osrm/osrm-backend osrm-customize /data/${osrmName}`);
+            // 4. Start Servers
+            for (const profile of PROFILES) {
+                const port = PROFILE_PORTS[profile];
+                currentStatus = { status: 'processing', message: `Starting OSRM ${profile} Server...`, activeRegion: regionKey };
+                await execAsync(`docker run --platform linux/amd64 -d --restart always --name ${CONTAINER_PREFIX}-${profile} -p ${port}:5000 -v "${volume}" osrm/osrm-backend osrm-routed --algorithm mld /data/${osrmName}-${profile}`);
             }
 
-            // 4. Start Server
-            currentStatus = { status: 'processing', message: 'Starting OSRM Server...', activeRegion: regionKey };
-            await execAsync(`docker run -d --restart always --name ${CONTAINER_NAME} -p ${PORT}:5000 -v "${volume}" osrm/osrm-backend osrm-routed --algorithm mld /data/${osrmName}`);
+            activeSetupRegion = null;
+            currentStatus = { status: 'running', message: 'OSRM Ready (Multi-Modal)', activeRegion: regionKey, progress: 100 };
 
-            currentStatus = { status: 'running', message: 'OSRM Ready', activeRegion: regionKey, progress: 100 };
-
-        } catch (error) {
+        } catch (error: any) {
             console.error('OSRM Setup Failed:', error);
-            currentStatus = { status: 'error', message: error instanceof Error ? error.message : 'Unknown error', activeRegion: regionKey };
+            activeSetupRegion = null;
+            if (error?.message === 'Activation manually cancelled') {
+                currentStatus = { status: 'idle', message: 'Activation cancelled', activeRegion: 'unknown' };
+            } else {
+                currentStatus = { status: 'error', message: error instanceof Error ? error.message : 'Unknown error', activeRegion: regionKey };
+            }
         }
     }
 
@@ -371,15 +451,21 @@ class OsrmService {
             const file = fs.createWriteStream(dest);
             const proto = url.startsWith('https') ? https : http;
 
-            const req = proto.get(url, { headers: { 'User-Agent': 'GTFS-Generator/1.0' }, rejectUnauthorized: false }, (res) => {
+            const req = proto.get(url, { 
+                headers: { 'User-Agent': 'GTFS-Generator/1.0' }, 
+                rejectUnauthorized: false,
+                timeout: 60000 // 60 seconds connection timeout
+            }, (res) => {
                 if (res.statusCode === 301 || res.statusCode === 302) {
                     if (res.headers.location) {
+                        activeHttpRequest = null;
                         this.downloadSingle(res.headers.location, dest).then(resolve).catch(reject);
                         return;
                     }
                 }
 
                 if (res.statusCode !== 200) {
+                    activeHttpRequest = null;
                     reject(new Error(`Status ${res.statusCode}`));
                     return;
                 }
@@ -399,35 +485,75 @@ class OsrmService {
                 res.pipe(file);
                 file.on('finish', () => {
                     file.close(() => resolve());
+                    activeHttpRequest = null;
                 });
             });
 
-            req.on('error', (err) => {
+            req.on('timeout', () => {
+                req.destroy();
+                reject(new Error('Download timed out due to inactivity'));
+            });
+
+            activeHttpRequest = req as http.ClientRequest;
+
+            req.on('error', (err: any) => {
+                activeHttpRequest = null;
                 fs.unlink(dest, () => { });
-                reject(err);
+                if (err?.code === 'ECONNRESET') {
+                     reject(new Error('Download manually cancelled'));
+                } else {
+                     reject(err);
+                }
             });
         });
     }
 
     private async checkActiveContainer() {
         try {
-            const { stdout } = await execAsync(`docker ps --filter "name=${CONTAINER_NAME}" --format "{{.Status}}"`);
-            if (stdout.trim().startsWith('Up')) {
-                // It is running
+            // Check if at least one of our bus profiles is running
+            const { stdout } = await execAsync(`docker ps --filter "name=${CONTAINER_PREFIX}-bus_mixed" --format "{{.Status}}"`);
+            if (stdout.trim().toLowerCase().includes('up')) {
                 if (currentStatus.status === 'idle') {
                     currentStatus.status = 'running';
-                    currentStatus.message = 'OSRM Container Running';
+                    currentStatus.message = 'OSRM Ready (Multi-Modal)';
                 }
             } else {
-                if (currentStatus.status !== 'downloading' && currentStatus.status !== 'processing') {
+                if (currentStatus.status === 'running') {
                     currentStatus.status = 'idle';
                     currentStatus.message = 'OSRM Not Running';
+                    currentStatus.activeRegion = 'unknown';
                 }
             }
         } catch (e) {
-            currentStatus.status = 'error';
-            currentStatus.message = 'Docker not available';
+            // Docker might be down or no containers exist
         }
+    }
+
+    async cancelProcess() {
+        if (currentStatus.status !== 'downloading' && currentStatus.status !== 'processing') {
+            return { message: 'No active process to cancel' };
+        }
+
+        // 1. Cancel active HTTP Download
+        if (activeHttpRequest) {
+            console.log('Cancelling active HTTP download request...');
+            activeHttpRequest.destroy(new Error('Download manually cancelled'));
+            activeHttpRequest = null;
+        }
+
+        // 2. Cancel active Docker Setup processes
+        if (activeSetupRegion || currentStatus.status === 'processing') {
+            console.log('Cancelling active Docker setup containers...');
+            for (const profile of PROFILES) {
+                try { await execAsync(`docker rm -f gtfs-osrm-setup-${profile}`); } catch(e) {}
+            }
+            activeSetupRegion = null;
+            // Throwing an artificial error state ensures the activation loop breaks
+            throw new Error('Activation manually cancelled');
+        }
+
+        currentStatus = { status: 'idle', message: 'Process cancelled', activeRegion: 'unknown' };
+        return { message: 'Process successfully cancelled' };
     }
 }
 

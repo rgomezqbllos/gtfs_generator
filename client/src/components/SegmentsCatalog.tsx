@@ -19,9 +19,10 @@ export interface Segment {
 interface SegmentsCatalogProps {
     onClose: () => void;
     onAddOnMap: () => void;
+    onDataChange?: () => void;
 }
 
-export default function SegmentsCatalog({ onClose, onAddOnMap }: SegmentsCatalogProps) {
+export default function SegmentsCatalog({ onClose, onAddOnMap, onDataChange }: SegmentsCatalogProps) {
     const [segments, setSegments] = useState<Segment[]>([]);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
@@ -68,6 +69,7 @@ export default function SegmentsCatalog({ onClose, onAddOnMap }: SegmentsCatalog
             // Success
             setSegments(prev => prev.filter(s => s.segment_id !== segmentToDelete.segment_id));
             setSegmentToDelete(null);
+            if (onDataChange) onDataChange();
         } catch (err: any) {
             setDeleteError("Hubo un error de conexión al eliminar.");
         }

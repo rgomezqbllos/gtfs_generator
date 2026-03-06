@@ -68,6 +68,10 @@ export function initDB() {
             db.prepare("ALTER TABLE segments ADD COLUMN type TEXT DEFAULT 'revenue'").run();
             console.log('Migrated: Added type to segments');
         }
+        if (!segmentColumnNames.includes('routing_profile')) {
+            db.prepare("ALTER TABLE segments ADD COLUMN routing_profile TEXT DEFAULT 'bus_mixed'").run();
+            console.log('Migrated: Added routing_profile to segments');
+        }
 
         // Settings Migration
         db.exec(`

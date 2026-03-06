@@ -6,11 +6,27 @@ const agent = new https.Agent({
     rejectUnauthorized: false
 });
 
-export async function fetchRoute(start: [number, number], end: [number, number], routingUrl?: string) {
-    const OSRM_API = routingUrl || process.env.OSRM_API_URL || 'https://router.project-osrm.org/route/v1/driving';
+export async function fetchRoute(start: [number, number], end: [number, number], routingUrl?: string, profile: string = 'bus_mixed') {
+    const PROFILE_PORTS: Record<string, number> = {
+        'bus_mixed': 5001,
+        'bus_mixed_exclusive': 5002,
+        'bus_trunk': 5003
+    };
+
+    let OSRM_API = routingUrl;
+
+    if (!OSRM_API) {
+        // If we are in Docker, the services are reachable at 'localhost' or 'app' (since they are in host network or we are using host ports)
+        // However, since OsrmService maps them to host ports, 'http://localhost:PORT' should work if the app is also using host network
+        // or if we use the internal Docker IP. 
+        // Best approach: use environment variable or default to localhost
+        const base = process.env.OSRM_BASE_URL || 'http://localhost';
+        OSRM_API = `${base}:${PROFILE_PORTS[profile]}/route/v1/driving`;
+    }
+
     try {
         const url = `${OSRM_API}/${start[0]},${start[1]};${end[0]},${end[1]}?overview=full&geometries=geojson`;
-        console.log(`Fetching OSRM route URL: ${url}`);
+        console.log(`Fetching OSRM route (${profile}) URL: ${url}`);
 
         const isHttps = url.startsWith('https');
         const fetchOptions: any = {

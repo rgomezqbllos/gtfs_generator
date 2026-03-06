@@ -28,9 +28,10 @@ const MapManager: React.FC = () => {
     const [confirmDelete, setConfirmDelete] = useState<string | null>(null);
 
     // Custom Map State
-    const [isCustomMode, setIsCustomMode] = useState(false);
+    const [mapMode, setMapMode] = useState<'list' | 'custom' | 'upload'>('list');
     const [customUrl, setCustomUrl] = useState('');
     const [customName, setCustomName] = useState('');
+    const [uploadFile, setUploadFile] = useState<File | null>(null);
 
     const fetchMaps = async () => {
         try {
@@ -73,12 +74,12 @@ const MapManager: React.FC = () => {
     const handleDownload = async () => {
         const payload: any = {};
 
-        if (isCustomMode) {
+        if (mapMode === 'custom') {
             if (!customUrl) return alert('URL is required');
             payload.customUrl = customUrl;
             payload.customName = customName || 'Custom Map';
             payload.region = ''; // Not used for custom
-        } else {
+        } else if (mapMode === 'list') {
             if (!selectedMap) return;
             payload.region = selectedMap;
         }
@@ -94,13 +95,44 @@ const MapManager: React.FC = () => {
                 fetchStatus(); // Start polling
                 setCustomUrl('');
                 setCustomName('');
-                setIsCustomMode(false);
+                setMapMode('list');
             } else {
                 const err = await res.json();
                 alert(`Error: ${err.error}`);
             }
         } catch (e) {
             alert('Failed to start download');
+        }
+    };
+
+    const handleUpload = async () => {
+        if (!uploadFile) return alert('No file selected');
+        if (!uploadFile.name.endsWith('.osm.pbf')) return alert('File must be an .osm.pbf file');
+
+        const formData = new FormData();
+        formData.append('file', uploadFile);
+
+        setStatus({ status: 'downloading', message: `Uploading ${uploadFile.name}...`, progress: 0 });
+
+        try {
+            const res = await fetch(`${API_URL}/maps/upload`, {
+                method: 'POST',
+                body: formData
+            });
+
+            if (res.ok) {
+                setUploadFile(null);
+                setMapMode('list');
+                fetchMaps();
+                setStatus({ status: 'idle', message: 'Upload complete' });
+            } else {
+                const err = await res.json();
+                alert(`Upload error: ${err.error}`);
+                setStatus({ status: 'error', message: err.error });
+            }
+        } catch (e) {
+            alert('Upload failed');
+            setStatus({ status: 'error', message: 'Upload failed' });
         }
     };
 
@@ -128,6 +160,19 @@ const MapManager: React.FC = () => {
             }
         } catch (e) {
             console.error(e);
+        }
+    };
+
+    const handleCancel = async () => {
+        try {
+            const res = await fetch(`${API_URL}/maps/cancel`, { method: 'POST' });
+            if (res.ok) {
+                fetchStatus();
+            } else {
+                alert('Failed to cancel process');
+            }
+        } catch (e) {
+            console.error('Error cancelling', e);
         }
     };
 
@@ -159,7 +204,17 @@ const MapManager: React.FC = () => {
                     {!['running', 'error', 'downloading', 'processing'].includes(status.status) && <Server size={20} className="mt-0.5" />}
 
                     <div className="flex-1">
-                        <h4 className="font-bold text-sm uppercase mb-1">OSRM Server Status: {status.status}</h4>
+                        <div className="flex justify-between items-start">
+                            <h4 className="font-bold text-sm uppercase mb-1">OSRM Server Status: {status.status}</h4>
+                            {isBusy && (
+                                <button
+                                    onClick={handleCancel}
+                                    className="bg-red-100 hover:bg-red-200 text-red-700 dark:bg-red-900/40 dark:hover:bg-red-900/60 dark:text-red-300 text-xs px-3 py-1 rounded-md border border-red-200 dark:border-red-800 transition-colors font-medium -mt-1"
+                                >
+                                    Cancel
+                                </button>
+                            )}
+                        </div>
                         <p className="text-sm opacity-90">{status.message}</p>
                         {status.activeRegion && status.status === 'running' && (
                             <p className="text-xs font-mono mt-1 opacity-75">Active Region: {status.activeRegion}</p>
@@ -193,29 +248,35 @@ const MapManager: React.FC = () => {
 
             {/* Downloader */}
             <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 p-4">
-                <div className="flex justify-between items-center mb-4">
+                <div className="flex justify-between items-center mb-4 flex-wrap gap-2">
                     <h3 className="font-bold text-gray-900 dark:text-white flex items-center gap-2">
-                        <Download size={18} className="text-blue-600" /> Install / Switch Map
+                        <Download size={18} className="text-blue-600" /> Install Maps
                     </h3>
-                    <div className="flex gap-2 bg-gray-100 dark:bg-gray-700 p-1 rounded-lg">
+                    <div className="flex gap-1 bg-gray-100 dark:bg-gray-700 p-1 rounded-lg">
                         <button
-                            onClick={() => setIsCustomMode(false)}
-                            className={clsx("text-xs px-3 py-1.5 rounded-md transition-all font-medium", !isCustomMode ? "bg-white dark:bg-gray-600 text-blue-600 shadow-sm" : "text-gray-500 hover:text-gray-700 dark:text-gray-400")}
+                            onClick={() => setMapMode('list')}
+                            className={clsx("text-xs px-3 py-1.5 rounded-md transition-all font-medium", mapMode === 'list' ? "bg-white dark:bg-gray-600 text-blue-600 shadow-sm" : "text-gray-500 hover:text-gray-700 dark:text-gray-400")}
                         >
                             List
                         </button>
                         <button
-                            onClick={() => setIsCustomMode(true)}
-                            className={clsx("text-xs px-3 py-1.5 rounded-md transition-all font-medium", isCustomMode ? "bg-white dark:bg-gray-600 text-blue-600 shadow-sm" : "text-gray-500 hover:text-gray-700 dark:text-gray-400")}
+                            onClick={() => setMapMode('custom')}
+                            className={clsx("text-xs px-3 py-1.5 rounded-md transition-all font-medium", mapMode === 'custom' ? "bg-white dark:bg-gray-600 text-blue-600 shadow-sm" : "text-gray-500 hover:text-gray-700 dark:text-gray-400")}
                         >
-                            Custom URL
+                            URL
+                        </button>
+                        <button
+                            onClick={() => setMapMode('upload')}
+                            className={clsx("text-xs px-3 py-1.5 rounded-md transition-all font-medium", mapMode === 'upload' ? "bg-white dark:bg-gray-600 text-blue-600 shadow-sm" : "text-gray-500 hover:text-gray-700 dark:text-gray-400")}
+                        >
+                            Upload File
                         </button>
                     </div>
                 </div>
 
                 <div className="flex flex-col gap-3">
 
-                    {!isCustomMode ? (
+                    {mapMode === 'list' && (
                         <select
                             value={selectedMap}
                             onChange={(e) => setSelectedMap(e.target.value)}
@@ -224,11 +285,13 @@ const MapManager: React.FC = () => {
                         >
                             {maps.map(m => (
                                 <option key={m.key} value={m.key}>
-                                    {m.name} {m.isActive ? '(Active)' : ''} {m.isDownloaded ? '✓' : ''}
+                                    {m.name} {m.isDownloaded ? '✓ (Installed)' : ''}
                                 </option>
                             ))}
                         </select>
-                    ) : (
+                    )}
+
+                    {mapMode === 'custom' && (
                         <div className="space-y-3 p-3 bg-gray-50 dark:bg-gray-700/50 rounded-lg border border-gray-100 dark:border-gray-700">
                             <div>
                                 <label className="text-xs font-medium text-gray-500 mb-1 block">Map Name</label>
@@ -258,17 +321,44 @@ const MapManager: React.FC = () => {
                         </div>
                     )}
 
-                    <button
-                        onClick={handleDownload}
-                        disabled={isBusy || (!isCustomMode && !selectedMap) || (isCustomMode && !customUrl)}
-                        className="w-full py-2 bg-blue-600 hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed text-white font-medium rounded-lg text-sm transition-colors flex items-center justify-center gap-2"
-                    >
-                        {isBusy ? <Loader2 size={16} className="animate-spin" /> : <Download size={16} />}
-                        {isBusy ? 'Processing...' : 'Download & Activate'}
-                    </button>
+                    {mapMode === 'upload' && (
+                        <div className="space-y-3 p-3 bg-gray-50 dark:bg-gray-700/50 rounded-lg border border-gray-100 dark:border-gray-700">
+                            <div>
+                                <label className="text-xs font-medium text-gray-500 mb-2 block">Local .osm.pbf File</label>
+                                <input
+                                    type="file"
+                                    accept=".osm.pbf"
+                                    onChange={(e) => setUploadFile(e.target.files?.[0] || null)}
+                                    disabled={isBusy}
+                                    className="w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-md file:border-0 file:text-sm file:font-semibold file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100 dark:file:bg-gray-700 dark:file:text-gray-200 transition-colors"
+                                />
+                            </div>
+                        </div>
+                    )}
+
+                    {mapMode === 'upload' ? (
+                        <button
+                            onClick={handleUpload}
+                            disabled={isBusy || !uploadFile}
+                            className="w-full py-2 bg-blue-600 hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed text-white font-medium rounded-lg text-sm transition-colors flex items-center justify-center gap-2"
+                        >
+                            {isBusy ? <Loader2 size={16} className="animate-spin" /> : <Download size={16} />}
+                            {isBusy ? 'Uploading...' : 'Upload Offline Map'}
+                        </button>
+                    ) : (
+                        <button
+                            onClick={handleDownload}
+                            disabled={isBusy || (mapMode === 'list' && !selectedMap) || (mapMode === 'custom' && !customUrl)}
+                            className="w-full py-2 bg-blue-600 hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed text-white font-medium rounded-lg text-sm transition-colors flex items-center justify-center gap-2"
+                        >
+                            {isBusy ? <Loader2 size={16} className="animate-spin" /> : <Download size={16} />}
+                            {isBusy ? 'Downloading...' : 'Download Map'}
+                        </button>
+                    )}
+
                     {!isBusy && (
                         <p className="text-xs text-gray-500 dark:text-gray-400 text-center">
-                            Downloading a new map will stop the current routing server.
+                            Installed maps will appear in the list below. Activate them to start routing.
                         </p>
                     )}
                 </div>
@@ -302,20 +392,17 @@ const MapManager: React.FC = () => {
                                             <div className="flex gap-2">
                                                 <button
                                                     onClick={() => {
-                                                        // Auto-select map and trigger download/activation logic
+                                                        // Trigger local activation logic
                                                         setSelectedMap(m.key);
-                                                        setIsCustomMode(false);
-                                                        setTimeout(() => {
-                                                            // We construct our own payload instead of relying on state batching
-                                                            fetch(`${API_URL}/maps/download`, {
-                                                                method: 'POST',
-                                                                headers: { 'Content-Type': 'application/json' },
-                                                                body: JSON.stringify({ region: m.key })
-                                                            }).then(res => {
-                                                                if (res.ok) fetchStatus();
-                                                                else res.json().then(err => alert(`Error: ${err.error}`));
-                                                            });
-                                                        }, 50);
+                                                        setMapMode('list');
+                                                        fetch(`${API_URL}/maps/activate`, {
+                                                            method: 'POST',
+                                                            headers: { 'Content-Type': 'application/json' },
+                                                            body: JSON.stringify({ region: m.key })
+                                                        }).then(res => {
+                                                            if (res.ok) fetchStatus();
+                                                            else res.json().then(err => alert(`Error: ${err.error}`));
+                                                        });
                                                     }}
                                                     className="p-1 px-3 text-xs font-medium text-blue-600 hover:bg-blue-50 dark:text-blue-400 dark:hover:bg-blue-900/20 rounded-md border border-blue-200 dark:border-blue-800 transition-colors"
                                                     disabled={isBusy}

@@ -1,7 +1,7 @@
 import * as React from 'react';
 import Map, { Marker, type MapLayerMouseEvent, Source, Layer } from 'react-map-gl/maplibre';
 import 'maplibre-gl/dist/maplibre-gl.css';
-import type { Stop, Route } from '../types'; // Removed Segment
+import type { Stop, Route, RoutingProfile } from '../types';
 import { MapPin } from 'lucide-react';
 import { clsx } from 'clsx';
 import RouteDetailsPanel from './RouteDetailsPanel';
@@ -26,6 +26,65 @@ import { AdminPanel } from './AdminPanel';
 import { useAuth } from '../context/AuthContext';
 
 import { API_URL } from '../config';
+import { defaultRoutingProfile, routingProfileMetadata, routingProfiles } from '../constants/routingProfiles';
+
+interface ConnectionModalProps {
+    isOpen: boolean;
+    onSelect: (profile: RoutingProfile) => void;
+    onCancel: () => void;
+}
+
+const ConnectionModal: React.FC<ConnectionModalProps> = ({ isOpen, onSelect, onCancel }) => {
+    if (!isOpen) return null;
+
+    const options = routingProfiles.map(profile => ({
+        id: profile,
+        name: routingProfileMetadata[profile].label,
+        desc: routingProfileMetadata[profile].description,
+        color: routingProfileMetadata[profile].color
+    }));
+
+    return (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[9999] animate-in fade-in duration-200">
+            <div className="bg-white dark:bg-slate-900 p-6 rounded-xl shadow-2xl w-full max-w-md border border-slate-200 dark:border-slate-800">
+                <h3 className="text-xl font-bold mb-4 flex items-center gap-2">
+                    🛣️ Tipo de Conexión
+                </h3>
+                <p className="text-sm text-slate-500 dark:text-slate-400 mb-6">
+                    Elige el perfil operativo que describe correctamente la infraestructura (mixta, exclusiva o ambas).
+                </p>
+
+                <div className="space-y-3">
+                    {options.map(opt => (
+                        <button
+                            key={opt.id}
+                            onClick={() => onSelect(opt.id)}
+                            className="w-full flex items-center gap-4 p-4 rounded-lg border border-slate-200 dark:border-slate-800 hover:border-blue-500 hover:bg-blue-50 dark:hover:bg-blue-900/20 text-left transition-all group"
+                        >
+                            <div
+                                className="h-10 w-10 rounded-full border border-slate-200 dark:border-slate-700 flex items-center justify-center"
+                                style={{ backgroundColor: opt.color }}
+                            />
+                            <div>
+                                <div className="font-bold text-slate-900 dark:text-white">{opt.name}</div>
+                                <div className="text-xs text-slate-500 dark:text-slate-400">{opt.desc}</div>
+                            </div>
+                        </button>
+                    ))}
+                </div>
+
+                <div className="mt-6 flex justify-end">
+                    <button
+                        onClick={onCancel}
+                        className="px-4 py-2 text-sm text-slate-500 hover:text-slate-700 dark:hover:text-slate-300"
+                    >
+                        Cancelar
+                    </button>
+                </div>
+            </div>
+        </div>
+    );
+};
 
 const MapEditor: React.FC = () => {
     const { mode, setMode, selectedElementId, selectedElementType, selectElement, clearSelection, activePanel, setActivePanel, pickingState } = useEditor();
@@ -48,6 +107,8 @@ const MapEditor: React.FC = () => {
 
     // Segment Creation State - Moved up to avoid ReferenceError
     const [segmentStartNode, setSegmentStartNode] = React.useState<string | null>(null);
+    const [pendingSegmentEndNode, setPendingSegmentEndNode] = React.useState<string | null>(null);
+    const [isConnectionModalOpen, setIsConnectionModalOpen] = React.useState(false);
     const [cursorLoc, setCursorLoc] = React.useState<{ lat: number; lon: number } | null>(null);
     const [isHovering, setIsHovering] = React.useState(false); // New hover state
 
@@ -96,6 +157,11 @@ const MapEditor: React.FC = () => {
     const [filterEmpty, setFilterEmpty] = React.useState(false);
 
     const fetchRouteStructure = React.useCallback(async () => {
+        if (!activeProject) {
+            setRoutesStructure([]);
+            return;
+        }
+
         try {
             const res = await fetch(`${API_URL}/routes/structure`);
             const data = await res.json();
@@ -114,7 +180,7 @@ const MapEditor: React.FC = () => {
             console.error('Error fetching route structure:', err);
             setRoutesStructure([]);
         }
-    }, []);
+    }, [activeProject]);
 
     const applyFilters = React.useCallback((filters: FilterState, allStops: Stop[], allSegments: any[], structure: any[]) => {
         // Check if any filter is active
@@ -185,6 +251,12 @@ const MapEditor: React.FC = () => {
     }, []);
 
     const fetchData = React.useCallback(async () => {
+        if (!activeProject) {
+            setStops([]);
+            setSegments([]);
+            return;
+        }
+
         try {
             const [stopsRes, segmentsRes] = await Promise.all([
                 fetch(`${API_URL}/stops`),
@@ -210,13 +282,13 @@ const MapEditor: React.FC = () => {
             setStops([]);
             setSegments([]);
         }
-    }, []);
+    }, [activeProject]);
 
-    // Fetch initial data & structure
+    // Fetch initial data & structure when active project is ready
     React.useEffect(() => {
         fetchData();
         fetchRouteStructure();
-    }, [fetchData, fetchRouteStructure]);
+    }, [fetchData, fetchRouteStructure, activeProject]);
 
     // React to data or filter changes - Dedicated Effect for Filtering
     React.useEffect(() => {
@@ -246,6 +318,11 @@ const MapEditor: React.FC = () => {
     const [detailsRoute, setDetailsRoute] = React.useState<Route | null>(null);
     const [pathStops, setPathStops] = React.useState<string[]>([]);
     const [directionId, setDirectionId] = React.useState<0 | 1>(0);
+    const [pathRoutingProfile, setPathRoutingProfile] = React.useState<RoutingProfile>(defaultRoutingProfile);
+
+    React.useEffect(() => {
+        setPathRoutingProfile(defaultRoutingProfile);
+    }, [activeRoute]);
 
     // Load path when route or direction changes
     React.useEffect(() => {
@@ -448,46 +525,55 @@ const MapEditor: React.FC = () => {
         // Add Segment Mode (Revenue or Empty)
         if (mode === 'add_segment' || mode === 'add_empty_segment') {
             if (!segmentStartNode) {
+                // First click: Set the start node and wait for the second click
                 setSegmentStartNode(stop.stop_id);
+                return;
             } else {
-                if (segmentStartNode === stop.stop_id) return; // Prevent self-loop
-
-                // Create the segment
-                setLoading(true); // Re-use loading state
-                try {
-                    const isRevenue = mode === 'add_segment';
-                    const res = await fetch(`${API_URL}/segments`, {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({
-                            start_node_id: segmentStartNode,
-                            end_node_id: stop.stop_id,
-                            type: isRevenue ? 'revenue' : 'empty'
-                        })
-                    });
-
-                    if (res.ok) {
-                        const newSegment = await res.json();
-                        setSegments(prev => [...prev, newSegment]);
-                        setSegmentStartNode(null); // Reset to allow next segment
-                        setCursorLoc(null);
-                        // Optional: Toast "Segment Created"
-                    } else {
-                        alert("Failed to create segment");
-                    }
-                } catch (err) {
-                    console.error("Error creating segment:", err);
-                    alert("Error creating segment");
-                } finally {
-                    setLoading(false);
-                }
+                // Second click: We have a start node, now set the end node and prompt for profile
+                setPendingSegmentEndNode(stop.stop_id);
+                setIsConnectionModalOpen(true);
+                return;
             }
-            return;
         }
 
         // View Mode -> Open Details
         if (mode === 'idle') {
             selectElement('stop', stop.stop_id);
+        }
+    };
+
+    const handleConnectionSelect = async (profile: RoutingProfile) => {
+        if (!segmentStartNode || !pendingSegmentEndNode) return;
+
+        setLoading(true);
+        try {
+            const isRevenue = mode === 'add_segment';
+            const res = await fetch(`${API_URL}/segments`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    start_node_id: segmentStartNode,
+                    end_node_id: pendingSegmentEndNode,
+                    type: isRevenue ? 'revenue' : 'empty',
+                    routing_profile: profile
+                })
+            });
+
+            if (res.ok) {
+                const newSegment = await res.json();
+                setSegments(prev => [...prev, newSegment]);
+                setSegmentStartNode(null);
+                setPendingSegmentEndNode(null);
+                setCursorLoc(null);
+                setIsConnectionModalOpen(false);
+            } else {
+                alert("Failed to create segment");
+            }
+        } catch (err) {
+            console.error("Error creating segment:", err);
+            alert("Error creating segment");
+        } finally {
+            setLoading(false);
         }
     };
 
@@ -503,7 +589,8 @@ const MapEditor: React.FC = () => {
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
                     direction_id: directionId,
-                    ordered_stop_ids: pathStops
+                    ordered_stop_ids: pathStops,
+                    routing_profile: pathRoutingProfile
                 })
             });
             const data = await res.json();
@@ -582,17 +669,32 @@ const MapEditor: React.FC = () => {
                     }
                 }
 
+                const geoRoutingProfile = seg.routing_profile || defaultRoutingProfile;
                 return {
                     type: 'Feature',
                     geometry: {
                         type: 'LineString',
                         coordinates
                     },
-                    properties: { ...seg }
+                    properties: { ...seg, routing_profile: geoRoutingProfile }
                 };
             })
         } as const;
     }, [displaySegments]);
+
+    const segmentColorExpression = React.useMemo(() => {
+        const expr: any[] = ['case'];
+        if (viewingSegment?.segment_id) {
+            expr.push(['==', ['get', 'segment_id'], viewingSegment.segment_id], '#ffcc00');
+        }
+
+        routingProfiles.forEach(profile => {
+            expr.push(['==', ['get', 'routing_profile'], profile], routingProfileMetadata[profile].color);
+        });
+
+        expr.push('#4a90e2');
+        return expr;
+    }, [viewingSegment?.segment_id]);
 
     const pathDistance = React.useMemo(() => {
         if (pathStops.length < 2) return 0;
@@ -696,6 +798,14 @@ const MapEditor: React.FC = () => {
                 setCursorLoc(null);
             }}
         >
+            <ConnectionModal
+                isOpen={isConnectionModalOpen}
+                onSelect={handleConnectionSelect}
+                onCancel={() => {
+                    setIsConnectionModalOpen(false);
+                    setPendingSegmentEndNode(null);
+                }}
+            />
             {/* Map Controls */}
             <MapControls
                 onZoomIn={handleZoomIn}
@@ -765,7 +875,7 @@ const MapEditor: React.FC = () => {
                         filter={['!=', ['get', 'type'], 'empty']}
                         layout={{ 'line-join': 'round', 'line-cap': 'round' }}
                         paint={{
-                            'line-color': ['case', ['==', ['get', 'segment_id'], viewingSegment?.segment_id || ''], '#ffcc00', '#4a90e2'],
+                            'line-color': segmentColorExpression as any,
                             'line-width': 4,
                             'line-opacity': 0.8
                         }}
@@ -814,12 +924,11 @@ const MapEditor: React.FC = () => {
 
                 {/* Stops Markers */}
                 {/* Stops Layer (WebGL) */}
-                {/* Stops Layer (WebGL) */}
                 <Source id="stops-source" type="geojson" data={{
                     type: 'FeatureCollection',
                     features: displayStops.map(stop => ({
                         type: 'Feature',
-                        geometry: { type: 'Point', coordinates: [stop.stop_lon, stop.stop_lat] },
+                        geometry: { type: 'Point', coordinates: [Number(stop.stop_lon), Number(stop.stop_lat)] },
                         properties: { ...stop }
                     }))
                 }}>
@@ -876,113 +985,143 @@ const MapEditor: React.FC = () => {
             </Map>
 
             {/* Side Panels */}
-            {viewingStop && (
-                <StopDetails
-                    stop={viewingStop}
-                    onClose={() => clearSelection()}
-                    onUpdate={handleStopUpdate}
-                    onDelete={handleStopDelete}
-                />
-            )}
+            {
+                viewingStop && (
+                    <StopDetails
+                        stop={viewingStop}
+                        onClose={() => clearSelection()}
+                        onUpdate={handleStopUpdate}
+                        onDelete={handleStopDelete}
+                    />
+                )
+            }
 
-            {viewingSegment && (
-                <SegmentDetails
-                    segment={viewingSegment}
-                    stops={stops}
-                    onClose={() => clearSelection()}
-                    onDelete={handleSegmentDelete}
-                    onUpdate={handleSegmentUpdate}
-                />
-            )}
+            {
+                viewingSegment && (
+                    <SegmentDetails
+                        segment={viewingSegment}
+                        stops={stops}
+                        onClose={() => clearSelection()}
+                        onDelete={handleSegmentDelete}
+                        onUpdate={handleSegmentUpdate}
+                    />
+                )
+            }
 
-            {activePanel === 'routes_catalog' && (
-                <RouteCatalog
-                    onOpenMap={() => setActivePanel('routes')}
-                    onSelectRoute={(r) => {
-                        setDetailsRoute(r);
-                        setActivePanel('none');
-                    }}
-                    onDataUpdate={fetchRouteStructure}
-                />
-            )}
+            {
+                activePanel === 'routes_catalog' && (
+                    <RouteCatalog
+                        onOpenMap={() => setActivePanel('routes')}
+                        onSelectRoute={(r) => {
+                            setDetailsRoute(r);
+                            setActivePanel('none');
+                        }}
+                        onDataUpdate={fetchRouteStructure}
+                    />
+                )
+            }
 
-            {activePanel === 'stops_catalog' && (
-                <StopsCatalog
-                    onClose={() => setActivePanel('none')}
-                    onUpdateStop={handleStopClick}
-                    onAddOnMap={() => {
-                        setActivePanel('none');
-                        setMode('add_stop');
-                    }}
-                />
-            )}
+            {
+                activePanel === 'stops_catalog' && (
+                    <StopsCatalog
+                        onClose={() => setActivePanel('none')}
+                        onUpdateStop={handleStopClick}
+                        onAddOnMap={() => {
+                            setActivePanel('none');
+                            setMode('add_stop');
+                        }}
+                        onDataChange={() => {
+                            fetchData();
+                            fetchRouteStructure();
+                        }}
+                    />
+                )
+            }
 
-            {activePanel === 'segments_catalog' && (
-                <SegmentsCatalog
-                    onClose={() => setActivePanel('none')}
-                    onAddOnMap={() => {
-                        setActivePanel('none');
-                        setMode('add_segment');
-                    }}
-                />
-            )}
+            {
+                activePanel === 'segments_catalog' && (
+                    <SegmentsCatalog
+                        onClose={() => setActivePanel('none')}
+                        onAddOnMap={() => {
+                            setActivePanel('none');
+                            setMode('add_segment');
+                        }}
+                        onDataChange={() => {
+                            fetchData();
+                            fetchRouteStructure();
+                        }}
+                    />
+                )
+            }
 
-            {activePanel === 'admin_panel' && (
-                <div className="absolute inset-0 z-50 flex">
-                    <AdminPanel />
-                    <button
-                        onClick={() => setActivePanel('none')}
-                        className="absolute top-4 right-4 bg-red-600 hover:bg-red-500 text-white rounded p-2"
-                    >
-                        Cerrar Panel
-                    </button>
-                </div>
-            )}
+            {
+                activePanel === 'admin_panel' && (
+                    <div className="absolute inset-0 z-50 flex">
+                        <AdminPanel />
+                        <button
+                            onClick={() => setActivePanel('none')}
+                            className="absolute top-4 right-4 bg-red-600 hover:bg-red-500 text-white rounded p-2"
+                        >
+                            Cerrar Panel
+                        </button>
+                    </div>
+                )
+            }
 
-            {activePanel === 'settings' && (
-                <SettingsPanel
-                    onClose={() => setActivePanel('none')}
-                    currentViewState={viewState}
-                />
-            )}
+            {
+                activePanel === 'settings' && (
+                    <SettingsPanel
+                        onClose={() => setActivePanel('none')}
+                        currentViewState={viewState}
+                    />
+                )
+            }
 
-            {activePanel === 'calendar' && (
-                <CalendarManager
-                    onClose={() => setActivePanel('none')}
-                />
-            )}
+            {
+                activePanel === 'calendar' && (
+                    <CalendarManager
+                        onClose={() => setActivePanel('none')}
+                    />
+                )
+            }
 
 
 
-            {detailsRoute && (
-                <RouteDetailsPanel
-                    route={detailsRoute}
-                    onClose={() => setDetailsRoute(null)}
-                    onBack={() => {
-                        setDetailsRoute(null);
-                        setActivePanel('routes_catalog');
-                    }}
-                    onOpenTrips={() => setActivePanel('trips')}
-                    onOpenCalendar={() => setActivePanel('calendar')}
-                    mapBounds={mapBounds}
-                />
-            )}
+            {
+                detailsRoute && (
+                    <RouteDetailsPanel
+                        route={detailsRoute}
+                        onClose={() => setDetailsRoute(null)}
+                        onBack={() => {
+                            setDetailsRoute(null);
+                            setActivePanel('routes_catalog');
+                        }}
+                        onOpenTrips={() => setActivePanel('trips')}
+                        onOpenCalendar={() => setActivePanel('calendar')}
+                        mapBounds={mapBounds}
+                    />
+                )
+            }
 
-            {activePanel === 'trips' && detailsRoute && (
-                <TripsManager
-                    route={detailsRoute}
-                    onClose={() => setActivePanel('none')}
-                />
-            )}
+            {
+                activePanel === 'trips' && detailsRoute && (
+                    <TripsManager
+                        route={detailsRoute}
+                        onClose={() => setActivePanel('none')}
+                    />
+                )
+            }
 
-            {activePanel === 'external_load' && (
-                <ExternalLoadPanel
-                    onClose={() => setActivePanel('none')}
-                    onImportSuccess={async () => {
-                        await Promise.all([fetchData(), fetchRouteStructure()]);
-                    }}
-                />
-            )}
+            {
+                activePanel === 'external_load' && (
+                    <ExternalLoadPanel
+                        onClose={() => setActivePanel('none')}
+                        onImportSuccess={async () => {
+                            await Promise.all([fetchData(), fetchRouteStructure()]);
+                        }}
+                    />
+                )
+            }
 
             {/* Filter Panel - Integrated Layout */}
             <div className="absolute top-4 left-16 z-20 pointer-events-none flex flex-col items-start gap-4 h-[calc(100vh-2rem)]">
@@ -995,97 +1134,146 @@ const MapEditor: React.FC = () => {
                 </div>
             </div>
 
-            {activePanel === 'empty_segments' && (
-                <EmptySegmentsManager
-                    onClose={() => {
-                        setActivePanel('none');
-                        setMode('idle');
-                    }}
-                    segments={segments.filter(s => s.type === 'empty')}
-                    stops={stops}
-                    routesStructure={routesStructure}
-                    onRefresh={fetchData}
-                />
-            )}
+            {
+                activePanel === 'empty_segments' && (
+                    <EmptySegmentsManager
+                        onClose={() => {
+                            setActivePanel('none');
+                            setMode('idle');
+                        }}
+                        segments={segments.filter(s => s.type === 'empty')}
+                        stops={stops}
+                        routesStructure={routesStructure}
+                        onRefresh={fetchData}
+                    />
+                )
+            }
 
-            {activePanel === 'simulation' && (
-                <SimulationPanel onClose={() => setActivePanel('none')} />
-            )}
+            {
+                activePanel === 'simulation' && (
+                    <SimulationPanel onClose={() => setActivePanel('none')} />
+                )
+            }
 
             {/* Empty State Warning */}
-            {filterEmpty && (
-                <div className="absolute top-20 left-1/2 transform -translate-x-1/2 bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded z-50 shadow-lg">
-                    <strong className="font-bold">No results found!</strong>
-                    <span className="block sm:inline"> Try adjusting your filters.</span>
-                </div>
-            )}
+            {
+                filterEmpty && (
+                    <div className="absolute top-20 left-1/2 transform -translate-x-1/2 bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded z-50 shadow-lg">
+                        <strong className="font-bold">No results found!</strong>
+                        <span className="block sm:inline"> Try adjusting your filters.</span>
+                    </div>
+                )
+            }
 
             {/* Path Editor UI Overlay */}
-            {activeRoute && (
-                <div className="absolute top-4 right-4 w-64 bg-white dark:bg-gray-800 dark:text-gray-100 p-4 rounded shadow-lg z-20">
-                    <h3 className="font-bold border-b pb-2 dark:border-gray-700">Editing: {activeRoute.route_short_name}</h3>
-                    <div className="mt-2 flex items-center gap-2 text-sm">
-                        <span>Direction:</span>
-                        <div className="flex bg-gray-100 dark:bg-gray-700 rounded">
+            {
+                activeRoute && (
+                    <div className="absolute top-4 right-4 w-64 bg-white dark:bg-gray-800 dark:text-gray-100 p-4 rounded shadow-lg z-20">
+                        <h3 className="font-bold border-b pb-2 dark:border-gray-700">Editing: {activeRoute.route_short_name}</h3>
+                        <div className="mt-2 flex items-center gap-2 text-sm">
+                            <span>Direction:</span>
+                            <div className="flex bg-gray-100 dark:bg-gray-700 rounded">
+                                <button
+                                    onClick={() => setDirectionId(0)}
+                                    className={clsx("px-2 py-1 rounded", directionId === 0 ? "bg-blue-600 text-white" : "hover:bg-gray-200 dark:hover:bg-gray-600")}
+                                >0</button>
+                                <button
+                                    onClick={() => setDirectionId(1)}
+                                    className={clsx("px-2 py-1 rounded", directionId === 1 ? "bg-blue-600 text-white" : "hover:bg-gray-200 dark:hover:bg-gray-600")}
+                                >1</button>
+                            </div>
+                        </div>
+
+                        <div className="mt-3 text-sm text-gray-600 dark:text-gray-400">
+                            <p>Stops selected: {pathStops.length}</p>
+                            <p>Total Distance: {(pathDistance / 1000).toFixed(2)} km</p>
+                            <p className="text-xs italic mt-1">Click nodes on map in order to define path.</p>
+                        </div>
+
+                        <div className="mt-3 space-y-2">
+                            <div className="text-[10px] uppercase font-semibold tracking-widest text-slate-500 dark:text-slate-400">Perfil operativo</div>
+                            <div className="space-y-2 max-h-40 overflow-y-auto pr-1">
+                                {routingProfiles.map(profile => {
+                                    const meta = routingProfileMetadata[profile];
+                                    const isActive = profile === pathRoutingProfile;
+                                    return (
+                                        <button
+                                            key={profile}
+                                            onClick={() => setPathRoutingProfile(profile)}
+                                            className={clsx(
+                                                'w-full rounded-lg border px-3 py-2 text-left transition flex flex-col gap-1',
+                                                isActive
+                                                    ? 'border-slate-900 bg-slate-100 dark:bg-slate-700 dark:border-slate-500 shadow-inner'
+                                                    : 'border-slate-200 dark:border-slate-700 hover:border-slate-400 dark:hover:border-slate-500'
+                                            )}
+                                        >
+                                            <div className="flex items-center justify-between gap-2">
+                                                <div className="flex items-center gap-2">
+                                                    <span
+                                                        className="h-3 w-3 rounded-full border border-slate-200 dark:border-slate-600"
+                                                        style={{ backgroundColor: meta.color }}
+                                                    />
+                                                    <span className="text-sm font-semibold" style={{ color: isActive ? meta.color : undefined }}>
+                                                        {meta.label}
+                                                    </span>
+                                                </div>
+                                            </div>
+                                            <p className="text-[10px] text-slate-500 dark:text-slate-300 leading-tight">
+                                                {meta.description}
+                                            </p>
+                                        </button>
+                                    );
+                                })}
+                            </div>
+                        </div>
+
+                        <div className="mt-4 flex flex-col gap-2">
                             <button
-                                onClick={() => setDirectionId(0)}
-                                className={clsx("px-2 py-1 rounded", directionId === 0 ? "bg-blue-600 text-white" : "hover:bg-gray-200 dark:hover:bg-gray-600")}
-                            >0</button>
+                                onClick={savePath}
+                                disabled={loading || pathStops.length < 2}
+                                className={clsx("bg-green-600 text-white py-1 rounded hover:bg-green-700", (loading || pathStops.length < 2) && "opacity-50 cursor-not-allowed")}
+                            >
+                                {loading ? 'Saving...' : 'Save Path'}
+                            </button>
                             <button
-                                onClick={() => setDirectionId(1)}
-                                className={clsx("px-2 py-1 rounded", directionId === 1 ? "bg-blue-600 text-white" : "hover:bg-gray-200 dark:hover:bg-gray-600")}
-                            >1</button>
+                                onClick={() => setPathStops([])}
+                                className="bg-gray-200 text-gray-800 dark:bg-gray-700 dark:text-gray-200 py-1 rounded hover:bg-gray-300 dark:hover:bg-gray-600"
+                            >
+                                Clear Selection
+                            </button>
+                            <button
+                                onClick={cancelPathEdit}
+                                className="bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-300 py-1 rounded hover:bg-red-200"
+                            >
+                                Cancel / Back
+                            </button>
                         </div>
                     </div>
-
-                    <div className="mt-3 text-sm text-gray-600 dark:text-gray-400">
-                        <p>Stops selected: {pathStops.length}</p>
-                        <p>Total Distance: {(pathDistance / 1000).toFixed(2)} km</p>
-                        <p className="text-xs italic mt-1">Click nodes on map in order to define path.</p>
-                    </div>
-
-                    <div className="mt-4 flex flex-col gap-2">
-                        <button
-                            onClick={savePath}
-                            disabled={loading || pathStops.length < 2}
-                            className={clsx("bg-green-600 text-white py-1 rounded hover:bg-green-700", (loading || pathStops.length < 2) && "opacity-50 cursor-not-allowed")}
-                        >
-                            {loading ? 'Saving...' : 'Save Path'}
-                        </button>
-                        <button
-                            onClick={() => setPathStops([])}
-                            className="bg-gray-200 text-gray-800 dark:bg-gray-700 dark:text-gray-200 py-1 rounded hover:bg-gray-300 dark:hover:bg-gray-600"
-                        >
-                            Clear Selection
-                        </button>
-                        <button
-                            onClick={cancelPathEdit}
-                            className="bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-300 py-1 rounded hover:bg-red-200"
-                        >
-                            Cancel / Back
-                        </button>
-                    </div>
-                </div>
-            )}
+                )
+            }
 
             {/* Add Instruction Toast */}
-            {mode === 'add_stop' && (
-                <div className="absolute top-4 left-1/2 transform -translate-x-1/2 bg-blue-600 text-white px-4 py-2 rounded-full shadow-lg z-50 flex items-center gap-2 animate-bounce">
-                    <MapPin size={16} />
-                    <span className="font-bold text-sm">Click map to add stops</span>
-                    <span className="text-xs opacity-80">(Right-click to exit)</span>
-                </div>
-            )}
+            {
+                mode === 'add_stop' && (
+                    <div className="absolute top-4 left-1/2 transform -translate-x-1/2 bg-blue-600 text-white px-4 py-2 rounded-full shadow-lg z-50 flex items-center gap-2 animate-bounce">
+                        <MapPin size={16} />
+                        <span className="font-bold text-sm">Click map to add stops</span>
+                        <span className="text-xs opacity-80">(Right-click to exit)</span>
+                    </div>
+                )
+            }
 
-            {mode === 'add_segment' && (
-                <div className="absolute top-4 left-1/2 transform -translate-x-1/2 bg-indigo-600 text-white px-4 py-2 rounded-full shadow-lg z-50 flex items-center gap-2 animate-bounce">
-                    <MapPin size={16} />
-                    <span className="font-bold text-sm">
-                        {segmentStartNode ? "Select destination stop" : "Select starting stop"}
-                    </span>
-                    <span className="text-xs opacity-80">(Right-click to exit)</span>
-                </div>
-            )}
+            {
+                mode === 'add_segment' && (
+                    <div className="absolute top-4 left-1/2 transform -translate-x-1/2 bg-indigo-600 text-white px-4 py-2 rounded-full shadow-lg z-50 flex items-center gap-2 animate-bounce">
+                        <MapPin size={16} />
+                        <span className="font-bold text-sm">
+                            {segmentStartNode ? "Select destination stop" : "Select starting stop"}
+                        </span>
+                        <span className="text-xs opacity-80">(Right-click to exit)</span>
+                    </div>
+                )
+            }
 
             <StopCreationModal
                 isOpen={isCreatingStop}
@@ -1097,7 +1285,7 @@ const MapEditor: React.FC = () => {
                 }}
                 onSave={handleCreateStopSave}
             />
-        </div>
+        </div >
     );
 };
 

@@ -29,10 +29,10 @@ server.register(cors, {
     exposedHeaders: ['Content-Disposition']
 });
 
-// Register Multipart for file uploads (50MB limit)
+// Register Multipart for file uploads (1GB limit for maps)
 server.register(fastifyMultipart, {
     limits: {
-        fileSize: 50 * 1024 * 1024 // 50MB
+        fileSize: 1024 * 1024 * 1024 // 1GB (1024MB)
     }
 });
 

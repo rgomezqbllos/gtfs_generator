@@ -4,6 +4,7 @@ import { Trash2, ArrowRightLeft, Clock, Ruler } from 'lucide-react';
 import ConfirmModal from './ConfirmModal';
 import Draggable from './UI/Draggable';
 import { API_URL } from '../config';
+import { defaultRoutingProfile, routingProfileMetadata } from '../constants/routingProfiles';
 
 interface SegmentDetailsProps {
     segment: Segment;
@@ -38,6 +39,8 @@ const SegmentDetails: React.FC<SegmentDetailsProps> = ({ segment, stops, onClose
     const endStopName = React.useMemo(() =>
         stops.find(s => s.stop_id === segment.end_node_id)?.stop_name || 'Unknown End',
         [segment.end_node_id, stops]);
+    const profileKey = segment.routing_profile || defaultRoutingProfile;
+    const profileMeta = routingProfileMetadata[profileKey];
 
     const handleSave = async () => {
         setIsSaving(true);
@@ -122,12 +125,26 @@ const SegmentDetails: React.FC<SegmentDetailsProps> = ({ segment, stops, onClose
                             <span className="truncate max-w-[45%] text-right" title={endStopName}>
                                 {endStopName}
                             </span>
-                        </div>
                     </div>
+                </div>
 
-                    {/* Input Group: Distance */}
-                    <div>
-                        <label className="block text-xs font-bold text-slate-400 dark:text-gray-500 uppercase tracking-wider mb-2">Distance</label>
+                <div className="bg-slate-50 dark:bg-gray-700/50 p-3 rounded-xl border border-slate-100 dark:border-gray-700 flex flex-col gap-2">
+                    <div className="flex items-center gap-2 text-[10px] uppercase tracking-wider text-slate-400 dark:text-gray-500 font-bold">
+                        Perfil operativo
+                    </div>
+                    <div className="flex items-center gap-2">
+                        <span
+                            className="h-3 w-3 rounded-full border border-slate-200 dark:border-slate-500"
+                            style={{ backgroundColor: profileMeta.color }}
+                        />
+                        <span className="text-sm font-semibold text-slate-800 dark:text-gray-100">{profileMeta.label}</span>
+                    </div>
+                    <p className="text-xs text-slate-500 dark:text-slate-300 leading-tight">{profileMeta.description}</p>
+                </div>
+
+                {/* Input Group: Distance */}
+                <div>
+                    <label className="block text-xs font-bold text-slate-400 dark:text-gray-500 uppercase tracking-wider mb-2">Distance</label>
                         <div className="relative">
                             <div className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400">
                                 <Ruler size={16} />

@@ -131,7 +131,7 @@ export default async function stopsRoutes(fastify: FastifyInstance) {
                 }
 
                 try {
-                    const project = db.prepare('SELECT routing_engine_url FROM projects WHERE project_id = ?').get(request.projectId) as any;
+                    const project = db.prepare('SELECT routing_engine_url FROM projects WHERE id = ?').get(request.projectId) as any;
                     const routeData = await fetchRoute(startCoords, endCoords, project?.routing_engine_url);
                     if (routeData) {
                         const updateStmt = db.prepare(`
