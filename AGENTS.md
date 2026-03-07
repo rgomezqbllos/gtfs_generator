@@ -1,36 +1,49 @@
-# AGENTS / instrucciones para agentes en gtfs_generator
+# Agent Capabilities & Project Overview
 
-Este archivo condensa el marco funcional que deben seguir los agentes al trabajar sobre el generador de GTFS y el mapa de rutas.
+Este documento describe las capacidades de los agentes de IA (Antigravity) que colaboran en este proyecto, así como una visión funcional de la herramienta.
 
-## Propósito general
-- El objetivo es construir rutas de bus realistas combinando red vial mixta y exclusiva.
-- El sistema se debe comportar como herramienta de planificación del transporte, no como navegador de automóvil.
-- Cada sugerencia, cambio o prueba debe respetar la semántica operativa de los buses.
+## 🎯 Visión del Proyecto (GTFS Generator)
 
-## Prioridades funcionales
-1. Permitir seleccionar perfiles de enrutamiento antes y durante el trazo.
-2. Usar perfiles diferenciados para vía mixta, vía exclusiva y combinaciones mixtas/exclusivas.
-3. Reconocer conectores válidos entre redes y respetar permisos/giros/restricciones específicas de buses.
-4. Garantizar continuidad geométrica y reproducibilidad: mismo perfil + mismas paradas => mismo resultado.
-5. Ofrecer edición manual del trazado y visualización del tipo de infraestructura en cada tramo.
+El **GTFS Generator** es una herramienta integral para planificadores de transporte que permite digitalizar redes de transporte público desde cero o editar redes existentes de forma visual y geoespacial. Su objetivo es democratizar la creación de datos de calidad GTFS para cualquier ciudad del mundo, permitiendo agilidad en la planificación y diseño de rutas.
 
-## Reglas operativas clave
-- Nunca asumir que el camino más corto para un automóvil es válido; evalúa según el perfil de bus.
-- Un perfil que no tenga permiso para vía exclusiva debe evitarla; un perfil troncal debe privilegiarla.
-- Las vías mixtas pueden usarse siempre que no haya restricción específica para buses.
-- Las transiciones mix/exclusivo deben pasar por conectores autorizados o modelados explícitamente.
-- El motor debe distinguir restricciones diferenciales (giros, sentidos, accesos) admitiendo excepciones para buses cuando existan.
+### 🛠️ Capacidades Principales (Core Capabilities)
 
-## Flujo esperado durante el desarrollo/respuesta
-1. Identifica el perfil de servicio: mixta, mixta+exclusiva o exclusivamente troncal.
-2. Asegura que los datos de la red (calles, corredores, conectores, restricciones) están bien etiquetados y se usan según el perfil.
-3. Valida que la ruta resultante use la infraestructura adecuada y sea editable visualmente.
-4. Si algo no se puede modelar automáticamente, deja claro qué falta (por ejemplo, conectores no mapeados).
+- 🚀 **Digitalización Ágil:** Creación de paradas/nodos y trazado de segmentos siguiendo la red vial real.
+- 🛣️ **Enrutamiento Inteligente (OSRM):** Cálculo automático de distancias y tiempos de viaje basados en la infraestructura vial de OpenStreetMap.
+- 📊 **Gestión de Horarios:** Edición de calendarios, servicios y trips con detección de conflictos y auto-cálculo de frecuencias.
+- 🗺️ **Multilocación:** Soporte para múltiples ciudades con mapas y motores de enrutamiento independientes por proyecto.
 
-## Criterios de calidad y validaciones
-- El enrutamiento debe usar infraestructura correcta para cada perfil y evitar desvíos ilógicos.
-- Las rutas deben distinguir visualmente por tipo de vía para apoyar la revisión operativa.
-- El comportamiento debe responder de forma consistente ante entradas iguales.
-- Documenta cualquier suposición operativa o restricción especial que afecte el resultado.
+---
 
-Si necesitas más contexto, consulta la especificación funcional oficial antes de proponer cambios.
+## 🤖 Agentes de IA: Perfiles y Capacidades
+
+Nuestros agentes están entrenados para actuar en varios niveles dentro del ecosistema del proyecto. Al interactuar con nosotros, puedes esperar el siguiente soporte:
+
+### 1. Desarrollador Full-Stack (Frontend & Backend)
+
+- **React/TSX:** Creación de componentes modernos usando @tailwindcss/vite, MapLibre GL y React Map GL.
+- **Fastify/Node.js:** Construcción de APIs escalables, manejo de streams para grandes volúmenes de datos e integración con SQLite.
+- **Arquitectura:** Implementación de patrones de diseño, middleware de autenticación (Keycloak) y gestión de estado.
+
+### 2. Ingeniero de Infraestructura & DevOps
+
+- **Docker Expert:** Gestión de contenedores para la App, Postgres, Keycloak y Motores de OSRM (múltiples ciudades/perfiles).
+- **Análisis de Sistemas:** Diagnóstico de problemas de conectividad, red y despliegue local/nube.
+- **Automatización:** Creación de scripts de setup para simplificar procesos complejos de procesamiento de mapas.
+
+### 3. Consultor Funcional de Transporte (QA & Dominio)
+
+- **Lógica GTFS:** Entendimiento profundo de la especificación General Transit Feed Specification (Stops, Routes, Trips, Shapes, Stop Times).
+- **Análisis de Enrutamiento:** Revisión de perfiles de rutas (Bus Mixed, Trunk, Exclusive) y validación de geometrías operativas.
+- **QA Sensible al Negocio:** Verificación de que las herramientas sean útiles para el usuario final (planificador de transporte), evitando trazos de líneas rectas y asegurando coherencia operativa.
+
+---
+
+## 📝 Registro de Evolución Funcional
+
+En esta sección los agentes registramos las nuevas capacidades que se van añadiendo al núcleo de la aplicación:
+
+- ✅ **[2024-03-06] Soporte Multicity OSRM:** Mejora del sistema de gestión de mapas para permitir el inicio de enrutamiento independiente por proyecto (Bogotá, Curitiba, etc.) usando puertos dinámicos.
+- ✅ **[2024-03-05] Integración Keycloak Superadmin:** Despliegue de un sistema basado en roles y permisos que permite segmentar proyectos por usuarios y asignar recursos específicos.
+- ✅ **[En Progreso] Editor de Horarios Multitrip:** Mejora en la interfaz de usuario para permitir la edición masiva de viajes y el recálculo automático de tiempos muertos (deadheads).
+- ✅ **[En Progreso] Overview & Contextualización:** Creación de guías de usuario integradas para facilitar el onboarding de nuevos planificadores.

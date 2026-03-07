@@ -2,6 +2,23 @@
 
 Aplicación web para generar, editar e importar/exportar feeds **GTFS** (General Transit Feed Specification) con editor de mapa, gestor de segmentos y horarios, y cálculo de rutas/tiempos vía **OSRM**.
 
+## 🎯 Overview Funcional
+
+Este proyecto es una herramienta para planificadores de transporte (como Rafael o Ralf) que necesitan digitalizar redes de buses en ciudades de cualquier parte del mundo.
+
+### ¿Qué puede hacer el usuario actual?
+
+1.  **Gestionar Proyectos Independientes:** Cada ciudad (Bogotá, Curitiba, Santiago) se gestiona como un proyecto con su propio centro de mapa y motor de enrutamiento (OSRM).
+2.  **Digitalizar Infraestructura:** Crear paradas (Stops) y unirlas con segmentos (Segments) que siguen las calles reales, calculando distancias y tiempos de viaje automáticamente.
+3.  **Configurar Operación:** Definir agencias, rutas y servicios (calendarios).
+4.  **Editor de Horarios (Trips/Stop Times):** Crear viajes con secuencias de paradas y tiempos estimados, evitando la carga manual tediosa.
+5.  **Multiperfiles:** Diferenciar si un bus circula por vía mixta, exclusiva o troncal para que el cálculo de rutas sea realista para el transporte público.
+6.  **Importar/Exportar:** Cargar ZIPs existentes de GTFS para editarlos o generar el resultado final listo para usar en planificadores como Google Maps o Transit.
+
+### Visión de Mejora Continua
+
+Mantenemos el archivo `AGENTS.md` para documentar cómo los agentes de IA ayudan a evolucionar estas capacidades y cómo garantizamos la calidad técnica y funcional del transporte.
+
 ## Quickstart (desde cero)
 
 Requisitos: **Node.js 18+**, **Git**, y **Docker** (solo si vas a usar OSRM local).
@@ -13,11 +30,13 @@ npm run install:all
 ```
 
 Terminal 1 (opcional, OSRM local para tu ciudad):
+
 ```bash
 npm run osrm:setup -- bogota
 ```
 
 Terminal 2 (dev: API + frontend con hot-reload):
+
 ```bash
 npm start
 ```
@@ -69,17 +88,20 @@ npm run osrm:setup -- bogota
 Ciudades/regiones disponibles (ver `server/scripts/osrm_manager.ts`): `bogota`, `santiago`, `chile`, `buenos-aires`, `mexico-city`.
 
 Notas:
+
 - La primera vez puede tardar varios minutos y ocupar bastante disco en `osrm-data/`.
 - Si cambias de ciudad, el script detiene el contenedor anterior y levanta el nuevo.
 
 ## Desarrollo (hot reload)
 
-1) (Opcional) OSRM local:
+1. (Opcional) OSRM local:
+
 ```bash
 npm run osrm:setup -- bogota
 ```
 
-2) App en desarrollo (Vite + API):
+2. App en desarrollo (Vite + API):
+
 ```bash
 npm start
 ```

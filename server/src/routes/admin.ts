@@ -7,6 +7,7 @@ import { randomUUID as uuidv4 } from 'crypto';
 import os from 'os';
 import { pipeline } from 'stream/promises';
 import KcAdminClient from '@keycloak/keycloak-admin-client';
+import OsrmService from '../services/OsrmService';
 
 let kcAdminClient: KcAdminClient | null = null;
 async function getKcAdminClient() {
@@ -258,6 +259,19 @@ export default async function adminRoutes(fastify: FastifyInstance) {
         }
     });
 
+    // Proxy to fetch Geofabrik Index avoiding CORS issues
+    fastify.get('/admin/geofabrik', async (request: any, reply: any) => {
+        try {
+            const fetch = (await import('node-fetch')).default;
+            const res = await fetch('https://download.geofabrik.de/index-v1.json');
+            const data = await res.json();
+            return data;
+        } catch (error) {
+            console.error('Failed to proxy geofabrik list:', error);
+            return reply.code(500).send({ error: 'Failed to fetch geofabrik list' });
+        }
+    });
+
     // ==========================================
     // MULTI-TENANT ADMIN ENDPOINTS (PROJECTS & USERS)
     // ==========================================
@@ -283,24 +297,78 @@ export default async function adminRoutes(fastify: FastifyInstance) {
     });
 
     // Create a new project
-    fastify.post<{ Body: { name: string, description: string, map_center_lat?: number, map_center_lon?: number, routing_engine_url?: string } }>('/admin/projects', async (request: any, reply: any) => {
+    fastify.post<{ Body: { name: string, description: string, map_center_lat?: number, map_center_lon?: number, routing_engine_url?: string, region_id?: string, region_url?: string } }>('/admin/projects', async (request: any, reply: any) => {
         if (!request.isSuperAdmin) {
             return reply.code(403).send({ error: 'Only SuperAdmin can create projects' });
         }
         try {
             const id = uuidv4();
             const p = request.body;
+
+            let routing_engine_url = p.routing_engine_url || null;
+
+            let port = 5000;
+
+            if (p.region_url && !routing_engine_url) {
+                // Autogenerate OSRM port and URL
+                const maxPortReq = db.prepare(`SELECT routing_engine_url FROM projects WHERE routing_engine_url IS NOT NULL`).all() as any[];
+                let highestPort = 5000;
+                for (const row of maxPortReq) {
+                    if (!row.routing_engine_url) continue;
+                    const match = row.routing_engine_url.match(/:(\d+)\//);
+                    if (match) {
+                        const portFound = parseInt(match[1]);
+                        if (portFound > highestPort) highestPort = portFound;
+                    }
+                }
+                // Use a gap to account for multi-profile ports (mixed, exclusive, trunk)
+                port = highestPort + 10;
+                const baseUrl = process.env.OSRM_BASE_URL || 'http://host.docker.internal';
+                routing_engine_url = `${baseUrl}:${port}/route/v1/driving`;
+            }
+
+            const extractNumber = (val: any, isLat: boolean): number | null => {
+                if (typeof val === 'number') return val;
+                if (Array.isArray(val)) {
+                    if (typeof val[0] === 'number') {
+                        return isLat ? (typeof val[1] === 'number' ? val[1] : val[0]) : val[0];
+                    }
+                    return extractNumber(val[0], isLat);
+                }
+                return null;
+            };
+
+            const payload = {
+                id,
+                name: p.name,
+                description: p.description || null,
+                map_center_lat: extractNumber(p.map_center_lat, true),
+                map_center_lon: extractNumber(p.map_center_lon, false),
+                routing_engine_url
+            };
+
             db.prepare(`
                 INSERT INTO projects (id, name, description, map_center_lat, map_center_lon, routing_engine_url)
-                VALUES (?, ?, ?, ?, ?, ?)
-            `).run(
-                id, p.name, p.description || null,
-                p.map_center_lat || 4.6097,
-                p.map_center_lon || -74.0817,
-                p.routing_engine_url || null
-            );
-            return { id, ...p };
+                VALUES (@id, @name, @description, @map_center_lat, @map_center_lon, @routing_engine_url)
+            `).run(payload);
+
+            // Execute OSRM Setup asynchronously if a region was provided
+            if (p.region_url && p.region_id) {
+                const activationPort = port;
+                console.log(`Starting background OSRM setup for project ${p.name} using region ${p.region_id} and URL ${p.region_url} on port ${activationPort}`);
+                
+                OsrmService.downloadMap(p.region_id, p.region_url, `${p.region_id}.osm.pbf`)
+                    .then(() => {
+                        console.log(`Download for ${p.region_id} complete. Activating map on port ${activationPort}...`);
+                        return OsrmService.activateMap(p.region_id, activationPort);
+                    })
+                    .catch(e => {
+                        console.error('Failed to configure OSRM background map:', e);
+                    });
+            }
+            return { id, routing_engine_url, ...p };
         } catch (error) {
+            console.error('Failed to create project:', error);
             return reply.code(500).send({ error: 'Failed to create project' });
         }
     });

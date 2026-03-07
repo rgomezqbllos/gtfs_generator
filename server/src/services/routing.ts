@@ -16,12 +16,22 @@ export async function fetchRoute(start: [number, number], end: [number, number],
     let OSRM_API = routingUrl;
 
     if (!OSRM_API) {
-        // If we are in Docker, the services are reachable at 'localhost' or 'app' (since they are in host network or we are using host ports)
-        // However, since OsrmService maps them to host ports, 'http://localhost:PORT' should work if the app is also using host network
-        // or if we use the internal Docker IP. 
-        // Best approach: use environment variable or default to localhost
         const base = process.env.OSRM_BASE_URL || 'http://localhost';
         OSRM_API = `${base}:${PROFILE_PORTS[profile]}/route/v1/driving`;
+    } else {
+        // If the API URL contains 'localhost' or '127.0.0.1', rewrite it using OSRM_BASE_URL
+        // This is necessary because the backend runs in a Docker container, while OSRM runs on the host (or mapped to host)
+        const baseEnv = process.env.OSRM_BASE_URL;
+        if (baseEnv && (OSRM_API.includes('://localhost') || OSRM_API.includes('://127.0.0.1'))) {
+            try {
+                const baseObj = new URL(baseEnv);
+                const apiObj = new URL(OSRM_API);
+                apiObj.hostname = baseObj.hostname;
+                OSRM_API = apiObj.toString();
+            } catch (e) {
+                console.warn('Failed to rewrite OSRM URL', e);
+            }
+        }
     }
 
     try {

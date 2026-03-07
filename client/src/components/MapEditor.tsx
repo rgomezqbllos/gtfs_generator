@@ -788,6 +788,15 @@ const MapEditor: React.FC = () => {
         }
     }, []);
 
+    const handleSearch = (coords: { lat: number; lon: number }) => {
+        setViewState(prev => ({
+            ...prev,
+            latitude: coords.lat,
+            longitude: coords.lon,
+            zoom: 14,
+            transitionDuration: 1000
+        }));
+    };
 
     return (
         <div className="w-full h-full relative font-sans"
@@ -811,6 +820,12 @@ const MapEditor: React.FC = () => {
                 onZoomIn={handleZoomIn}
                 onZoomOut={handleZoomOut}
                 onLocate={handleLocate}
+                onSearch={handleSearch}
+                projectLocation={activeProject ? {
+                    lat: activeProject.map_center_lat,
+                    lon: activeProject.map_center_lon,
+                    name: activeProject.name
+                } : null}
             />
 
             <Map
@@ -1042,6 +1057,7 @@ const MapEditor: React.FC = () => {
                 activePanel === 'segments_catalog' && (
                     <SegmentsCatalog
                         onClose={() => setActivePanel('none')}
+                        stops={stops}
                         onAddOnMap={() => {
                             setActivePanel('none');
                             setMode('add_segment');

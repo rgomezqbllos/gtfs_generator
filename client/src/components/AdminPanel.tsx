@@ -2,16 +2,23 @@ import React, { useEffect, useState } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { API_URL } from '../config';
 import { LogOut } from 'lucide-react';
+import ConfirmModal from './ConfirmModal';
+
+// We fetch Geofabrik regions dynamically now instead of a hardcoded list
 
 export const AdminPanel: React.FC = () => {
     const { token, isSuperAdmin, isTenantAdmin, myProjects, logout } = useAuth();
     const [activeTab, setActiveTab] = useState<'projects' | 'users'>('users');
     const [projects, setProjects] = useState<any[]>([]);
     const [users, setUsers] = useState<any[]>([]);
+    const [projectToDelete, setProjectToDelete] = useState<string | null>(null);
 
     // New project form
     const [newProjectName, setNewProjectName] = useState('');
     const [newProjectDesc, setNewProjectDesc] = useState('');
+    const [newProjectRegion, setNewProjectRegion] = useState('');
+    const [customRegionUrl, setCustomRegionUrl] = useState('');
+    const [geofabrikRegions, setGeofabrikRegions] = useState<any[]>([]);
 
     // New user form
     const [newUserName, setNewUserName] = useState('');
@@ -49,28 +56,85 @@ export const AdminPanel: React.FC = () => {
         }
     }, [token]);
 
+    useEffect(() => {
+        if (!token) return;
+        fetch(`${API_URL}/admin/geofabrik`, {
+            headers: { 'Authorization': `Bearer ${token}` }
+        })
+            .then(res => res.json())
+            .then(data => {
+                if (data && data.features) {
+                    const regions = data.features.map((f: any) => ({
+                        id: f.properties.id,
+                        name: f.properties.name,
+                        url: f.properties.urls.pbf,
+                        lat: f.geometry && f.geometry.coordinates[0]?.[0]?.[1],
+                        lon: f.geometry && f.geometry.coordinates[0]?.[0]?.[0]
+                    })).sort((a: any, b: any) => a.name.localeCompare(b.name));
+                    setGeofabrikRegions(regions);
+                }
+            })
+            .catch(console.error);
+    }, []);
+
     const handleCreateProject = async () => {
         if (!newProjectName) return;
-        await fetch(`${API_URL}/admin/projects`, {
-            method: 'POST',
-            headers: {
-                'Authorization': `Bearer ${token}`,
-                'Content-Type': 'application/json'
-            },
-            body: JSON.stringify({ name: newProjectName, description: newProjectDesc })
-        });
-        setNewProjectName('');
-        setNewProjectDesc('');
-        fetchProjects();
+        
+        let regionData = geofabrikRegions.find(r => r.id === newProjectRegion);
+        let finalUrl = customRegionUrl || regionData?.url || undefined;
+        let finalId = newProjectRegion || (customRegionUrl ? newProjectName.toLowerCase().replace(/[^a-z0-9]/g, '-') : undefined);
+        
+        try {
+            const res = await fetch(`${API_URL}/admin/projects`, {
+                method: 'POST',
+                headers: {
+                    'Authorization': `Bearer ${token}`,
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({ 
+                    name: newProjectName, 
+                    description: newProjectDesc,
+                    region_id: finalId,
+                    region_url: finalUrl,
+                    map_center_lat: regionData?.lat,
+                    map_center_lon: regionData?.lon
+                })
+            });
+            
+            if (res.ok) {
+                setNewProjectName('');
+                setNewProjectDesc('');
+                setNewProjectRegion('');
+                setCustomRegionUrl('');
+                fetchProjects();
+                alert(`¡Proyecto creado exitosamente! OSRM se está configurando en segundo plano para ${finalId || 'la región'}.`);
+            } else {
+                const data = await res.json();
+                alert(data.error || 'Error al crear proyecto');
+            }
+        } catch (e: any) {
+            console.error(e);
+            alert('Error de conexión al crear proyecto: ' + e.message);
+        }
     };
 
-    const handleDeleteProject = async (id: string) => {
-        if (!confirm('Eliminar proyecto y todos sus datos relacionados?')) return;
-        await fetch(`${API_URL}/admin/projects/${id}`, {
-            method: 'DELETE',
-            headers: { 'Authorization': `Bearer ${token}` }
-        });
-        fetchProjects();
+    const handleDeleteProject = (id: string) => {
+        setProjectToDelete(id);
+    };
+
+    const confirmDeleteProject = async () => {
+        if (!projectToDelete) return;
+        try {
+            await fetch(`${API_URL}/admin/projects/${projectToDelete}`, {
+                method: 'DELETE',
+                headers: { 'Authorization': `Bearer ${token}` }
+            });
+            fetchProjects();
+        } catch (e) {
+            console.error(e);
+        } finally {
+            setProjectToDelete(null);
+        }
     };
 
     const handleAssignUser = async (userId: string, projectId: string) => {
@@ -113,6 +177,7 @@ export const AdminPanel: React.FC = () => {
                 setNewUserEmail('');
                 setNewUserPassword('');
                 fetchUsers();
+                alert('¡Usuario creado en el sistema y listo para ser asignado!');
             } else {
                 const data = await res.json();
                 alert(data.error || 'Failed to create user');
@@ -190,7 +255,7 @@ export const AdminPanel: React.FC = () => {
                         <div className="flex gap-4 mb-6">
                             <input
                                 type="text"
-                                placeholder="Nombre de la ciudad o red..."
+                                placeholder="Nombre de la red..."
                                 value={newProjectName}
                                 onChange={e => setNewProjectName(e.target.value)}
                                 className="p-2 rounded bg-[#0f111a] border border-[#2d3248] text-white flex-1 focus:outline-none focus:border-blue-500 transition-colors"
@@ -202,6 +267,32 @@ export const AdminPanel: React.FC = () => {
                                 onChange={e => setNewProjectDesc(e.target.value)}
                                 className="p-2 rounded bg-[#0f111a] border border-[#2d3248] text-white flex-1 focus:outline-none focus:border-blue-500 transition-colors"
                             />
+                            <div className="flex flex-col gap-2 flex-1">
+                                <select
+                                    value={newProjectRegion}
+                                    onChange={e => {
+                                        setNewProjectRegion(e.target.value);
+                                        if (e.target.value) setCustomRegionUrl('');
+                                    }}
+                                    className="p-2 rounded bg-[#0f111a] border border-[#2d3248] text-white focus:outline-none focus:border-blue-500 transition-colors"
+                                    title="Busca y elige entre las 500+ regiones de Geofabrik"
+                                >
+                                    <option value="">🗺️ Seleccionar Región Mapas (Geofabrik)</option>
+                                    {geofabrikRegions.map(r => (
+                                        <option key={r.id} value={r.id}>{r.name} ({r.id})</option>
+                                    ))}
+                                </select>
+                                <input
+                                    type="text"
+                                    placeholder="O ingresa un URL Custom .osm.pbf (ej. BBBike)"
+                                    value={customRegionUrl}
+                                    onChange={e => {
+                                        setCustomRegionUrl(e.target.value);
+                                        if (e.target.value) setNewProjectRegion('');
+                                    }}
+                                    className="p-2 rounded bg-[#0f111a] border border-[#2d3248] text-white focus:outline-none focus:border-blue-500 transition-colors text-sm"
+                                />
+                            </div>
                             <button onClick={handleCreateProject} className="bg-blue-600 px-6 py-2 rounded text-white font-medium hover:bg-blue-500 shadow-lg shadow-blue-500/20 active:scale-95 transition-all">
                                 Crear Proyecto
                             </button>
@@ -323,6 +414,16 @@ export const AdminPanel: React.FC = () => {
                     </div>
                 </section>
             )}
+
+            <ConfirmModal
+                isOpen={!!projectToDelete}
+                title="Eliminar Proyecto"
+                message="¿Estás seguro de que deseas eliminar este proyecto y todos sus datos relacionados? Esta acción no se puede deshacer."
+                isDestructive={true}
+                confirmText="Sí, Eliminar"
+                onConfirm={confirmDeleteProject}
+                onCancel={() => setProjectToDelete(null)}
+            />
         </div>
     );
 };

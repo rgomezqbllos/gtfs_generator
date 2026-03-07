@@ -29,32 +29,8 @@ interface RegionInfo {
     mirrors: string[];
 }
 
-const REGIONS: Record<string, RegionInfo> = {
-    'bogota': {
-        url: 'https://download.geofabrik.de/south-america/colombia-latest.osm.pbf',
-        mirrors: [
-            'https://download.bbbike.org/osm/bbbike/Bogota/Bogota.osm.pbf',
-        ]
-    },
-    'santiago': {
-        url: 'https://download.geofabrik.de/south-america/chile-latest.osm.pbf',
-        mirrors: [
-            'https://download.bbbike.org/osm/bbbike/Santiago/Santiago.osm.pbf'
-        ]
-    },
-    'chile': {
-        url: 'https://download.geofabrik.de/south-america/chile-latest.osm.pbf',
-        mirrors: []
-    },
-    'buenos-aires': {
-        url: 'https://download.geofabrik.de/south-america/argentina-latest.osm.pbf',
-        mirrors: []
-    },
-    'mexico-city': {
-        url: 'https://download.geofabrik.de/north-america/mexico-latest.osm.pbf',
-        mirrors: []
-    }
-};
+// We removed the hardcoded REGIONS dictionary to make this fully parametric.
+// Usage: tsx osrm_manager.ts <city_key> <port> <url>
 
 // Fallback: If Geofabrik is blocked, we might need manual download or a different source.
 // Since Geofabrik is the standard, blocking it is problematic.
@@ -174,26 +150,32 @@ function ensureDir(dir: string) {
 
 async function main() {
     const regionKey = (process.argv[2] || process.env.OSRM_CITY || '').toLowerCase();
+    const customPort = process.argv[3] ? parseInt(process.argv[3]) : null;
+    const customUrl = process.argv[4];
 
-    if (!regionKey || !REGIONS[regionKey]) {
+    if (!regionKey || !customPort || !customUrl) {
         console.error(`
-Usage: npm run osrm:setup <city_key>
+Usage: npm run osrm:setup <city_key> <port> <url>
 
-Available Cities/Regions:
-${Object.keys(REGIONS).map(k => ` - ${k}`).join('\n')}
+Example: npm run osrm:setup merida 5012 "https://download.geofabrik.de/north-america/mexico-latest.osm.pbf"
 `);
         process.exit(1);
     }
 
-    const info = REGIONS[regionKey];
-    const url = info.url;
-    const filename = path.basename(url);
+    const url = customUrl;
+    const filename = `${regionKey}.osm.pbf`; // Using region key for filename to avoid collisions
     const pbfPath = path.join(DATA_DIR, filename);
     const osrmName = filename.replace('.osm.pbf', '');
     const osrmPath = path.join(DATA_DIR, `${osrmName}.osrm`);
+    
+    // Use unique container name to allow multiple cities
+    const targetPort = customPort || PORT;
+    const specificContainerName = `${CONTAINER_NAME}-${regionKey}-${targetPort}`;
 
     console.log(`=== Setting up OSRM for: ${regionKey} ===`);
     console.log(`Target Data: ${filename}`);
+    console.log(`Target Port: ${targetPort}`);
+    console.log(`Container Name: ${specificContainerName}`);
 
     ensureDir(DATA_DIR);
 
@@ -205,37 +187,32 @@ ${Object.keys(REGIONS).map(k => ` - ${k}`).join('\n')}
             if (stats.size < 10000) {
                 console.log("Existing file is suspicious (too small), deleting and re-downloading.");
                 fs.unlinkSync(pbfPath);
-                await downloadFileWithRetry(url, info.mirrors || [], pbfPath);
+                await downloadFileWithRetry(url, [], pbfPath);
             } else {
                 console.log(`File ${pbfPath} already exists and seems valid (${(stats.size / 1024 / 1024).toFixed(2)} MB). Skipping download.`);
             }
         } else {
-            await downloadFileWithRetry(url, info.mirrors || [], pbfPath);
+            await downloadFileWithRetry(url, [], pbfPath);
         }
     } catch (e) {
         console.error('Download failed:', e);
         console.error('\nPOSSIBLE CAUSE: Your network (WatchGuard/Firewall) is blocking standard Geofabrik downloads.');
-        console.error('SOLUTION: Please manually download the .osm.pbf file for your region and place it in the "osrm-data" folder.');
+        console.error('SOLUTION: Please manually download the .osm.pbf file and place it in the "osrm-data" folder.');
         console.error(`URL: ${url}`);
         process.exit(1);
     }
 
-    // 2. Stop existing container if running
+    // 2. Stop existing container if running (only the one for this city/port)
     try {
-        console.log('Stopping existing OSRM container...');
-        execSync(`docker rm -f ${CONTAINER_NAME}`, { stdio: 'ignore' });
+        console.log(`Stopping existing container ${specificContainerName} if it exists...`);
+        execSync(`docker rm -f ${specificContainerName}`, { stdio: 'ignore' });
     } catch (e) {
         // ignore if not exists
     }
 
     // 3. Process Map Data (Extract, Partition, Customize)
-    // Only verify if .osrm exists? No, better to re-process to be safe or check specific artifact.
-    // For simplicity, we re-process if the main .osrm file doesn't exist or if user forced (not implemented)
-    // Actually, OSRM generates multiple files. Let's run the steps.
-
     console.log('--- Processing Map Data (This uses Docker) ---');
 
-    // Using absolute path for volume mount
     const hostDataParam = IN_DOCKER ? `${HOST_PROJECT_PATH}/gtfs_data` : DATA_DIR;
     const volume = `${hostDataParam}:/data`;
 
@@ -262,21 +239,22 @@ ${Object.keys(REGIONS).map(k => ` - ${k}`).join('\n')}
         runCommand(`docker run -t -v "${volume}" osrm/osrm-backend osrm-partition /data/${osrmName}`);
         runCommand(`docker run -t -v "${volume}" osrm/osrm-backend osrm-customize /data/${osrmName}`);
     } else {
-        console.log('OSRM data seems to be already processed. Skipping extraction steps (delete osrm-data folder to force re-process).');
+        console.log('OSRM data seems to be already processed. Skipping extraction steps.');
     }
 
     // 4. Run Server
-    console.log('--- Starting OSRM Server ---');
-    runCommand(`docker run -d --name ${CONTAINER_NAME} -p ${PORT}:5000 -v "${volume}" osrm/osrm-backend osrm-routed --algorithm mld /data/${osrmName}`);
+    console.log(`--- Starting OSRM Server on Port ${targetPort} ---`);
+    runCommand(`docker run -d --name ${specificContainerName} -p ${targetPort}:5000 -v "${volume}" osrm/osrm-backend osrm-routed --algorithm mld /data/${osrmName}`);
 
     console.log(`
 ✅ OSRM is running for ${regionKey}!
-URL: http://localhost:${PORT}
+URL: http://localhost:${targetPort}
 
-IMPORTANT: Ensure your .env file has:
-OSRM_API_URL=http://localhost:${PORT}/route/v1/driving
+IMPORTANT: Set your project's routing_engine_url to:
+http://localhost:${targetPort}/route/v1/driving
 `);
 
 }
 
 main();
+

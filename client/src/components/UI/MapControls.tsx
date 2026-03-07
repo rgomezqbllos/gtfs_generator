@@ -1,17 +1,24 @@
 import React from 'react';
 import { Plus, Minus, Navigation } from 'lucide-react';
+import MapSearch from './MapSearch';
 
 interface MapControlsProps {
     onZoomIn: () => void;
     onZoomOut: () => void;
     onLocate: () => void;
+    onSearch?: (coords: { lat: number; lon: number }) => void;
+    projectLocation?: { lat: number; lon: number; name: string } | null;
 }
 
-const MapControls: React.FC<MapControlsProps> = ({ onZoomIn, onZoomOut, onLocate }) => {
+const MapControls: React.FC<MapControlsProps> = ({ onZoomIn, onZoomOut, onLocate, onSearch, projectLocation }) => {
     return (
         <>
-            {/* Map Controls (Floating Top Left) - SEARCH REMOVED */}
-            {/* <div className="absolute left-6 top-6 ..."> ... </div> */}
+            {/* Map Controls (Floating Top Left) - SEARCH RE-ADDED */}
+            <div className="absolute left-16 top-4 z-20 flex gap-4 items-start">
+                <div className="pointer-events-auto">
+                    {onSearch && <MapSearch onSelect={onSearch} projectLocation={projectLocation} />}
+                </div>
+            </div>
 
             {/* Map UI Tools (Floating Bottom Left) */}
             <div className="absolute bottom-6 left-6 flex flex-col gap-2 z-20">

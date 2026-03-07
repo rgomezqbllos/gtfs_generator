@@ -4,6 +4,9 @@ import { DataTable } from './UI/DataTable';
 import type { ColumnDef } from './UI/DataTable';
 import { API_URL } from '../config';
 import ConfirmModal from './ConfirmModal';
+import SegmentCreationModal from './SegmentCreationModal';
+import type { RoutingProfile } from '../types';
+import { Plus } from 'lucide-react';
 
 export interface Segment {
     segment_id: string;
@@ -16,16 +19,25 @@ export interface Segment {
     type: string;
 }
 
+interface Stop {
+    stop_id: string;
+    stop_name: string;
+}
+
 interface SegmentsCatalogProps {
     onClose: () => void;
     onAddOnMap: () => void;
     onDataChange?: () => void;
+    stops?: Stop[];
 }
 
-export default function SegmentsCatalog({ onClose, onAddOnMap, onDataChange }: SegmentsCatalogProps) {
+export default function SegmentsCatalog({ onClose, onAddOnMap, onDataChange, stops = [] }: SegmentsCatalogProps) {
     const [segments, setSegments] = useState<Segment[]>([]);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
+
+    // Creation flow state
+    const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
 
     // Delete flow state
     const [segmentToDelete, setSegmentToDelete] = useState<Segment | null>(null);
@@ -43,6 +55,28 @@ export default function SegmentsCatalog({ onClose, onAddOnMap, onDataChange }: S
         } finally {
             setLoading(false);
         }
+    };
+
+    const handleCreateSegment = async (data: { start_node_id: string; end_node_id: string; profile: RoutingProfile; type: 'revenue' | 'empty' }) => {
+        const res = await fetch(`${API_URL}/segments`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                start_node_id: data.start_node_id,
+                end_node_id: data.end_node_id,
+                type: data.type,
+                routing_profile: data.profile
+            })
+        });
+
+        if (!res.ok) {
+            const errData = await res.json();
+            throw new Error(errData.error || 'Error al crear el segmento');
+        }
+
+        // Refresh table
+        await fetchSegments();
+        if (onDataChange) onDataChange();
     };
 
     useEffect(() => {
@@ -126,6 +160,13 @@ export default function SegmentsCatalog({ onClose, onAddOnMap, onDataChange }: S
                 </div>
                 <div className="flex items-center gap-3">
                     <button
+                        onClick={() => setIsCreateModalOpen(true)}
+                        className="flex items-center gap-2 px-4 py-2 bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-200 rounded-lg hover:bg-gray-200 dark:hover:bg-gray-700 transition-colors font-medium text-sm whitespace-nowrap"
+                    >
+                        <Plus size={16} />
+                        Crear por Formulario
+                    </button>
+                    <button
                         onClick={onAddOnMap}
                         className="px-4 py-2 bg-[#1337ec] text-white rounded-lg hover:bg-blue-700 transition-colors font-medium text-sm whitespace-nowrap"
                     >
@@ -139,6 +180,13 @@ export default function SegmentsCatalog({ onClose, onAddOnMap, onDataChange }: S
                     </button>
                 </div>
             </div>
+
+            <SegmentCreationModal
+                isOpen={isCreateModalOpen}
+                onClose={() => setIsCreateModalOpen(false)}
+                stops={stops}
+                onSave={handleCreateSegment}
+            />
 
             {/* Content */}
             <div className="flex-1 overflow-hidden py-4">
