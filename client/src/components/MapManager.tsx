@@ -1,8 +1,8 @@
-
 import React, { useState, useEffect } from 'react';
-import { Download, Trash2, Globe, Server, CheckCircle, AlertTriangle, Loader2 } from 'lucide-react';
+import { Download, Trash2, Globe, Server, AlertTriangle, Loader2, Navigation, Radio, Activity } from 'lucide-react';
 import clsx from 'clsx';
 import ConfirmModal from './ConfirmModal';
+import { API_URL } from '../config';
 
 interface MapInfo {
     key: string;
@@ -18,8 +18,6 @@ interface StatusInfo {
     activeRegion?: string;
 }
 
-import { API_URL } from '../config';
-
 const MapManager: React.FC = () => {
     const [maps, setMaps] = useState<MapInfo[]>([]);
     const [status, setStatus] = useState<StatusInfo>({ status: 'idle', message: '' });
@@ -27,7 +25,6 @@ const MapManager: React.FC = () => {
     const [selectedMap, setSelectedMap] = useState<string>('');
     const [confirmDelete, setConfirmDelete] = useState<string | null>(null);
 
-    // Custom Map State
     const [mapMode, setMapMode] = useState<'list' | 'custom' | 'upload'>('list');
     const [customUrl, setCustomUrl] = useState('');
     const [customName, setCustomName] = useState('');
@@ -53,12 +50,10 @@ const MapManager: React.FC = () => {
                 const data = await res.json();
                 setStatus(data);
                 if (data.status === 'downloading' || data.status === 'processing') {
-                    // Poll faster if busy
                     setTimeout(fetchStatus, 1000);
-                    // Refresh maps to update "Active" indicators
                     fetchMaps();
                 } else if (data.status === 'running' || data.status === 'idle') {
-                    fetchMaps(); // Ensure UI is in sync
+                    fetchMaps(); 
                 }
             }
         } catch (e) {
@@ -75,10 +70,10 @@ const MapManager: React.FC = () => {
         const payload: any = {};
 
         if (mapMode === 'custom') {
-            if (!customUrl) return alert('URL is required');
+            if (!customUrl) return alert('URL requerida');
             payload.customUrl = customUrl;
-            payload.customName = customName || 'Custom Map';
-            payload.region = ''; // Not used for custom
+            payload.customName = customName || 'Mapa Personalizado';
+            payload.region = ''; 
         } else if (mapMode === 'list') {
             if (!selectedMap) return;
             payload.region = selectedMap;
@@ -92,7 +87,7 @@ const MapManager: React.FC = () => {
             });
 
             if (res.ok) {
-                fetchStatus(); // Start polling
+                fetchStatus(); 
                 setCustomUrl('');
                 setCustomName('');
                 setMapMode('list');
@@ -101,18 +96,18 @@ const MapManager: React.FC = () => {
                 alert(`Error: ${err.error}`);
             }
         } catch (e) {
-            alert('Failed to start download');
+            alert('Error al iniciar descarga');
         }
     };
 
     const handleUpload = async () => {
-        if (!uploadFile) return alert('No file selected');
-        if (!uploadFile.name.endsWith('.osm.pbf')) return alert('File must be an .osm.pbf file');
+        if (!uploadFile) return alert('No hay archivo seleccionado');
+        if (!uploadFile.name.endsWith('.osm.pbf')) return alert('Debe ser un archivo .osm.pbf');
 
         const formData = new FormData();
         formData.append('file', uploadFile);
 
-        setStatus({ status: 'downloading', message: `Uploading ${uploadFile.name}...`, progress: 0 });
+        setStatus({ status: 'downloading', message: `Subiendo ${uploadFile.name}...`, progress: 0 });
 
         try {
             const res = await fetch(`${API_URL}/maps/upload`, {
@@ -124,15 +119,15 @@ const MapManager: React.FC = () => {
                 setUploadFile(null);
                 setMapMode('list');
                 fetchMaps();
-                setStatus({ status: 'idle', message: 'Upload complete' });
+                setStatus({ status: 'idle', message: 'Carga completa' });
             } else {
                 const err = await res.json();
-                alert(`Upload error: ${err.error}`);
+                alert(`Error de carga: ${err.error}`);
                 setStatus({ status: 'error', message: err.error });
             }
         } catch (e) {
-            alert('Upload failed');
-            setStatus({ status: 'error', message: 'Upload failed' });
+            alert('Carga fallida');
+            setStatus({ status: 'error', message: 'Carga fallida' });
         }
     };
 
@@ -143,10 +138,10 @@ const MapManager: React.FC = () => {
             if (res.ok) {
                 fetchMaps();
             } else {
-                alert('Failed to delete map');
+                alert('No se pudo eliminar el mapa');
             }
         } catch (e) {
-            alert('Error deleting map');
+            alert('Error al eliminar mapa');
         } finally {
             setConfirmDelete(null);
         }
@@ -169,10 +164,10 @@ const MapManager: React.FC = () => {
             if (res.ok) {
                 fetchStatus();
             } else {
-                alert('Failed to cancel process');
+                alert('Error al cancelar proceso');
             }
         } catch (e) {
-            console.error('Error cancelling', e);
+            console.error('Error al cancelar', e);
         }
     };
 
@@ -180,219 +175,256 @@ const MapManager: React.FC = () => {
 
     if (loading) {
         return (
-            <div className="flex justify-center p-8 text-blue-600">
-                <Loader2 size={24} className="animate-spin" />
+            <div className="flex flex-col items-center justify-center p-12 text-primary animate-pulse">
+                <Loader2 size={32} className="animate-spin mb-4" />
+                <span className="text-[10px] font-black uppercase tracking-widest text-slate-400">Escaneando Núcleo OSRM...</span>
             </div>
         );
     }
 
     return (
-        <div className="space-y-6">
+        <div className="space-y-8 animate-in fade-in duration-500">
 
-            {/* Status Card */}
+            {/* Tactical Status Panel */}
             <div className={clsx(
-                "p-4 rounded-xl border flex flex-col gap-3 transition-colors",
-                status.status === 'error' ? "bg-red-50 border-red-200 text-red-700 dark:bg-red-900/20 dark:border-red-800 dark:text-red-300" :
-                    status.status === 'running' ? "bg-green-50 border-green-200 text-green-700 dark:bg-green-900/20 dark:border-green-800 dark:text-green-300" :
-                        isBusy ? "bg-blue-50 border-blue-200 text-blue-700 dark:bg-blue-900/20 dark:border-blue-800 dark:text-blue-300" :
-                            "bg-gray-50 border-gray-200 text-gray-700 dark:bg-gray-800 dark:border-gray-700 dark:text-gray-300"
+                "p-8 rounded-[32px] border utilitarian-border flex flex-col gap-6 transition-all duration-500 shadow-xl overflow-hidden relative",
+                status.status === 'error' ? "bg-red-500/5 ring-1 ring-red-500/20 shadow-red-500/5" :
+                    status.status === 'running' ? "bg-emerald-500/5 ring-1 ring-emerald-500/20 shadow-emerald-500/5" :
+                        isBusy ? "bg-primary/5 ring-1 ring-primary/20 shadow-primary/5" :
+                            "bg-slate-50 shadow-inner"
             )}>
-                <div className="flex items-start gap-3">
-                    {status.status === 'running' && <CheckCircle size={20} className="mt-0.5" />}
-                    {status.status === 'error' && <AlertTriangle size={20} className="mt-0.5" />}
-                    {isBusy && <Loader2 size={20} className="animate-spin mt-0.5" />}
-                    {!['running', 'error', 'downloading', 'processing'].includes(status.status) && <Server size={20} className="mt-0.5" />}
+                {/* Background Decoration */}
+                <div className="absolute -top-10 -right-10 opacity-[0.03] dark:opacity-[0.07] pointer-events-none">
+                     <Radio size={200} />
+                </div>
+
+                <div className="flex items-start gap-5 relative z-10">
+                    <div className={clsx(
+                        "p-4 rounded-2xl shadow-lg transition-colors",
+                         status.status === 'running' ? "bg-emerald-500 text-white" :
+                         status.status === 'error' ? "bg-red-500 text-white" :
+                         isBusy ? "bg-primary text-white" : "bg-white dark:bg-slate-800 text-slate-400 border utilitarian-border"
+                    )}>
+                        {status.status === 'running' && <Activity size={24} strokeWidth={2.5} />}
+                        {status.status === 'error' && <AlertTriangle size={24} strokeWidth={2.5} />}
+                        {isBusy && <Loader2 size={24} className="animate-spin" strokeWidth={2.5} />}
+                        {!['running', 'error', 'downloading', 'processing'].includes(status.status) && <Server size={24} strokeWidth={2.5} />}
+                    </div>
 
                     <div className="flex-1">
-                        <div className="flex justify-between items-start">
-                            <h4 className="font-bold text-sm uppercase mb-1">OSRM Server Status: {status.status}</h4>
+                        <div className="flex justify-between items-start mb-1">
+                            <div>
+                                <h4 className="text-[10px] font-black uppercase tracking-[0.2em] opacity-60 mb-1">Estado de Servidor OSRM</h4>
+                                <p className="text-sm font-black dark:text-white uppercase tracking-wider">{status.status}</p>
+                            </div>
                             {isBusy && (
                                 <button
                                     onClick={handleCancel}
-                                    className="bg-red-100 hover:bg-red-200 text-red-700 dark:bg-red-900/40 dark:hover:bg-red-900/60 dark:text-red-300 text-xs px-3 py-1 rounded-md border border-red-200 dark:border-red-800 transition-colors font-medium -mt-1"
+                                    className="bg-red-500 hover:bg-red-600 text-white text-[9px] font-black uppercase tracking-widest px-4 py-2 rounded-xl shadow-lg shadow-red-500/20 transition-all active:scale-95"
                                 >
-                                    Cancel
+                                    Interrumpir
                                 </button>
                             )}
                         </div>
-                        <p className="text-sm opacity-90">{status.message}</p>
+                        <p className="text-[12px] font-medium opacity-80 leading-relaxed mb-4">{status.message}</p>
+                        
                         {status.activeRegion && status.status === 'running' && (
-                            <p className="text-xs font-mono mt-1 opacity-75">Active Region: {status.activeRegion}</p>
+                            <div className="inline-flex items-center gap-2 bg-white/50 dark:bg-slate-800/50 px-3 py-1.5 rounded-full border utilitarian-border">
+                                <Navigation size={10} className="text-emerald-500" />
+                                <span className="text-[10px] font-black uppercase tracking-widest text-slate-500">Región Activa:</span>
+                                <span className="text-[10px] font-mono font-black text-emerald-600 dark:text-emerald-400">{status.activeRegion}</span>
+                            </div>
                         )}
                     </div>
                 </div>
 
-                {/* Progress Bar */}
+                {/* Refined Progress indicator */}
                 {status.status === 'downloading' && (
-                    <div className="w-full bg-blue-200 dark:bg-blue-900 rounded-full h-2.5 mt-2 overflow-hidden">
-                        <div
-                            className="bg-blue-600 h-2.5 rounded-full transition-all duration-500"
-                            style={{ width: `${status.progress || 0}%` }}
-                        ></div>
-                        <p className="text-xs text-right mt-1 font-mono">{status.progress || 0}%</p>
+                    <div className="relative pt-4 overflow-hidden">
+                        <div className="w-full bg-slate-200 dark:bg-slate-800 rounded-full h-1.5 shadow-inner">
+                            <div
+                                className="bg-primary h-full rounded-full transition-all duration-700 ease-out-expo shadow-[0_0_12px_rgba(19,55,236,0.4)]"
+                                style={{ width: `${status.progress || 0}%` }}
+                            ></div>
+                        </div>
+                        <div className="flex justify-between items-center mt-3">
+                            <span className="text-[10px] font-black text-primary uppercase tracking-widest">Descargando Paquetes Cartográficos...</span>
+                            <span className="text-[11px] font-mono font-black text-primary">{status.progress || 0}%</span>
+                        </div>
                     </div>
                 )}
 
-                {/* Error Actions */}
                 {status.status === 'error' && (
-                    <div className="flex justify-end mt-2">
+                    <div className="flex justify-end pt-2">
                         <button
                             onClick={handleClearError}
-                            className="bg-red-100 hover:bg-red-200 text-red-700 dark:bg-red-900/40 dark:hover:bg-red-900/60 dark:text-red-300 text-xs px-3 py-1.5 rounded-md transition-colors font-medium border border-red-200 dark:border-red-800"
+                            className="text-[9px] font-black uppercase tracking-widest text-red-600 dark:text-red-400 hover:underline"
                         >
-                            Clear Error Alert
+                            Limpiar Alerta de Conflicto
                         </button>
                     </div>
                 )}
             </div>
 
-            {/* Downloader */}
-            <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 p-4">
-                <div className="flex justify-between items-center mb-4 flex-wrap gap-2">
-                    <h3 className="font-bold text-gray-900 dark:text-white flex items-center gap-2">
-                        <Download size={18} className="text-blue-600" /> Install Maps
-                    </h3>
-                    <div className="flex gap-1 bg-gray-100 dark:bg-gray-700 p-1 rounded-lg">
-                        <button
-                            onClick={() => setMapMode('list')}
-                            className={clsx("text-xs px-3 py-1.5 rounded-md transition-all font-medium", mapMode === 'list' ? "bg-white dark:bg-gray-600 text-blue-600 shadow-sm" : "text-gray-500 hover:text-gray-700 dark:text-gray-400")}
-                        >
-                            List
-                        </button>
-                        <button
-                            onClick={() => setMapMode('custom')}
-                            className={clsx("text-xs px-3 py-1.5 rounded-md transition-all font-medium", mapMode === 'custom' ? "bg-white dark:bg-gray-600 text-blue-600 shadow-sm" : "text-gray-500 hover:text-gray-700 dark:text-gray-400")}
-                        >
-                            URL
-                        </button>
-                        <button
-                            onClick={() => setMapMode('upload')}
-                            className={clsx("text-xs px-3 py-1.5 rounded-md transition-all font-medium", mapMode === 'upload' ? "bg-white dark:bg-gray-600 text-blue-600 shadow-sm" : "text-gray-500 hover:text-gray-700 dark:text-gray-400")}
-                        >
-                            Upload File
-                        </button>
+            {/* Map Management Logic */}
+            <div className="bg-white/30 dark:bg-slate-900/40 rounded-[32px] border utilitarian-border p-8 space-y-8 shadow-sm">
+                <div className="flex justify-between items-center flex-wrap gap-4">
+                    <div>
+                        <h3 className="text-base font-display font-black text-slate-900 dark:text-white flex items-center gap-3 uppercase tracking-tight leading-none mb-1">
+                            Adquisición de Red
+                        </h3>
+                        <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Provisionamiento de Mapas PBF</p>
+                    </div>
+                    
+                    <div className="flex gap-1.5 bg-slate-100 dark:bg-slate-800 p-1.5 rounded-2xl border utilitarian-border">
+                        {[
+                            { id: 'list', label: 'Libreria', icon: Globe },
+                            { id: 'custom', label: 'URL PBF', icon: Download },
+                            { id: 'upload', label: 'Carga Local', icon: Navigation }
+                        ].map(mode => (
+                            <button
+                                key={mode.id}
+                                onClick={() => setMapMode(mode.id as any)}
+                                className={clsx(
+                                    "px-4 py-2 rounded-xl text-[9px] font-black uppercase tracking-widest transition-all flex items-center gap-2",
+                                    mapMode === mode.id 
+                                        ? "bg-white dark:bg-slate-700 text-primary shadow-sm ring-1 ring-slate-200 dark:ring-slate-600" 
+                                        : "text-slate-500 hover:text-slate-900 dark:hover:text-slate-300"
+                                )}
+                            >
+                                <mode.icon size={12} />
+                                {mode.label}
+                            </button>
+                        ))}
                     </div>
                 </div>
 
-                <div className="flex flex-col gap-3">
-
+                <div className="space-y-6">
                     {mapMode === 'list' && (
-                        <select
-                            value={selectedMap}
-                            onChange={(e) => setSelectedMap(e.target.value)}
-                            disabled={isBusy}
-                            className="w-full px-3 py-2 rounded-lg bg-gray-50 dark:bg-gray-700 border border-gray-200 dark:border-gray-600 outline-none focus:ring-2 focus:ring-blue-500 text-sm"
-                        >
-                            {maps.map(m => (
-                                <option key={m.key} value={m.key}>
-                                    {m.name} {m.isDownloaded ? '✓ (Installed)' : ''}
-                                </option>
-                            ))}
-                        </select>
+                        <div className="relative group">
+                            <select
+                                value={selectedMap}
+                                onChange={(e) => setSelectedMap(e.target.value)}
+                                disabled={isBusy}
+                                className="w-full pl-5 pr-10 py-4 rounded-2xl bg-white dark:bg-slate-800 border-2 utilitarian-border hover:border-primary/40 outline-none focus:ring-4 focus:ring-primary/10 transition-all font-bold text-[13px] text-slate-800 dark:text-white appearance-none"
+                            >
+                                {maps.map(m => (
+                                    <option key={m.key} value={m.key}>
+                                        {m.name} {m.isDownloaded ? '✓ (Instalado)' : ''}
+                                    </option>
+                                ))}
+                            </select>
+                            <div className="absolute right-5 top-1/2 -translate-y-1/2 pointer-events-none text-slate-400">
+                                <Download size={16} />
+                            </div>
+                        </div>
                     )}
 
                     {mapMode === 'custom' && (
-                        <div className="space-y-3 p-3 bg-gray-50 dark:bg-gray-700/50 rounded-lg border border-gray-100 dark:border-gray-700">
-                            <div>
-                                <label className="text-xs font-medium text-gray-500 mb-1 block">Map Name</label>
+                        <div className="space-y-5 animate-in slide-in-from-top-2 duration-300">
+                            <div className="space-y-2">
+                                <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest px-1">Identificador de Región</label>
                                 <input
                                     type="text"
-                                    placeholder="e.g. My Custom City"
+                                    placeholder="Ej: Montevideo Metropolitano"
                                     value={customName}
                                     onChange={(e) => setCustomName(e.target.value)}
                                     disabled={isBusy}
-                                    className="w-full px-3 py-2 rounded-lg bg-white dark:bg-gray-700 border border-gray-200 dark:border-gray-600 outline-none focus:ring-2 focus:ring-blue-500 text-sm"
+                                    className="w-full px-5 py-3.5 rounded-2xl bg-white dark:bg-slate-800 border-2 utilitarian-border outline-none focus:ring-4 focus:ring-primary/10 transition-all text-sm font-bold"
                                 />
                             </div>
-                            <div>
-                                <label className="text-xs font-medium text-gray-500 mb-1 block">PBF URL</label>
+                            <div className="space-y-2">
+                                <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest px-1">Enlace Geofabrik (.osm.pbf)</label>
                                 <input
                                     type="text"
-                                    placeholder="https://download.geofabrik.de/.../city.osm.pbf"
+                                    placeholder="https://download.geofabrik.de/..."
                                     value={customUrl}
                                     onChange={(e) => setCustomUrl(e.target.value)}
                                     disabled={isBusy}
-                                    className="w-full px-3 py-2 rounded-lg bg-white dark:bg-gray-700 border border-gray-200 dark:border-gray-600 outline-none focus:ring-2 focus:ring-blue-500 text-sm font-mono"
+                                    className="w-full px-5 py-3.5 rounded-2xl bg-white dark:bg-slate-800 border-2 utilitarian-border outline-none focus:ring-4 focus:ring-primary/10 transition-all text-xs font-mono font-bold text-primary"
                                 />
                             </div>
-                            <p className="text-xs text-blue-600 dark:text-blue-400">
-                                Tip: Use links from <a href="https://download.geofabrik.de/" target="_blank" rel="noreferrer" className="underline hover:text-blue-800">Geofabrik.de</a>. Must end in .osm.pbf
-                            </p>
                         </div>
                     )}
 
                     {mapMode === 'upload' && (
-                        <div className="space-y-3 p-3 bg-gray-50 dark:bg-gray-700/50 rounded-lg border border-gray-100 dark:border-gray-700">
-                            <div>
-                                <label className="text-xs font-medium text-gray-500 mb-2 block">Local .osm.pbf File</label>
-                                <input
-                                    type="file"
-                                    accept=".osm.pbf"
-                                    onChange={(e) => setUploadFile(e.target.files?.[0] || null)}
-                                    disabled={isBusy}
-                                    className="w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-md file:border-0 file:text-sm file:font-semibold file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100 dark:file:bg-gray-700 dark:file:text-gray-200 transition-colors"
-                                />
+                        <div className="p-10 border-4 border-dashed border-slate-200 dark:border-slate-800 rounded-[32px] flex flex-col items-center justify-center gap-4 hover:border-primary/40 transition-colors group cursor-pointer relative overflow-hidden bg-slate-50/50 dark:bg-slate-900/50">
+                            <input
+                                type="file"
+                                accept=".osm.pbf"
+                                onChange={(e) => setUploadFile(e.target.files?.[0] || null)}
+                                disabled={isBusy}
+                                className="absolute inset-0 opacity-0 cursor-pointer z-10"
+                            />
+                            <div className="p-6 bg-white dark:bg-slate-800 rounded-3xl shadow-xl shadow-slate-200/50 dark:shadow-none transition-transform group-hover:-translate-y-1 duration-300">
+                                <Navigation size={32} className="text-primary group-hover:rotate-45 transition-transform" />
+                            </div>
+                            <div className="text-center">
+                                <p className="text-[13px] font-black text-slate-900 dark:text-white uppercase tracking-tight">
+                                    {uploadFile ? uploadFile.name : 'Arrastra o selecciona el archivo'}
+                                </p>
+                                <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mt-1">Formato admitido: OSM Protocolbuffer (.pbf)</p>
                             </div>
                         </div>
                     )}
 
-                    {mapMode === 'upload' ? (
-                        <button
-                            onClick={handleUpload}
-                            disabled={isBusy || !uploadFile}
-                            className="w-full py-2 bg-blue-600 hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed text-white font-medium rounded-lg text-sm transition-colors flex items-center justify-center gap-2"
-                        >
-                            {isBusy ? <Loader2 size={16} className="animate-spin" /> : <Download size={16} />}
-                            {isBusy ? 'Uploading...' : 'Upload Offline Map'}
-                        </button>
-                    ) : (
-                        <button
-                            onClick={handleDownload}
-                            disabled={isBusy || (mapMode === 'list' && !selectedMap) || (mapMode === 'custom' && !customUrl)}
-                            className="w-full py-2 bg-blue-600 hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed text-white font-medium rounded-lg text-sm transition-colors flex items-center justify-center gap-2"
-                        >
-                            {isBusy ? <Loader2 size={16} className="animate-spin" /> : <Download size={16} />}
-                            {isBusy ? 'Downloading...' : 'Download Map'}
-                        </button>
-                    )}
-
+                    <button
+                        onClick={mapMode === 'upload' ? handleUpload : handleDownload}
+                        disabled={isBusy || (mapMode === 'list' && !selectedMap) || (mapMode === 'custom' && !customUrl) || (mapMode === 'upload' && !uploadFile)}
+                        className="w-full py-5 bg-primary text-white font-black text-[11px] uppercase tracking-[0.2em] rounded-2xl shadow-2xl shadow-primary/20 hover:scale-[1.01] active:scale-95 disabled:opacity-30 disabled:grayscale transition-all flex items-center justify-center gap-3"
+                    >
+                        {isBusy ? <Loader2 size={18} className="animate-spin" /> : <Download size={18} strokeWidth={2.5} />}
+                        {isBusy ? (mapMode === 'upload' ? 'Subiendo Núcleo...' : 'Sincronizando...') : (mapMode === 'upload' ? 'Iniciar Carga de Red' : 'Iniciar Sincronización')}
+                    </button>
+                    
                     {!isBusy && (
-                        <p className="text-xs text-gray-500 dark:text-gray-400 text-center">
-                            Installed maps will appear in the list below. Activate them to start routing.
+                        <p className="text-[10px] font-bold text-slate-400 dark:text-slate-500 text-center uppercase tracking-widest">
+                            Los mapas sincronizados aparecerán en la bóveda de infraestructura inferior.
                         </p>
                     )}
                 </div>
             </div>
 
-            {/* Installed Maps */}
-            <div>
-                <h3 className="font-bold text-gray-900 dark:text-white mb-3 flex items-center gap-2 text-sm uppercase tracking-wider">
-                    <Globe size={16} /> Installed Maps
-                </h3>
-                <div className="bg-gray-50 dark:bg-gray-900/50 rounded-xl border border-gray-200 dark:border-gray-700 overflow-hidden">
+            {/* Vault Area */}
+            <div className="space-y-4">
+                <div className="flex items-center gap-3 px-1">
+                    <Globe size={16} className="text-primary" />
+                    <h3 className="text-xs font-black text-slate-900 dark:text-white uppercase tracking-[0.2em]">Bóveda de Mapas Instalados</h3>
+                </div>
+                
+                <div className="bg-slate-100/50 dark:bg-slate-900/30 rounded-[32px] border utilitarian-border overflow-hidden p-2 shadow-inner">
                     {maps.filter(m => m.isDownloaded).length === 0 ? (
-                        <div className="p-4 text-center text-gray-500 text-sm italic">No maps installed</div>
+                        <div className="p-10 text-center text-[11px] font-bold text-slate-400 uppercase tracking-widest italic opacity-50">Nucleo de infraestructura vacío</div>
                     ) : (
-                        <div className="divide-y divide-gray-100 dark:divide-gray-800">
+                        <div className="space-y-2">
                             {maps.filter(m => m.isDownloaded).map(m => (
-                                <div key={m.key} className="p-3 flex items-center justify-between hover:bg-white dark:hover:bg-gray-800 transition-colors">
-                                    <div className="flex items-center gap-2">
-                                        <div className={clsx("w-2 h-2 rounded-full", m.isActive ? "bg-green-500 shadow-[0_0_8px_rgba(34,197,94,0.6)]" : "bg-gray-300 dark:bg-gray-600",
-                                            m.name.startsWith('Custom') ? "bg-purple-500" : ""
-                                        )}></div>
+                                <div key={m.key} className={clsx(
+                                    "p-5 rounded-2xl border transition-all flex items-center justify-between group",
+                                    m.isActive ? "bg-white dark:bg-slate-800 border-primary shadow-xl shadow-primary/5" : "bg-white/50 border-transparent hover:bg-white dark:hover:bg-slate-800"
+                                )}>
+                                    <div className="flex items-center gap-4">
+                                        <div className={clsx(
+                                            "w-10 h-10 rounded-xl flex items-center justify-center transition-all",
+                                            m.isActive ? "bg-primary text-white" : "bg-slate-100 dark:bg-slate-900 text-slate-300"
+                                        )}>
+                                            <Navigation size={18} strokeWidth={2.5} className={m.isActive ? "rotate-45" : ""} />
+                                        </div>
                                         <div>
-                                            <span className="text-sm font-medium text-gray-700 dark:text-gray-200 block">{m.name}</span>
-                                            {m.name.startsWith('Custom') && <span className="text-[10px] text-gray-400 font-mono">{m.key}</span>}
+                                            <span className="text-sm font-black text-slate-900 dark:text-white block tracking-tight">{m.name}</span>
+                                            <span className="text-[9px] font-mono font-bold text-slate-400 dark:text-slate-500 uppercase tracking-widest">{m.key}</span>
                                         </div>
                                     </div>
+                                    
                                     <div className="flex items-center gap-2">
                                         {m.isActive ? (
-                                            <span className="text-xs font-bold text-green-600 dark:text-green-400 bg-green-50 dark:bg-green-900/20 px-2 py-0.5 rounded-full">Active</span>
+                                            <div className="px-5 py-2.5 bg-emerald-500 text-white text-[9px] font-black uppercase tracking-[0.15em] rounded-xl shadow-lg shadow-emerald-500/20 flex items-center gap-2">
+                                                <div className="w-1.5 h-1.5 rounded-full bg-white animate-pulse" />
+                                                Activo para Ruteo
+                                            </div>
                                         ) : (
                                             <div className="flex gap-2">
                                                 <button
                                                     onClick={() => {
-                                                        // Trigger local activation logic
                                                         setSelectedMap(m.key);
                                                         setMapMode('list');
                                                         fetch(`${API_URL}/maps/activate`, {
@@ -404,18 +436,17 @@ const MapManager: React.FC = () => {
                                                             else res.json().then(err => alert(`Error: ${err.error}`));
                                                         });
                                                     }}
-                                                    className="p-1 px-3 text-xs font-medium text-blue-600 hover:bg-blue-50 dark:text-blue-400 dark:hover:bg-blue-900/20 rounded-md border border-blue-200 dark:border-blue-800 transition-colors"
+                                                    className="px-5 py-2.5 text-[9px] font-black uppercase tracking-widest text-primary border-2 border-primary/20 rounded-xl hover:bg-primary hover:text-white transition-all"
                                                     disabled={isBusy}
                                                 >
-                                                    Activate
+                                                    Habilitar
                                                 </button>
                                                 <button
                                                     onClick={() => setConfirmDelete(m.key)}
-                                                    className="p-1.5 text-gray-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-lg transition-colors"
-                                                    title="Delete Map Files"
+                                                    className="p-3 text-slate-300 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-xl transition-all"
                                                     disabled={isBusy}
                                                 >
-                                                    <Trash2 size={16} />
+                                                    <Trash2 size={18} strokeWidth={2.5} />
                                                 </button>
                                             </div>
                                         )}
@@ -429,9 +460,9 @@ const MapManager: React.FC = () => {
 
             <ConfirmModal
                 isOpen={!!confirmDelete}
-                title="Delete Map?"
-                message={`Are you sure you want to delete the map files for this region? You will need to re-download it to use it again.`}
-                confirmText="Delete"
+                title="¿Purgar Mapa Instalado?"
+                message={`Esta acción eliminará los binarios cartográficos del servidor OSRM para la región especificada. Deberá sincronizar nuevamente si desea habilitar ruteo para esta área.`}
+                confirmText="Confirmar Purgado"
                 isDestructive={true}
                 onConfirm={handleDelete}
                 onCancel={() => setConfirmDelete(null)}

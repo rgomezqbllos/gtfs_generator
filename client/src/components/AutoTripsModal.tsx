@@ -1,33 +1,33 @@
 import React, { useState } from 'react';
-import { X, Plus, Trash2, Wand2 } from 'lucide-react';
+import { X, Plus, Trash2, Wand2, Activity, Clock, Database, Info } from 'lucide-react';
 import { clsx } from 'clsx';
 import { formatTimeInput } from '../utils/TimeUtils';
 
 interface AutoTripsModalProps {
     isOpen: boolean;
     onClose: () => void;
-    serviceId: string; // Passed from parent
-    totalTravelTime: number; // In seconds
+    serviceId: string;
+    totalTravelTime: number;
     onGenerate: (config: AutoTripsConfig) => void;
 }
 
 export interface AutoTripsRange {
     start_time: string;
     end_time: string;
-    value: number; // Interval (min) or Num Buses
+    value: number;
 }
 
 export interface AutoTripsConfig {
     mode: 'interval' | 'buses';
     ranges: AutoTripsRange[];
-    trips: string[]; // Array of start times "HH:MM:SS"
+    trips: string[];
 }
 
 interface TimeRange {
     id: string;
     start_time: string;
     end_time: string;
-    value: number; // Interval (min) or Num Buses
+    value: number;
 }
 
 const AutoTripsModal: React.FC<AutoTripsModalProps> = ({
@@ -47,20 +47,16 @@ const AutoTripsModal: React.FC<AutoTripsModalProps> = ({
     const addRange = () => {
         let newStartTime = '06:00:00';
         let newEndTime = '08:00:00';
-
         if (ranges.length > 0) {
             const lastRange = ranges[ranges.length - 1];
             newStartTime = lastRange.end_time;
-
             const timeParts = lastRange.end_time.split(':');
             let h = parseInt(timeParts[0] || '0', 10);
             const m = timeParts[1] || '00';
             const s = timeParts[2] || '00';
-
             h += 2;
             newEndTime = `${h.toString().padStart(2, '0')}:${m}:${s}`;
         }
-
         setRanges([
             ...ranges,
             {
@@ -96,30 +92,21 @@ const AutoTripsModal: React.FC<AutoTripsModalProps> = ({
             normalizedRanges.forEach(range => {
                 const startPoints = range.start_time.split(':').map(Number);
                 const endPoints = range.end_time.split(':').map(Number);
-
                 const startH = startPoints[0] || 0;
                 const startM = startPoints[1] || 0;
                 const startS = startPoints[2] || 0;
-
                 const endH = endPoints[0] || 0;
                 const endM = endPoints[1] || 0;
                 const endS = endPoints[2] || 0;
-
                 let currentSeconds = (startH * 3600) + (startM * 60) + startS;
                 const endSeconds = (endH * 3600) + (endM * 60) + endS;
-
                 const intervalSeconds = range.value * 60;
                 if (intervalSeconds <= 0) return;
-
                 while (currentSeconds <= endSeconds) {
                     const h = Math.floor(currentSeconds / 3600);
                     const m = Math.floor((currentSeconds % 3600) / 60);
                     const s = Math.floor(currentSeconds % 60);
-
-                    const formatted = [h, m, s]
-                        .map(v => v.toString().padStart(2, '0'))
-                        .join(':');
-
+                    const formatted = [h, m, s].map(v => v.toString().padStart(2, '0')).join(':');
                     generatedTimes.push(formatted);
                     currentSeconds += intervalSeconds;
                 }
@@ -127,7 +114,6 @@ const AutoTripsModal: React.FC<AutoTripsModalProps> = ({
         }
 
         const uniqueTimes = Array.from(new Set(generatedTimes)).sort();
-
         onGenerate({
             mode,
             ranges: normalizedRanges,
@@ -137,101 +123,127 @@ const AutoTripsModal: React.FC<AutoTripsModalProps> = ({
     };
 
     return (
-        <div className="fixed inset-0 bg-black/50 z-[60] flex items-center justify-center p-4">
-            <div className="bg-white dark:bg-gray-800 rounded-xl shadow-xl w-full max-w-2xl animate-in fade-in zoom-in duration-200">
-                <div className="flex justify-between items-center p-4 border-b border-gray-200 dark:border-gray-700">
-                    <h3 className="text-lg font-bold text-gray-900 dark:text-white flex items-center gap-2">
-                        <Wand2 className="text-blue-600" size={20} />
-                        Auto Generate Trips <span className="text-sm font-normal text-gray-500 ml-2">for {serviceId}</span>
-                    </h3>
-                    <button onClick={onClose} className="p-1 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-full transition-colors text-gray-500 dark:text-gray-400">
-                        <X size={20} />
+        <div className="fixed inset-0 bg-slate-950/60 backdrop-blur-sm z-[90] flex items-center justify-center p-8 animate-in fade-in duration-300">
+            <div className="bg-white dark:bg-slate-900 rounded-[40px] shadow-[0_0_100px_rgba(0,0,0,0.4)] w-full max-w-2xl animate-in zoom-in-95 duration-300 border utilitarian-border overflow-hidden flex flex-col max-h-[90vh]">
+                
+                {/* High-End Tactical Header */}
+                <div className="px-10 py-8 border-b utilitarian-border bg-slate-50 dark:bg-slate-800/50 flex justify-between items-center">
+                    <div className="flex items-center gap-5">
+                        <div className="p-3 bg-indigo-600 text-white rounded-2xl shadow-xl shadow-indigo-600/20">
+                            <Wand2 size={24} strokeWidth={2.5} />
+                        </div>
+                        <div>
+                            <h2 className="text-xl font-display font-black text-slate-900 dark:text-white uppercase tracking-tight leading-none">Proyección de Viajes</h2>
+                            <p className="text-[10px] font-bold text-slate-500 uppercase tracking-[0.2em] mt-2 flex items-center gap-2">
+                                <Activity size={12} className="text-indigo-500" />
+                                Algoritmo de Suministro: {serviceId}
+                            </p>
+                        </div>
+                    </div>
+                    <button
+                        onClick={onClose}
+                        className="p-2.5 hover:bg-white dark:hover:bg-slate-700 rounded-xl transition-all text-slate-400 hover:text-slate-900 dark:hover:text-white border utilitarian-border"
+                    >
+                        <X size={20} strokeWidth={2.5} />
                     </button>
                 </div>
 
-                <div className="p-6 space-y-6">
-                    <div className="grid grid-cols-1 gap-4">
-                        <div>
-                            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Generation Mode</label>
-                            <div className="flex bg-gray-100 dark:bg-gray-700 rounded-lg p-1">
-                                <button
-                                    onClick={() => setMode('interval')}
-                                    className={clsx(
-                                        'flex-1 py-1.5 text-sm font-medium rounded-md transition-all',
-                                        mode === 'interval' ? 'bg-white dark:bg-gray-600 shadow text-blue-600 dark:text-blue-300' : 'text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-200'
-                                    )}
-                                >
-                                    By Interval
-                                </button>
-                                <button
-                                    onClick={() => setMode('buses')}
-                                    className={clsx(
-                                        'flex-1 py-1.5 text-sm font-medium rounded-md transition-all',
-                                        mode === 'buses' ? 'bg-white dark:bg-gray-600 shadow text-blue-600 dark:text-blue-300' : 'text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-200'
-                                    )}
-                                >
-                                    By Buses
-                                </button>
-                            </div>
+                <div className="flex-1 overflow-y-auto custom-scrollbar p-10 space-y-10">
+                    
+                    {/* Operational Mode Selection */}
+                    <div className="space-y-4">
+                        <p className="text-[10px] font-black text-slate-400 uppercase tracking-[0.25em] px-1">Protocolo de Generación</p>
+                        <div className="grid grid-cols-2 gap-3 p-1.5 bg-slate-100 dark:bg-slate-800/80 rounded-[24px] border utilitarian-border shadow-inner">
+                            <button
+                                onClick={() => setMode('interval')}
+                                className={clsx(
+                                    "px-6 py-4 rounded-[18px] text-[11px] font-black uppercase tracking-widest transition-all flex items-center justify-center gap-3",
+                                    mode === 'interval' ? "bg-white dark:bg-slate-700 text-indigo-600 shadow-lg" : "text-slate-400 hover:text-slate-900 dark:hover:text-white"
+                                )}
+                            >
+                                <Clock size={16} strokeWidth={2.5} />
+                                Por Intervalo
+                            </button>
+                            <button
+                                onClick={() => setMode('buses')}
+                                className={clsx(
+                                    "px-6 py-4 rounded-[18px] text-[11px] font-black uppercase tracking-widest transition-all flex items-center justify-center gap-3",
+                                    mode === 'buses' ? "bg-white dark:bg-slate-700 text-indigo-600 shadow-lg" : "text-slate-400 hover:text-slate-900 dark:hover:text-white"
+                                )}
+                            >
+                                <Database size={16} strokeWidth={2.5} />
+                                Por Flota
+                            </button>
                         </div>
                     </div>
 
-                    <div className="space-y-3">
-                        <div className="flex justify-between items-center text-sm font-medium text-gray-700 dark:text-gray-300 border-b border-gray-200 dark:border-gray-700 pb-2">
-                            <span>Time Ranges</span>
-                            <span className="text-gray-500 font-normal text-xs">
-                                {mode === 'buses' && `Cycle Travel Time: ${Math.round(totalTravelTime / 60)} min`}
-                            </span>
+                    {/* Matrix Range Programming */}
+                    <div className="space-y-6">
+                        <div className="flex justify-between items-center px-1">
+                             <p className="text-[10px] font-black text-slate-400 uppercase tracking-[0.25em]">Rangos de Programación</p>
+                             {mode === 'buses' && (
+                                <div className="flex items-center gap-3 px-4 py-1.5 bg-emerald-500/5 border border-emerald-500/20 rounded-full">
+                                    <Clock size={12} className="text-emerald-500" />
+                                    <span className="text-[9px] font-black text-emerald-600 uppercase tracking-widest">Viaje Completo: {Math.round(totalTravelTime / 60)} min</span>
+                                </div>
+                             )}
                         </div>
 
-                        <div className="space-y-2 max-h-[300px] overflow-y-auto pr-2 custom-scrollbar">
-                            {ranges.map((range) => (
-                                <div key={range.id} className="flex items-center gap-3 bg-gray-50 dark:bg-gray-700/50 p-3 rounded-lg border border-gray-200 dark:border-gray-700">
-                                    <div className="grid grid-cols-2 gap-2 flex-1">
-                                        <div>
-                                            <label className="text-xs text-gray-500 dark:text-gray-400 block mb-1">From</label>
+                        <div className="space-y-4">
+                            {ranges.map((range, idx) => (
+                                <div 
+                                    key={range.id} 
+                                    className="group relative flex flex-col md:flex-row items-end gap-6 bg-slate-50 dark:bg-slate-800/30 p-8 rounded-[32px] border utilitarian-border hover:border-indigo-500/30 transition-all duration-500"
+                                >
+                                    <div className="absolute top-6 left-6 w-6 h-6 rounded-full bg-white dark:bg-slate-800 border utilitarian-border flex items-center justify-center text-[10px] font-black text-slate-300">
+                                        {idx + 1}
+                                    </div>
+
+                                    <div className="grid grid-cols-2 gap-6 flex-1 w-full pl-8">
+                                        <div className="space-y-2">
+                                            <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest px-1">T. Inicio</label>
                                             <input
                                                 type="text"
-                                                placeholder="HH:MM:SS"
+                                                placeholder="00:00:00"
                                                 maxLength={8}
                                                 value={range.start_time}
                                                 onChange={(e) => updateRange(range.id, 'start_time', e.target.value)}
                                                 onBlur={(e) => updateRange(range.id, 'start_time', formatTimeInput(e.target.value))}
-                                                className="w-full text-sm bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded px-2 py-1.5 text-gray-900 dark:text-gray-100 font-mono"
+                                                className="w-full text-sm bg-white dark:bg-slate-800 border utilitarian-border rounded-xl px-4 py-3 text-slate-900 dark:text-white font-mono font-black focus:ring-2 focus:ring-indigo-500/20 outline-none shadow-sm"
                                             />
                                         </div>
-                                        <div>
-                                            <label className="text-xs text-gray-500 dark:text-gray-400 block mb-1">To</label>
+                                        <div className="space-y-2">
+                                            <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest px-1">T. Fin</label>
                                             <input
                                                 type="text"
-                                                placeholder="HH:MM:SS"
+                                                placeholder="00:00:00"
                                                 maxLength={8}
                                                 value={range.end_time}
                                                 onChange={(e) => updateRange(range.id, 'end_time', e.target.value)}
                                                 onBlur={(e) => updateRange(range.id, 'end_time', formatTimeInput(e.target.value))}
-                                                className="w-full text-sm bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded px-2 py-1.5 text-gray-900 dark:text-gray-100 font-mono"
+                                                className="w-full text-sm bg-white dark:bg-slate-800 border utilitarian-border rounded-xl px-4 py-3 text-slate-900 dark:text-white font-mono font-black focus:ring-2 focus:ring-indigo-500/20 outline-none shadow-sm"
                                             />
                                         </div>
                                     </div>
 
-                                    <div className="w-32">
-                                        <label className="text-xs text-blue-600 dark:text-blue-400 block mb-1 font-medium">
-                                            {mode === 'interval' ? 'Interval (min)' : 'Num Buses'}
+                                    <div className="w-full md:w-36 space-y-2">
+                                        <label className="text-[9px] font-black text-indigo-500 uppercase tracking-widest px-1">
+                                            {mode === 'interval' ? 'Intervalo (M)' : 'Unidades'}
                                         </label>
                                         <input
                                             type="number"
                                             min="1"
                                             value={range.value}
                                             onChange={(e) => updateRange(range.id, 'value', parseInt(e.target.value) || 0)}
-                                            className="w-full text-sm bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded px-2 py-1.5 text-gray-900 dark:text-gray-100 font-mono"
+                                            className="w-full text-sm bg-white dark:bg-slate-800 border utilitarian-border rounded-xl px-4 py-3 text-slate-900 dark:text-white font-mono font-black focus:ring-2 focus:ring-indigo-500/20 outline-none shadow-sm"
                                         />
                                     </div>
 
                                     <button
                                         onClick={() => removeRange(range.id)}
-                                        className="mt-5 p-2 text-gray-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-lg transition-colors"
+                                        className="p-3 text-slate-300 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/40 rounded-xl transition-all opacity-0 group-hover:opacity-100"
                                     >
-                                        <Trash2 size={16} />
+                                        <Trash2 size={20} strokeWidth={2.5} />
                                     </button>
                                 </div>
                             ))}
@@ -239,25 +251,38 @@ const AutoTripsModal: React.FC<AutoTripsModalProps> = ({
 
                         <button
                             onClick={addRange}
-                            className="w-full py-2 border-2 border-dashed border-gray-300 dark:border-gray-600 rounded-lg text-gray-500 dark:text-gray-400 hover:border-blue-500 hover:text-blue-600 dark:hover:text-blue-400 transition-colors flex items-center justify-center gap-2 text-sm font-medium"
+                            className="w-full py-6 border-2 border-dashed border-slate-200 dark:border-slate-700 rounded-[32px] text-slate-400 hover:border-indigo-500/50 hover:text-indigo-600 dark:hover:text-indigo-400 transition-all flex items-center justify-center gap-4 text-[10px] font-black uppercase tracking-[0.25em] bg-white dark:bg-slate-800/10 active:scale-95"
                         >
-                            <Plus size={16} /> Add Time Range
+                            <Plus size={20} strokeWidth={3} />
+                            Anclar Rango Operativo
                         </button>
+                    </div>
+
+                    <div className="p-6 bg-slate-100 dark:bg-slate-800/50 rounded-[32px] border border-dashed border-slate-200 dark:border-slate-700">
+                        <p className="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] mb-3 flex items-center gap-2">
+                            <Info size={14} /> Nota de Protocolo
+                        </p>
+                        <p className="text-[11px] font-bold text-slate-500 uppercase tracking-widest leading-relaxed">
+                            La generación automática calculará los tiempos de paso basándose en las matrices de velocidad actuales. 
+                            Los conflictos de bunching serán mitigados automáticamente por el motor de proyección.
+                        </p>
                     </div>
                 </div>
 
-                <div className="p-4 border-t border-gray-200 dark:border-gray-700 flex justify-end gap-3 bg-gray-50 dark:bg-gray-800/50 rounded-b-xl">
-                    <button
-                        onClick={onClose}
-                        className="px-4 py-2 text-sm font-medium text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-700 rounded-lg transition-colors"
+                {/* Final Dashboard Controls */}
+                <div className="px-10 py-10 border-t utilitarian-border bg-white dark:bg-slate-800/10 flex justify-end gap-6 text-slate-400 font-black">
+                     <button 
+                        onClick={onClose} 
+                        className="px-8 py-5 text-[11px] font-black uppercase tracking-widest text-slate-500 hover:text-red-500 transition-colors"
                     >
-                        Cancel
+                        Cancelar
                     </button>
                     <button
                         onClick={generateTimes}
-                        className="px-6 py-2 text-sm font-medium bg-blue-600 text-white hover:bg-blue-700 rounded-lg shadow-sm transition-colors flex items-center gap-2"
+                        className="px-12 py-5 bg-indigo-600 hover:bg-indigo-700 text-white text-[11px] font-black uppercase tracking-[0.25em] rounded-[24px] shadow-2xl shadow-indigo-600/30 flex items-center gap-4 transition-all hover:scale-[1.02] active:scale-95"
                     >
-                        <Wand2 size={16} /> Generate Trips
+                        <Wand2 size={18} strokeWidth={2.5} />
+                        Consolidar Proyección
                     </button>
                 </div>
             </div>

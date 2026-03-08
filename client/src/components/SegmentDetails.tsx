@@ -1,6 +1,6 @@
 import * as React from 'react';
 import type { Segment, Stop } from '../types';
-import { Trash2, ArrowRightLeft, Clock, Ruler } from 'lucide-react';
+import { Trash2, ArrowRightLeft, Clock, Ruler, Save, X, Activity, Navigation, ChevronRight } from 'lucide-react';
 import ConfirmModal from './ConfirmModal';
 import Draggable from './UI/Draggable';
 import { API_URL } from '../config';
@@ -15,9 +15,6 @@ interface SegmentDetailsProps {
 }
 
 const SegmentDetails: React.FC<SegmentDetailsProps> = ({ segment, stops, onClose, onDelete, onUpdate }) => {
-    // Local state for form inputs
-    // Distance stored in meters, Time stored in seconds
-    // Input for time will be in Minutes for UX
     const [distance, setDistance] = React.useState<number | ''>(segment.distance || 0);
     const [timeMinutes, setTimeMinutes] = React.useState<number | ''>(
         segment.travel_time ? Number((segment.travel_time / 60).toFixed(2)) : 0
@@ -33,12 +30,13 @@ const SegmentDetails: React.FC<SegmentDetailsProps> = ({ segment, stops, onClose
     }, [segment]);
 
     const startStopName = React.useMemo(() =>
-        stops.find(s => s.stop_id === segment.start_node_id)?.stop_name || 'Unknown Start',
+        stops.find(s => s.stop_id === segment.start_node_id)?.stop_name || 'Nodo Origen',
         [segment.start_node_id, stops]);
 
     const endStopName = React.useMemo(() =>
-        stops.find(s => s.stop_id === segment.end_node_id)?.stop_name || 'Unknown End',
+        stops.find(s => s.stop_id === segment.end_node_id)?.stop_name || 'Nodo Destino',
         [segment.end_node_id, stops]);
+        
     const profileKey = segment.routing_profile || defaultRoutingProfile;
     const profileMeta = routingProfileMetadata[profileKey];
 
@@ -54,7 +52,7 @@ const SegmentDetails: React.FC<SegmentDetailsProps> = ({ segment, stops, onClose
                 body: JSON.stringify({
                     distance: finalDistance,
                     travel_time: finalTimeSeconds,
-                    allowed_transport_modes: segment.allowed_transport_modes // Preserve existing
+                    allowed_transport_modes: segment.allowed_transport_modes 
                 })
             });
 
@@ -65,13 +63,13 @@ const SegmentDetails: React.FC<SegmentDetailsProps> = ({ segment, stops, onClose
                     travel_time: finalTimeSeconds
                 };
                 onUpdate(updatedData);
-                onClose(); // Close modal on successful save
+                onClose(); 
             } else {
-                alert('Failed to update segment');
+                alert('No se pudo actualizar el tramo');
             }
         } catch (err) {
             console.error(err);
-            alert('Network error');
+            alert('Error de red');
         } finally {
             setIsSaving(false);
         }
@@ -88,125 +86,150 @@ const SegmentDetails: React.FC<SegmentDetailsProps> = ({ segment, stops, onClose
             setConfirmOpen(false);
             onClose();
         } catch (err) {
-            console.error('Delete failed:', err);
-            setErrorMsg((err as Error).message || 'Failed to delete segment');
+            console.error('Eliminación fallida:', err);
+            setErrorMsg((err as Error).message || 'No se pudo eliminar el segmento vial');
         }
     };
 
     return (
         <>
-            {/* Modal Container - Centered or Fixed Position */}
-            <Draggable className="absolute top-20 right-80 w-80 bg-white dark:bg-gray-800 rounded-2xl shadow-2xl z-40 flex flex-col border border-slate-100 dark:border-gray-700 animate-in fade-in zoom-in duration-200">
+            <Draggable className="absolute top-20 right-[500px] w-[400px] glass-panel shadow-[0_40px_80px_-20px_rgba(0,0,0,0.5)] z-40 flex flex-col border utilitarian-border animate-in zoom-in-95 fade-in duration-500 ease-out-expo pointer-events-auto rounded-[32px] overflow-hidden">
 
-                {/* Header */}
-                <div className="drag-handle cursor-move p-5 border-b border-slate-100 dark:border-gray-700 flex justify-between items-center">
-                    <div className="flex items-center gap-3">
-                        <div className="h-8 w-8 rounded-lg bg-indigo-100 dark:bg-indigo-900/30 text-indigo-600 dark:text-indigo-400 flex items-center justify-center">
-                            <ArrowRightLeft size={18} />
+                {/* Header Area */}
+                <div className="drag-handle cursor-move p-8 border-b utilitarian-border bg-slate-50/80 dark:bg-slate-900/80 backdrop-blur-md flex justify-between items-center">
+                    <div className="flex items-center gap-4">
+                        <div className="h-12 w-12 rounded-2xl bg-indigo-500/10 text-indigo-500 flex items-center justify-center shadow-inner">
+                            <Activity size={24} strokeWidth={2.5} />
                         </div>
-                        <h3 className="font-bold text-slate-800 dark:text-white">Segment Details</h3>
-                    </div>
-                </div>
-
-                {/* Body */}
-                <div className="p-6 space-y-5">
-
-                    {/* Connection Info */}
-                    <div className="bg-slate-50 dark:bg-gray-700/50 p-3 rounded-xl border border-slate-100 dark:border-gray-700 flex flex-col gap-2">
-                        <div className="flex items-center justify-between text-xs font-bold text-slate-400 dark:text-gray-500 uppercase tracking-wider">
-                            <span>Start</span>
-                            <span>End</span>
+                        <div>
+                            <h3 className="text-lg font-display font-black text-slate-900 dark:text-white uppercase tracking-tight leading-none mb-1">Detalle de Arista</h3>
+                            <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Network Segment Insights</p>
                         </div>
-                        <div className="flex items-center justify-between font-medium text-slate-700 dark:text-gray-200 text-sm">
-                            <span className="truncate max-w-[45%] text-left" title={startStopName}>
-                                {startStopName}
-                            </span>
-                            <ArrowRightLeft size={14} className="text-slate-400" />
-                            <span className="truncate max-w-[45%] text-right" title={endStopName}>
-                                {endStopName}
-                            </span>
                     </div>
+                    <button onClick={onClose} className="p-2 text-slate-400 hover:text-red-500 dark:hover:text-red-400 transition-all rounded-xl hover:bg-white dark:hover:bg-slate-800">
+                        <X size={20} strokeWidth={2.5} />
+                    </button>
                 </div>
 
-                <div className="bg-slate-50 dark:bg-gray-700/50 p-3 rounded-xl border border-slate-100 dark:border-gray-700 flex flex-col gap-2">
-                    <div className="flex items-center gap-2 text-[10px] uppercase tracking-wider text-slate-400 dark:text-gray-500 font-bold">
-                        Perfil operativo
-                    </div>
-                    <div className="flex items-center gap-2">
-                        <span
-                            className="h-3 w-3 rounded-full border border-slate-200 dark:border-slate-500"
-                            style={{ backgroundColor: profileMeta.color }}
-                        />
-                        <span className="text-sm font-semibold text-slate-800 dark:text-gray-100">{profileMeta.label}</span>
-                    </div>
-                    <p className="text-xs text-slate-500 dark:text-slate-300 leading-tight">{profileMeta.description}</p>
-                </div>
+                {/* Body Content */}
+                <div className="p-8 space-y-8 flex-1 overflow-y-auto custom-scrollbar bg-white/20">
 
-                {/* Input Group: Distance */}
-                <div>
-                    <label className="block text-xs font-bold text-slate-400 dark:text-gray-500 uppercase tracking-wider mb-2">Distance</label>
-                        <div className="relative">
-                            <div className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400">
-                                <Ruler size={16} />
+                    {/* Geographical Context */}
+                    <div className="space-y-3">
+                         <div className="flex items-center gap-2 text-[10px] font-black uppercase tracking-[0.2em] text-slate-400 px-1">
+                            Vinculación de Nodos
+                         </div>
+                         <div className="bg-slate-50 dark:bg-slate-900/50 p-6 rounded-3xl border utilitarian-border flex flex-col gap-6 shadow-inner">
+                            <div className="flex items-start gap-4">
+                                <div className="mt-1 w-2 h-2 rounded-full bg-primary ring-4 ring-primary/10 shrink-0" />
+                                <div>
+                                    <span className="block text-[8px] font-black text-slate-400 uppercase tracking-widest mb-1">Punto de Origen</span>
+                                    <span className="text-sm font-bold text-slate-900 dark:text-gray-100 leading-snug">{startStopName}</span>
+                                </div>
                             </div>
-                            <input
-                                type="number"
-                                step="any"
-                                className="w-full pl-10 pr-16 py-3 border border-slate-200 dark:border-gray-700 rounded-xl text-slate-700 dark:text-gray-200 bg-white dark:bg-gray-900 focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 outline-none transition-all font-medium"
-                                value={distance}
-                                onChange={e => setDistance(e.target.value === '' ? '' : Number(e.target.value))}
-                            />
-                            <span className="absolute right-4 top-1/2 -translate-y-1/2 text-xs font-bold text-slate-400">METERS</span>
-                        </div>
-                    </div>
-
-                    {/* Input Group: Travel Time */}
-                    <div>
-                        <label className="block text-xs font-bold text-slate-400 dark:text-gray-500 uppercase tracking-wider mb-2">Travel Time</label>
-                        <div className="relative">
-                            <div className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400">
-                                <Clock size={16} />
+                            
+                            <div className="flex items-center gap-4 pl-0.5">
+                                <div className="w-[1px] h-6 bg-slate-200 dark:bg-slate-800 ml-[3.5px]" />
+                                <div className="h-[1px] flex-1 bg-slate-100 dark:bg-slate-800" />
+                                <ArrowRightLeft size={14} className="text-slate-300" />
+                                <div className="h-[1px] flex-1 bg-slate-100 dark:bg-slate-800" />
                             </div>
-                            <input
-                                type="number"
-                                step="any"
-                                className="w-full pl-10 pr-16 py-3 border border-slate-200 dark:border-gray-700 rounded-xl text-slate-700 dark:text-gray-200 bg-white dark:bg-gray-900 focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 outline-none transition-all font-medium"
-                                value={timeMinutes}
-                                onChange={e => setTimeMinutes(e.target.value === '' ? '' : Number(e.target.value))}
-                            />
-                            <span className="absolute right-4 top-1/2 -translate-y-1/2 text-xs font-bold text-slate-400">MIN</span>
+
+                            <div className="flex items-start gap-4">
+                                <div className="mt-1 w-2 h-2 rounded-full bg-indigo-500 ring-4 ring-indigo-500/10 shrink-0" />
+                                <div>
+                                    <span className="block text-[8px] font-black text-slate-400 uppercase tracking-widest mb-1">Punto de Destino</span>
+                                    <span className="text-sm font-bold text-slate-900 dark:text-gray-100 leading-snug">{endStopName}</span>
+                                </div>
+                            </div>
+                         </div>
+                    </div>
+
+                    {/* Connectivity Profile */}
+                    <div className="space-y-3">
+                        <div className="flex items-center gap-2 text-[10px] font-black uppercase tracking-[0.2em] text-slate-400 px-1">
+                            Perfil Cartográfico
+                        </div>
+                        <div className="bg-slate-50 dark:bg-slate-900/50 p-5 rounded-3xl border utilitarian-border flex items-center gap-4">
+                            <div 
+                                className="h-10 w-10 rounded-2xl border-4 border-white dark:border-slate-800 shadow-md flex items-center justify-center text-white"
+                                style={{ backgroundColor: profileMeta.color }}
+                            >
+                                <Navigation size={18} strokeWidth={2.5} />
+                            </div>
+                            <div className="flex-1">
+                                <h4 className="text-[13px] font-black text-slate-900 dark:text-gray-100 uppercase tracking-wider">{profileMeta.label}</h4>
+                                <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest">{profileMeta.description}</p>
+                            </div>
+                            <ChevronRight size={16} className="text-slate-300" />
                         </div>
                     </div>
 
+                    {/* Operational Metrics Form */}
+                    <div className="grid grid-cols-2 gap-6">
+                        <div className="space-y-3">
+                            <label className="block text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] px-1">Distancia Geodesica</label>
+                            <div className="relative group">
+                                <Ruler size={14} className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-300 group-focus-within:text-primary transition-colors" />
+                                <input
+                                    type="number"
+                                    step="any"
+                                    className="w-full pl-10 pr-4 py-4 bg-white dark:bg-slate-800 border utilitarian-border rounded-2xl text-[15px] font-mono font-black text-slate-900 dark:text-white focus:ring-4 focus:ring-primary/10 focus:border-primary outline-none transition-all shadow-sm"
+                                    value={distance}
+                                    onChange={e => setDistance(e.target.value === '' ? '' : Number(e.target.value))}
+                                />
+                                <span className="absolute right-4 top-1/2 -translate-y-1/2 text-[9px] font-black text-slate-400">METROS</span>
+                            </div>
+                        </div>
+
+                        <div className="space-y-3">
+                            <label className="block text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] px-1">Tiempo Operativo</label>
+                            <div className="relative group">
+                                <Clock size={14} className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-300 group-focus-within:text-primary transition-colors" />
+                                <input
+                                    type="number"
+                                    step="any"
+                                    className="w-full pl-10 pr-4 py-4 bg-white dark:bg-slate-800 border utilitarian-border rounded-2xl text-[15px] font-mono font-black text-slate-900 dark:text-white focus:ring-4 focus:ring-primary/10 focus:border-primary outline-none transition-all shadow-sm"
+                                    value={timeMinutes}
+                                    onChange={e => setTimeMinutes(e.target.value === '' ? '' : Number(e.target.value))}
+                                />
+                                <span className="absolute right-4 top-1/2 -translate-y-1/2 text-[9px] font-black text-slate-400">MIN</span>
+                            </div>
+                        </div>
+                    </div>
                 </div>
 
-                {/* Footer Actions */}
-                <div className="p-5 border-t border-slate-100 dark:border-gray-700 bg-slate-50 dark:bg-gray-800/50 rounded-b-2xl flex items-center gap-3">
+                {/* Footer Controls */}
+                <div className="p-8 border-t utilitarian-border bg-slate-50 dark:bg-slate-900 flex items-center gap-4">
                     <button
                         onClick={handleDeleteClick}
-                        className="h-11 w-11 flex items-center justify-center rounded-xl border border-slate-200 dark:border-gray-600 bg-white dark:bg-gray-700 text-slate-400 hover:text-red-500 hover:border-red-200 hover:bg-red-50 dark:hover:bg-red-900/20 transition-all"
-                        title="Delete Segment"
+                        className="h-14 w-14 flex items-center justify-center rounded-2xl border utilitarian-border bg-white dark:bg-slate-800 text-slate-300 hover:text-red-500 hover:border-red-200 hover:shadow-lg transition-all active:scale-95 group"
+                        title="Eliminar tramo"
                     >
-                        <Trash2 size={18} />
+                        <Trash2 size={22} className="group-hover:scale-110 transition-transform" />
                     </button>
 
                     <button
                         onClick={handleSave}
                         disabled={isSaving}
-                        className="flex-1 h-11 bg-[#1337ec] hover:bg-blue-700 text-white font-bold rounded-xl shadow-lg shadow-blue-500/20 active:scale-95 transition-all flex items-center justify-center gap-2"
+                        className="flex-1 h-14 bg-primary hover:scale-[1.02] text-white font-black text-[11px] uppercase tracking-widest rounded-2xl shadow-xl shadow-primary/20 active:scale-95 transition-all flex items-center justify-center gap-3 relative overflow-hidden group"
                     >
+                        <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/10 to-transparent -translate-x-full group-hover:translate-x-full duration-1000 transition-transform" />
                         {isSaving ? (
-                            <span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                            <span className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
                         ) : (
-                            <>Save Changes</>
+                            <>
+                                <Save size={18} strokeWidth={2.5} />
+                                <span>Sincronizar Cambios</span>
+                            </>
                         )}
                     </button>
 
                     <button
                         onClick={onClose}
-                        className="h-11 px-4 flex items-center justify-center rounded-xl border border-transparent text-slate-500 hover:bg-slate-200 dark:hover:bg-gray-700 transition-all"
+                        className="h-14 px-6 flex items-center justify-center rounded-2xl text-[10px] font-black uppercase tracking-widest text-slate-400 hover:text-slate-900 dark:hover:text-white transition-all"
                     >
-                        Cancel
+                        Salir
                     </button>
                 </div>
 
@@ -214,14 +237,16 @@ const SegmentDetails: React.FC<SegmentDetailsProps> = ({ segment, stops, onClose
 
             <ConfirmModal
                 isOpen={confirmOpen}
-                title={errorMsg ? "Cannot Delete Segment" : "Delete Segment?"}
-                message={errorMsg || "Are you sure you want to delete this segment? Routes using this segment may be affected."}
+                title={errorMsg ? "Error de Restricción" : "¿Eliminar Segmento Arista?"}
+                message={errorMsg || "Esta operación eliminará el tramo vial de la base de datos. Las rutas comerciales vinculadas a este trayecto perderán su continuidad."}
                 onConfirm={handleConfirmDelete}
                 onCancel={() => {
                     setConfirmOpen(false);
                     setErrorMsg(null);
                 }}
                 isError={!!errorMsg}
+                confirmText="Confirmar Eliminación"
+                cancelText="Mantener"
             />
         </>
     );

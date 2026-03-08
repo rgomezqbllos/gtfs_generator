@@ -1,14 +1,13 @@
 import * as React from 'react';
-import { X, Download, CheckSquare, Square, Search, Building2, Calendar, Bus } from 'lucide-react';
+import { X, Download, CheckSquare, Search, Building2, Calendar, Bus, FileArchive, ChevronRight, Activity, Database } from 'lucide-react';
 import { clsx } from 'clsx';
 import type { Route } from '../types';
+import { API_URL } from '../config';
 
 interface ExportModalProps {
     isOpen: boolean;
     onClose: () => void;
 }
-
-import { API_URL } from '../config';
 
 interface Agency {
     agency_id: string;
@@ -19,7 +18,6 @@ interface Service {
     service_id: string;
     start_date: string;
     end_date: string;
-    // days...
 }
 
 const ExportModal: React.FC<ExportModalProps> = ({ isOpen, onClose }) => {
@@ -35,7 +33,6 @@ const ExportModal: React.FC<ExportModalProps> = ({ isOpen, onClose }) => {
     const [exporting, setExporting] = React.useState(false);
     const [searchTerm, setSearchTerm] = React.useState('');
 
-    // Fetch data when modal opens
     React.useEffect(() => {
         if (isOpen) {
             fetchData();
@@ -74,16 +71,11 @@ const ExportModal: React.FC<ExportModalProps> = ({ isOpen, onClose }) => {
         }
     };
 
-    // Toggle Handlers
     const toggleAgency = (id: string) => {
         const next = new Set(selectedAgencyIds);
         if (next.has(id)) next.delete(id);
         else next.add(id);
         setSelectedAgencyIds(next);
-
-        // Auto-select/deselect routes belonging to this agency?
-        // Logic: specific route selection is respected, but if agency is unchecked, its routes are effectively excluded by the backend export logic anyway.
-        // But for UI clarity, we could visually disable them or filter them.
     };
 
     const toggleService = (id: string) => {
@@ -115,10 +107,8 @@ const ExportModal: React.FC<ExportModalProps> = ({ isOpen, onClose }) => {
 
     const getVisibleRoutes = () => {
         return routes.filter(r =>
-            // Filter by search
             (r.route_short_name.toLowerCase().includes(searchTerm.toLowerCase()) ||
                 r.route_long_name.toLowerCase().includes(searchTerm.toLowerCase())) &&
-            // Filter by Selected Agencies (Optional UI choice, but makes sense)
             (r.agency_id ? selectedAgencyIds.has(r.agency_id) : true)
         );
     };
@@ -146,7 +136,6 @@ const ExportModal: React.FC<ExportModalProps> = ({ isOpen, onClose }) => {
             document.body.appendChild(a);
             a.click();
 
-            // Delay revocation to ensure browser registers the download
             setTimeout(() => {
                 window.URL.revokeObjectURL(url);
                 document.body.removeChild(a);
@@ -155,7 +144,7 @@ const ExportModal: React.FC<ExportModalProps> = ({ isOpen, onClose }) => {
             onClose();
         } catch (err) {
             console.error('Export error', err);
-            alert('Failed to generate GTFS export.');
+            alert('Falló la generación del suministro GTFS.');
         } finally {
             setExporting(false);
         }
@@ -167,177 +156,218 @@ const ExportModal: React.FC<ExportModalProps> = ({ isOpen, onClose }) => {
     const isAllRoutesSelected = visibleRoutes.length > 0 && visibleRoutes.every(r => selectedRouteIds.has(r.route_id));
 
     return (
-        <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm animate-in fade-in duration-200">
-            <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-xl w-full max-w-5xl flex flex-col max-h-[90vh] animate-in zoom-in-95 duration-200 border border-gray-200 dark:border-gray-700">
+        <div className="fixed inset-0 z-[100] flex items-center justify-center p-8 bg-slate-950/60 backdrop-blur-sm animate-in fade-in duration-300">
+            <div className="bg-white dark:bg-slate-900 rounded-[40px] shadow-[0_0_100px_rgba(0,0,0,0.4)] w-full max-w-7xl flex flex-col h-[85vh] animate-in zoom-in-95 duration-300 border utilitarian-border overflow-hidden">
 
-                {/* Header */}
-                <div className="px-6 py-4 border-b border-gray-100 dark:border-gray-700 flex justify-between items-center bg-gray-50/50 dark:bg-gray-800/50 rounded-t-2xl">
-                    <div>
-                        <h2 className="text-xl font-bold text-gray-900 dark:text-white flex items-center gap-2">
-                            <Download size={24} className="text-[#1337ec]" />
-                            Export GTFS
-                        </h2>
-                        <p className="text-sm text-gray-500 mt-1">Select Agencies, Services, and Routes to include in the strict GTFS export.</p>
+                {/* Tactical Header */}
+                <div className="px-12 py-10 border-b utilitarian-border bg-slate-50 dark:bg-slate-800/50 flex justify-between items-center">
+                    <div className="flex items-center gap-6">
+                        <div className="p-4 bg-primary text-white rounded-2xl shadow-xl shadow-primary/20">
+                            <FileArchive size={32} strokeWidth={2.5} />
+                        </div>
+                        <div>
+                            <h2 className="text-2xl font-display font-black text-slate-900 dark:text-white uppercase tracking-tight leading-none">Suministro de Capa GTFS</h2>
+                            <p className="text-[11px] font-bold text-slate-500 uppercase tracking-[0.2em] mt-2">Configuración de exportación masiva y validación de protocolos.</p>
+                        </div>
                     </div>
                     <button
                         onClick={onClose}
-                        className="p-2 hover:bg-gray-200 dark:hover:bg-gray-700 rounded-lg transition-colors text-gray-500"
+                        className="p-3 hover:bg-white dark:hover:bg-slate-700 rounded-2xl transition-all text-slate-400 hover:text-red-500 border utilitarian-border shadow-sm group active:scale-95"
                     >
-                        <X size={20} />
+                        <X size={24} strokeWidth={2.5} className="group-hover:rotate-90 transition-transform" />
                     </button>
                 </div>
 
-                {/* Body - 3 Columns */}
-                <div className="flex-1 overflow-hidden flex flex-col md:flex-row divide-y md:divide-y-0 md:divide-x divide-gray-100 dark:divide-gray-700 bg-gray-50/30 dark:bg-gray-900/10">
+                {/* Analytical Body - 3 Tactical Columns */}
+                <div className="flex-1 overflow-hidden flex divide-x utilitarian-border bg-slate-50/30 dark:bg-slate-900/10">
 
-                    {/* Column 1: Agencies */}
-                    <div className="flex-1 flex flex-col min-w-[200px]">
-                        <div className="p-3 border-b border-gray-100 dark:border-gray-700 bg-white dark:bg-gray-800 font-bold text-sm flex items-center gap-2 text-gray-700 dark:text-gray-200">
-                            <Building2 size={16} /> Agencies
+                    {/* Column 1: Core Agencies */}
+                    <div className="w-[300px] flex flex-col">
+                        <div className="px-6 py-4 border-b utilitarian-border bg-white dark:bg-slate-800 font-black text-[10px] uppercase tracking-[0.2em] flex items-center justify-between text-slate-400">
+                            <span className="flex items-center gap-2">
+                                <Building2 size={14} className="text-primary" /> Operadoras
+                            </span>
+                            <span className="bg-slate-100 dark:bg-slate-700 px-2 py-0.5 rounded-full">{agencies.length}</span>
                         </div>
-                        <div className="flex-1 overflow-y-auto p-2 space-y-1">
+                        <div className="flex-1 overflow-y-auto p-4 space-y-2 custom-scrollbar">
                             {agencies.map(agency => (
-                                <div
+                                <button
                                     key={agency.agency_id}
                                     onClick={() => toggleAgency(agency.agency_id)}
                                     className={clsx(
-                                        "flex items-center gap-3 p-2 rounded-lg cursor-pointer transition-colors text-sm",
+                                        "w-full flex items-center gap-3 p-4 rounded-2xl border transition-all text-left group",
                                         selectedAgencyIds.has(agency.agency_id)
-                                            ? "bg-blue-50 dark:bg-blue-900/20 text-blue-800 dark:text-blue-200"
-                                            : "hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-700 dark:text-gray-300"
+                                            ? "bg-primary/5 border-primary/30 text-primary shadow-sm ring-1 ring-primary/10"
+                                            : "bg-white dark:bg-slate-800 border-transparent hover:border-slate-200 dark:hover:border-slate-700 text-slate-500 hover:text-slate-900 dark:hover:text-white"
                                     )}
                                 >
-                                    {selectedAgencyIds.has(agency.agency_id) ? <CheckSquare size={16} /> : <Square size={16} />}
-                                    <span className="truncate">{agency.agency_name}</span>
-                                </div>
+                                    <div className={clsx(
+                                        "w-5 h-5 rounded-lg border-2 flex items-center justify-center transition-all",
+                                        selectedAgencyIds.has(agency.agency_id) ? "bg-primary border-primary text-white" : "border-slate-200 dark:border-slate-700 group-hover:border-primary"
+                                    )}>
+                                        {selectedAgencyIds.has(agency.agency_id) && <CheckSquare size={12} strokeWidth={3} />}
+                                    </div>
+                                    <span className="text-[11px] font-black uppercase tracking-tight truncate flex-1">{agency.agency_name}</span>
+                                </button>
                             ))}
-                            {agencies.length === 0 && <div className="p-4 text-xs text-gray-400 text-center">No agencies found.</div>}
                         </div>
                     </div>
 
-                    {/* Column 2: Services */}
-                    <div className="flex-1 flex flex-col min-w-[200px]">
-                        <div className="p-3 border-b border-gray-100 dark:border-gray-700 bg-white dark:bg-gray-800 font-bold text-sm flex items-center gap-2 text-gray-700 dark:text-gray-200">
-                            <Calendar size={16} /> Services (Calendar)
+                    {/* Column 2: Temporal Calendars */}
+                    <div className="w-[340px] flex flex-col">
+                        <div className="px-6 py-4 border-b utilitarian-border bg-white dark:bg-slate-800 font-black text-[10px] uppercase tracking-[0.2em] flex items-center justify-between text-slate-400">
+                            <span className="flex items-center gap-2">
+                                <Calendar size={14} className="text-primary" /> Vigencia
+                            </span>
+                            <span className="bg-slate-100 dark:bg-slate-700 px-2 py-0.5 rounded-full">{services.length}</span>
                         </div>
-                        <div className="flex-1 overflow-y-auto p-2 space-y-1">
+                        <div className="flex-1 overflow-y-auto p-4 space-y-2 custom-scrollbar">
                             {services.map(service => (
-                                <div
+                                <button
                                     key={service.service_id}
                                     onClick={() => toggleService(service.service_id)}
                                     className={clsx(
-                                        "flex items-center gap-3 p-2 rounded-lg cursor-pointer transition-colors text-sm",
+                                        "w-full flex items-center gap-3 p-4 rounded-2xl border transition-all text-left group",
                                         selectedServiceIds.has(service.service_id)
-                                            ? "bg-green-50 dark:bg-green-900/20 text-green-800 dark:text-green-200"
-                                            : "hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-700 dark:text-gray-300"
+                                            ? "bg-emerald-500/5 border-emerald-500/30 text-emerald-600 shadow-sm ring-1 ring-emerald-500/10"
+                                            : "bg-white dark:bg-slate-800 border-transparent hover:border-slate-200 dark:hover:border-slate-700 text-slate-500 hover:text-slate-900 dark:hover:text-white"
                                     )}
                                 >
-                                    {selectedServiceIds.has(service.service_id) ? <CheckSquare size={16} /> : <Square size={16} />}
-                                    <div className="flex flex-col">
-                                        <span className="truncate font-mono text-xs">{service.service_id}</span>
-                                        <span className="text-[10px] opacity-70">{service.start_date} - {service.end_date}</span>
+                                    <div className={clsx(
+                                        "w-5 h-5 rounded-lg border-2 flex items-center justify-center transition-all",
+                                        selectedServiceIds.has(service.service_id) ? "bg-emerald-500 border-emerald-500 text-white" : "border-slate-200 dark:border-slate-700 group-hover:border-emerald-500"
+                                    )}>
+                                        {selectedServiceIds.has(service.service_id) && <CheckSquare size={12} strokeWidth={3} />}
                                     </div>
-                                </div>
+                                    <div className="flex flex-col flex-1 truncate">
+                                        <span className="text-[11px] font-black font-mono tracking-tight uppercase leading-none">{service.service_id}</span>
+                                        <span className="text-[9px] font-bold text-slate-400 uppercase tracking-widest mt-1.5">{service.start_date} → {service.end_date}</span>
+                                    </div>
+                                </button>
                             ))}
-                            {services.length === 0 && <div className="p-4 text-xs text-gray-400 text-center">No services found.</div>}
                         </div>
                     </div>
 
-                    {/* Column 3: Routes */}
-                    <div className="flex-[2] flex flex-col min-w-[300px]">
-                        <div className="p-3 border-b border-gray-100 dark:border-gray-700 bg-white dark:bg-gray-800 font-bold text-sm flex items-center justify-between text-gray-700 dark:text-gray-200">
-                            <div className="flex items-center gap-2">
-                                <Bus size={16} /> Routes
+                    {/* Column 3: Routes & Paths Hierarchy */}
+                    <div className="flex-1 flex flex-col">
+                        <div className="px-8 py-5 border-b utilitarian-border bg-white dark:bg-slate-800 flex items-center justify-between">
+                            <div className="flex items-center gap-8">
+                                <div className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-400 flex items-center gap-2">
+                                    <Bus size={14} className="text-primary" /> Inventario de Rutas
+                                </div>
+                                <div className="relative group w-64">
+                                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 transition-colors group-hover:text-primary" size={14} />
+                                    <input
+                                        type="text"
+                                        placeholder="Filtrar trazados..."
+                                        className="w-full bg-slate-100 dark:bg-slate-900/50 border-2 border-transparent rounded-xl py-2 pl-10 pr-4 text-[11px] font-black uppercase tracking-tight focus:bg-white dark:focus:bg-slate-900 focus:border-primary/20 transition-all outline-none"
+                                        value={searchTerm}
+                                        onChange={e => setSearchTerm(e.target.value)}
+                                    />
+                                </div>
                             </div>
-                            <button onClick={handleSelectAllRoutes} className="text-xs text-blue-600 hover:text-blue-700 font-medium">
-                                {isAllRoutesSelected ? 'Deselect All' : 'Select All'}
+                            <button 
+                                onClick={handleSelectAllRoutes} 
+                                className="text-[10px] font-black uppercase tracking-[0.2em] text-primary hover:underline px-4 py-2 border utilitarian-border rounded-xl bg-slate-50 dark:bg-slate-800 transition-all active:scale-95"
+                            >
+                                {isAllRoutesSelected ? 'Invertir ' : 'Totalizar'}
                             </button>
                         </div>
 
-                        {/* Search Toolbar */}
-                        <div className="px-3 py-2 bg-white dark:bg-gray-800 border-b border-gray-100 dark:border-gray-700">
-                            <div className="relative">
-                                <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={14} />
-                                <input
-                                    type="text"
-                                    placeholder="Filter routes..."
-                                    className="w-full pl-9 pr-3 py-1.5 bg-gray-100 dark:bg-gray-900 border-none rounded-md text-sm outline-none focus:ring-1 focus:ring-blue-500/50"
-                                    value={searchTerm}
-                                    onChange={e => setSearchTerm(e.target.value)}
-                                />
-                            </div>
-                        </div>
-
-                        <div className="flex-1 overflow-y-auto p-2">
-                            <div className="grid grid-cols-1 gap-2">
+                        <div className="flex-1 overflow-y-auto p-8 lg:p-12 custom-scrollbar">
+                            <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
                                 {visibleRoutes.map(route => {
                                     const isSelected = selectedRouteIds.has(route.route_id);
                                     return (
-                                        <div
+                                        <button
                                             key={route.route_id}
                                             onClick={() => toggleRoute(route.route_id)}
                                             className={clsx(
-                                                "flex items-center gap-3 p-2 rounded-lg border cursor-pointer transition-all select-none group",
+                                                "flex items-center gap-4 p-5 rounded-[24px] border transition-all relative overflow-hidden group select-none text-left",
                                                 isSelected
-                                                    ? "bg-blue-50 dark:bg-blue-900/20 border-blue-200 dark:border-blue-800"
-                                                    : "bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-700 hover:border-blue-300"
+                                                    ? "bg-white dark:bg-slate-800 border-primary shadow-xl shadow-primary/10 ring-1 ring-primary/20 scale-[1.02]"
+                                                    : "bg-white dark:bg-slate-800 border-slate-100 dark:border-slate-800 hover:border-slate-300 dark:hover:border-slate-600 hover:translate-x-1"
                                             )}
                                         >
                                             <div className={clsx(
-                                                "w-4 h-4 rounded flex items-center justify-center border transition-colors",
-                                                isSelected ? "bg-blue-600 border-blue-600 text-white" : "border-gray-300 dark:border-gray-600 group-hover:border-blue-400"
+                                                "w-6 h-6 rounded-lg border-2 flex items-center justify-center transition-all",
+                                                isSelected ? "bg-primary border-primary text-white" : "border-slate-200 dark:border-slate-700 group-hover:border-primary"
                                             )}>
-                                                {isSelected && <CheckSquare size={12} />}
+                                                {isSelected && <CheckSquare size={14} strokeWidth={3} />}
                                             </div>
 
-                                            <div className="flex-1 min-w-0 flex items-center gap-3">
-                                                <span className="font-mono font-bold text-xs px-1.5 py-0.5 bg-gray-100 dark:bg-gray-700 rounded text-gray-800 dark:text-gray-200 min-w-[30px] text-center">
-                                                    {route.route_short_name}
-                                                </span>
-                                                <div className="text-sm font-medium text-gray-900 dark:text-gray-100 truncate flex-1">
-                                                    {route.route_long_name}
-                                                </div>
-                                                <div
-                                                    className="w-2 h-2 rounded-full"
+                                            <div className="flex-1 flex items-center gap-4 overflow-hidden">
+                                                <div 
+                                                    className="w-10 h-10 shrink-0 rounded-xl flex items-center justify-center text-[13px] font-display font-black text-white shadow-lg shadow-black/10"
                                                     style={{ backgroundColor: `#${route.route_color}` }}
-                                                />
+                                                >
+                                                    {route.route_short_name}
+                                                </div>
+                                                <div className="flex-1 truncate">
+                                                    <p className={clsx("text-[11px] font-black uppercase tracking-tight truncate leading-tight", isSelected ? "text-slate-900 dark:text-white" : "text-slate-500")}>
+                                                        {route.route_long_name}
+                                                    </p>
+                                                    <p className="text-[9px] font-bold text-slate-400 uppercase tracking-widest mt-1.5 flex items-center gap-2">
+                                                        <Activity size={10} /> Suministro Activo
+                                                    </p>
+                                                </div>
                                             </div>
-                                        </div>
+                                            <ChevronRight size={14} className={clsx("transition-all", isSelected ? "text-primary translate-x-1" : "text-slate-200 group-hover:text-slate-400")} />
+                                        </button>
                                     );
                                 })}
-                                {visibleRoutes.length === 0 && (
-                                    <div className="text-center py-8 text-gray-500 text-sm">
-                                        No routes found matching filters.
-                                    </div>
-                                )}
                             </div>
                         </div>
                     </div>
                 </div>
 
-                {/* Footer */}
-                <div className="px-6 py-4 border-t border-gray-100 dark:border-gray-700 bg-white dark:bg-gray-800 rounded-b-2xl flex justify-between items-center">
-                    <div className="text-sm text-gray-500 hidden sm:block">
-                        {selectedAgencyIds.size} Agencies, {selectedServiceIds.size} Services, {selectedRouteIds.size} Routes
+                {/* Tactical Footer */}
+                <div className="px-12 py-8 border-t utilitarian-border bg-white dark:bg-slate-800/10 flex flex-col md:flex-row justify-between items-center gap-6">
+                    <div className="flex items-center gap-8">
+                        <div className="flex flex-col">
+                            <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest leading-none mb-2">Entidades Consolidadas</span>
+                            <div className="flex gap-4">
+                                <div className="flex items-center gap-2 px-3 py-1.5 bg-slate-100 dark:bg-slate-800 rounded-lg border utilitarian-border">
+                                    <Building2 size={12} className="text-primary" />
+                                    <span className="text-[13px] font-display font-black text-slate-700 dark:text-slate-200">{selectedAgencyIds.size}</span>
+                                </div>
+                                <div className="flex items-center gap-2 px-3 py-1.5 bg-slate-100 dark:bg-slate-800 rounded-lg border utilitarian-border">
+                                    <Calendar size={12} className="text-emerald-500" />
+                                    <span className="text-[13px] font-display font-black text-slate-700 dark:text-slate-200">{selectedServiceIds.size}</span>
+                                </div>
+                                <div className="flex items-center gap-2 px-3 py-1.5 bg-slate-100 dark:bg-slate-800 rounded-lg border utilitarian-border">
+                                    <Bus size={12} className="text-indigo-500" />
+                                    <span className="text-[13px] font-display font-black text-slate-700 dark:text-slate-200">{selectedRouteIds.size}</span>
+                                </div>
+                            </div>
+                        </div>
+                        <div className="w-px h-12 bg-slate-200 dark:bg-slate-700" />
+                        <div className="flex flex-col">
+                            <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest leading-none mb-2">Protocolo de Salida</span>
+                            <span className="text-[11px] font-black text-primary uppercase tracking-[0.1em]">Stricto Sensu GTFS 2.0 (ZIP)</span>
+                        </div>
                     </div>
-                    <div className="flex gap-3 w-full sm:w-auto justify-end">
+
+                    <div className="flex gap-4 w-full md:w-auto">
                         <button
                             onClick={onClose}
-                            className="px-4 py-2 text-gray-600 dark:text-gray-300 font-medium hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg transition-colors text-sm"
+                            className="flex-1 md:flex-none px-8 py-5 text-[11px] font-black uppercase tracking-widest text-slate-500 hover:text-red-500 transition-colors"
                         >
-                            Cancel
+                            Cancelar
                         </button>
                         <button
                             onClick={handleExport}
                             disabled={exporting || (selectedAgencyIds.size === 0 && selectedRouteIds.size === 0)}
-                            className="px-6 py-2 bg-[#1337ec] hover:bg-blue-700 text-white font-bold rounded-lg shadow-lg shadow-blue-500/20 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2 transition-all text-sm"
+                            className="flex-1 md:flex-none px-12 py-5 bg-primary hover:bg-[#1e4cd8] text-white text-[11px] font-black uppercase tracking-[0.25em] rounded-[24px] shadow-2xl shadow-primary/30 disabled:opacity-30 disabled:cursor-not-allowed flex items-center justify-center gap-4 transition-all hover:scale-[1.02] active:scale-95 group"
                         >
                             {exporting ? (
-                                <>Processing...</>
+                                <>
+                                    <Database size={20} className="animate-spin" /> Procesando...
+                                </>
                             ) : (
                                 <>
-                                    <Download size={18} />
-                                    Download GTFS.zip
+                                    <Download size={20} strokeWidth={2.5} className="group-hover:translate-y-0.5 transition-transform" />
+                                    Iniciar Exportación
                                 </>
                             )}
                         </button>

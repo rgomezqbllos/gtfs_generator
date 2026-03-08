@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
-import { Upload, FileText, AlertCircle, CheckCircle, X, Download } from 'lucide-react';
+import { Upload, AlertCircle, CheckCircle, X, Download, Loader2, Database, Info, FileSpreadsheet } from 'lucide-react';
 import { API_URL } from '../config';
+import clsx from 'clsx';
 
 interface ExternalLoadPanelProps {
     onClose: () => void;
@@ -22,8 +23,9 @@ const ExternalLoadPanel: React.FC<ExternalLoadPanelProps> = ({ onClose, onImport
     const [message, setMessage] = useState<string>('');
     const [errors, setErrors] = useState<any[]>([]);
 
-    const templates: Record<'stops' | 'routes' | 'itineraries', { fileName: string; content: string }> = {
+    const templates: Record<'stops' | 'routes' | 'itineraries', { fileName: string; content: string; label: string }> = {
         stops: {
+            label: 'Nodos de Red',
             fileName: 'Paradas_plantilla.csv',
             content: [
                 'stop_code,stop_name,latitude,longitude,Type',
@@ -32,6 +34,7 @@ const ExternalLoadPanel: React.FC<ExternalLoadPanelProps> = ({ onClose, onImport
             ].join('\n')
         },
         routes: {
+            label: 'Trazados y Rutas',
             fileName: 'Rutas_plantilla.csv',
             content: [
                 'route_id,route_name,direction,sequence,stop_code,accumulate_distance',
@@ -40,6 +43,7 @@ const ExternalLoadPanel: React.FC<ExternalLoadPanelProps> = ({ onClose, onImport
             ].join('\n')
         },
         itineraries: {
+            label: 'Despacho y Horarios',
             fileName: 'Itinerario_plantilla.csv',
             content: [
                 'service_id,trip_id,event_type,route_id,start_time,end_time,from_stop,to_stop,direction,bus',
@@ -64,7 +68,6 @@ const ExternalLoadPanel: React.FC<ExternalLoadPanelProps> = ({ onClose, onImport
     const handleFileChange = (type: keyof typeof files) => (e: React.ChangeEvent<HTMLInputElement>) => {
         if (e.target.files && e.target.files[0]) {
             setFiles(prev => ({ ...prev, [type]: e.target.files![0] }));
-            // Reset status on new file
             if (status !== 'uploading') {
                 setStatus('idle');
                 setMessage('');
@@ -75,13 +78,13 @@ const ExternalLoadPanel: React.FC<ExternalLoadPanelProps> = ({ onClose, onImport
 
     const handleUpload = async () => {
         if (!files.stops && !files.routes && !files.itineraries) {
-            setMessage("Please select at least one file to upload.");
+            setMessage("Se requiere al menos un archivo para iniciar el proceso.");
             setStatus('error');
             return;
         }
 
         setStatus('uploading');
-        setMessage("Uploading and processing files...");
+        setMessage("Sincronizando con el servidor de infraestructura...");
         setErrors([]);
 
         const formData = new FormData();
@@ -99,14 +102,13 @@ const ExternalLoadPanel: React.FC<ExternalLoadPanelProps> = ({ onClose, onImport
 
             if (res.ok && data.success) {
                 setStatus('success');
-                setMessage(data.message || "Import completed successfully!");
+                setMessage(data.message || "¡Sincronización de red exitosa!");
                 if (onImportSuccess) {
                     await onImportSuccess();
                 }
-                // Clear files? Maybe not, so user sees what they sent.
             } else {
                 setStatus('error');
-                setMessage(data.error || "Import failed with errors.");
+                setMessage(data.error || "Fallo en la validación de integridad.");
                 if (data.errors && Array.isArray(data.errors)) {
                     setErrors(data.errors);
                 }
@@ -114,200 +116,165 @@ const ExternalLoadPanel: React.FC<ExternalLoadPanelProps> = ({ onClose, onImport
         } catch (err: any) {
             console.error(err);
             setStatus('error');
-            setMessage(`Network error: ${err.message}`);
+            setMessage(`Error de comunicación: ${err.message}`);
         }
     };
 
     return (
-        <div className="absolute top-0 right-0 h-full w-96 bg-white dark:bg-gray-900 border-l border-gray-200 dark:border-gray-700 shadow-2xl z-30 flex flex-col transition-transform duration-300">
-            {/* Header */}
-            <div className="flex items-center justify-between p-4 border-b border-gray-100 dark:border-gray-800 bg-gray-50 dark:bg-gray-800/50">
-                <div className="flex items-center gap-2">
-                    <Upload className="text-blue-600" size={20} />
-                    <h2 className="font-bold text-gray-800 dark:text-gray-100">External Load</h2>
+        <div className="absolute top-0 right-0 h-full w-[420px] bg-white dark:bg-slate-900 border-l utilitarian-border shadow-[0_0_50px_rgba(0,0,0,0.2)] z-50 flex flex-col animate-in slide-in-from-right duration-500 ease-out-expo">
+            
+            {/* Tactical Header */}
+            <div className="p-8 border-b utilitarian-border bg-slate-50 dark:bg-slate-800/50">
+                <div className="flex items-center justify-between mb-2">
+                    <div className="flex items-center gap-3">
+                        <div className="p-2.5 rounded-xl bg-primary text-white shadow-lg shadow-primary/20">
+                            <Database size={20} strokeWidth={2.5} />
+                        </div>
+                        <h2 className="text-lg font-display font-black text-slate-900 dark:text-white uppercase tracking-tight">Sincronización CSV</h2>
+                    </div>
+                    <button
+                        onClick={onClose}
+                        className="p-2 hover:bg-white dark:hover:bg-slate-800 rounded-xl transition-all text-slate-400 hover:text-slate-900 dark:hover:text-white border utilitarian-border"
+                    >
+                        <X size={20} strokeWidth={2.5} />
+                    </button>
                 </div>
-                <button
-                    onClick={onClose}
-                    className="p-1 hover:bg-gray-200 dark:hover:bg-gray-700 rounded-full transition-colors"
-                >
-                    <X size={20} className="text-gray-500" />
-                </button>
+                <p className="text-[11px] font-bold text-slate-400 uppercase tracking-widest leading-relaxed">
+                    Alta masiva de infraestructura mediante archivos estructurados.
+                </p>
             </div>
 
-            {/* Content */}
-            <div className="flex-1 overflow-y-auto p-4 space-y-6">
-
-                <p className="text-sm text-gray-600 dark:text-gray-400">
-                    Upload structured CSV files to build your network.
-                </p>
-                <p className="text-xs text-amber-700 dark:text-amber-300 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded-lg px-3 py-2">
-                    Distance format rule: always in km with up to 3 decimals, using a dot separator (example: 1.275).
-                </p>
-
-                {/* File Inputs */}
-                <div className="space-y-4">
-
-                    {/* Stops */}
-                    <div className="space-y-2">
-                        <div className="flex items-center justify-between gap-2">
-                            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">
-                                Stops (Paradas.csv)
-                            </label>
-                            <button
-                                type="button"
-                                onClick={() => handleDownloadTemplate('stops')}
-                                className="inline-flex items-center gap-1 text-xs px-2 py-1 rounded border border-blue-300 text-blue-700 hover:bg-blue-50 dark:border-blue-700 dark:text-blue-300 dark:hover:bg-blue-900/20"
-                            >
-                                <Download size={14} />
-                                Download template
-                            </button>
-                        </div>
-                        <div className={`border-2 border-dashed rounded-lg p-3 flex flex-col items-center justify-center transition-colors ${files.stops ? 'border-green-500 bg-green-50 dark:bg-green-900/10' : 'border-gray-300 dark:border-gray-700 hover:border-blue-400'}`}>
-                            <input
-                                type="file"
-                                accept=".csv, text/csv, application/vnd.ms-excel, text/x-csv, text/plain"
-                                onChange={handleFileChange('stops')}
-                                className="hidden"
-                                id="file-stops"
-                            />
-                            <label htmlFor="file-stops" className="cursor-pointer w-full flex flex-col items-center gap-1">
-                                {files.stops ? (
-                                    <>
-                                        <CheckCircle size={20} className="text-green-600" />
-                                        <span className="text-xs font-semibold text-green-700 dark:text-green-400 truncate w-full text-center">{files.stops.name}</span>
-                                        <span className="text-xs text-gray-500">{(files.stops.size / 1024).toFixed(1)} KB</span>
-                                    </>
-                                ) : (
-                                    <>
-                                        <FileText size={20} className="text-gray-400" />
-                                        <span className="text-xs text-blue-600 font-medium">Click to upload</span>
-                                    </>
-                                )}
-                            </label>
-                        </div>
+            {/* Main Content Area */}
+            <div className="flex-1 overflow-y-auto p-8 space-y-8 custom-scrollbar">
+                
+                {/* Tactical Warning */}
+                <div className="p-4 bg-amber-500/5 dark:bg-amber-500/10 border-2 border-dashed border-amber-500/30 rounded-2xl flex items-start gap-3">
+                    <AlertCircle size={18} className="text-amber-600 dark:text-amber-400 shrink-0 mt-0.5" />
+                    <div>
+                        <p className="text-[11px] font-black text-amber-600 dark:text-amber-400 uppercase tracking-widest mb-1">Protocolo de Distancia</p>
+                        <p className="text-[10px] font-bold text-slate-600 dark:text-slate-400 leading-relaxed uppercase tracking-tighter">
+                            Usar siempre <span className="underline decoration-2">km</span> con 3 decimales, separador punto. Ej: 4.520
+                        </p>
                     </div>
-
-                    {/* Routes */}
-                    <div className="space-y-2">
-                        <div className="flex items-center justify-between gap-2">
-                            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">
-                                Routes (Rutas.csv)
-                            </label>
-                            <button
-                                type="button"
-                                onClick={() => handleDownloadTemplate('routes')}
-                                className="inline-flex items-center gap-1 text-xs px-2 py-1 rounded border border-blue-300 text-blue-700 hover:bg-blue-50 dark:border-blue-700 dark:text-blue-300 dark:hover:bg-blue-900/20"
-                            >
-                                <Download size={14} />
-                                Download template
-                            </button>
-                        </div>
-                        <div className={`border-2 border-dashed rounded-lg p-3 flex flex-col items-center justify-center transition-colors ${files.routes ? 'border-green-500 bg-green-50 dark:bg-green-900/10' : 'border-gray-300 dark:border-gray-700 hover:border-blue-400'}`}>
-                            <input
-                                type="file"
-                                accept=".csv, text/csv, application/vnd.ms-excel, text/x-csv, text/plain"
-                                onChange={handleFileChange('routes')}
-                                className="hidden"
-                                id="file-routes"
-                            />
-                            <label htmlFor="file-routes" className="cursor-pointer w-full flex flex-col items-center gap-1">
-                                {files.routes ? (
-                                    <>
-                                        <CheckCircle size={20} className="text-green-600" />
-                                        <span className="text-xs font-semibold text-green-700 dark:text-green-400 truncate w-full text-center">{files.routes.name}</span>
-                                        <span className="text-xs text-gray-500">{(files.routes.size / 1024).toFixed(1)} KB</span>
-                                    </>
-                                ) : (
-                                    <>
-                                        <FileText size={20} className="text-gray-400" />
-                                        <span className="text-xs text-blue-600 font-medium">Click to upload</span>
-                                    </>
-                                )}
-                            </label>
-                        </div>
-                    </div>
-
-                    {/* Itineraries */}
-                    <div className="space-y-2">
-                        <div className="flex items-center justify-between gap-2">
-                            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">
-                                Itineraries (Itinerario.csv)
-                            </label>
-                            <button
-                                type="button"
-                                onClick={() => handleDownloadTemplate('itineraries')}
-                                className="inline-flex items-center gap-1 text-xs px-2 py-1 rounded border border-blue-300 text-blue-700 hover:bg-blue-50 dark:border-blue-700 dark:text-blue-300 dark:hover:bg-blue-900/20"
-                            >
-                                <Download size={14} />
-                                Download template
-                            </button>
-                        </div>
-                        <div className={`border-2 border-dashed rounded-lg p-3 flex flex-col items-center justify-center transition-colors ${files.itineraries ? 'border-green-500 bg-green-50 dark:bg-green-900/10' : 'border-gray-300 dark:border-gray-700 hover:border-blue-400'}`}>
-                            <input
-                                type="file"
-                                accept=".csv, text/csv, application/vnd.ms-excel, text/x-csv, text/plain"
-                                onChange={handleFileChange('itineraries')}
-                                className="hidden"
-                                id="file-itineraries"
-                            />
-                            <label htmlFor="file-itineraries" className="cursor-pointer w-full flex flex-col items-center gap-1">
-                                {files.itineraries ? (
-                                    <>
-                                        <CheckCircle size={20} className="text-green-600" />
-                                        <span className="text-xs font-semibold text-green-700 dark:text-green-400 truncate w-full text-center">{files.itineraries.name}</span>
-                                        <span className="text-xs text-gray-500">{(files.itineraries.size / 1024).toFixed(1)} KB</span>
-                                    </>
-                                ) : (
-                                    <>
-                                        <FileText size={20} className="text-gray-400" />
-                                        <span className="text-xs text-blue-600 font-medium">Click to upload</span>
-                                    </>
-                                )}
-                            </label>
-                        </div>
-                    </div>
-
                 </div>
 
-                {/* Status & Errors */}
+                {/* File Upload Grid */}
+                <div className="space-y-6">
+                    {(['stops', 'routes', 'itineraries'] as const).map((type) => (
+                        <div key={type} className="space-y-3 group">
+                            <div className="flex items-center justify-between px-1">
+                                <label className="text-[11px] font-black text-slate-500 dark:text-slate-400 uppercase tracking-[0.15em] flex items-center gap-2">
+                                    <FileSpreadsheet size={14} className="text-primary/50" />
+                                    {templates[type].label}
+                                </label>
+                                <button
+                                    onClick={() => handleDownloadTemplate(type)}
+                                    className="text-[9px] font-black text-primary hover:underline uppercase tracking-widest flex items-center gap-1 opacity-60 hover:opacity-100 transition-opacity"
+                                >
+                                    <Download size={12} /> Plantilla
+                                </button>
+                            </div>
+                            
+                            <div className={clsx(
+                                "relative border-2 border-dashed rounded-[24px] overflow-hidden transition-all duration-300",
+                                files[type] 
+                                    ? "bg-emerald-500/5 border-emerald-500/50" 
+                                    : "bg-slate-50/50 dark:bg-slate-800/30 border-slate-200 dark:border-slate-700 hover:border-primary/50 hover:bg-white dark:hover:bg-slate-800"
+                            )}>
+                                <input
+                                    type="file"
+                                    accept=".csv"
+                                    onChange={handleFileChange(type)}
+                                    className="absolute inset-0 opacity-0 cursor-pointer z-10"
+                                    id={`file-${type}`}
+                                />
+                                <div className="p-6 flex flex-col items-center justify-center gap-3 text-center">
+                                    {files[type] ? (
+                                        <div className="animate-in zoom-in-95 duration-300">
+                                            <div className="w-12 h-12 rounded-2xl bg-emerald-500 text-white flex items-center justify-center shadow-lg shadow-emerald-500/20 mx-auto mb-2">
+                                                <CheckCircle size={24} strokeWidth={2.5} />
+                                            </div>
+                                            <p className="text-[12px] font-black text-slate-900 dark:text-white truncate max-w-[280px]">{files[type]?.name}</p>
+                                            <p className="text-[9px] font-mono font-bold text-emerald-600 dark:text-emerald-400 uppercase tracking-widest mt-1">
+                                                {(files[type]!.size / 1024).toFixed(1)} KB • Preparado
+                                            </p>
+                                        </div>
+                                    ) : (
+                                        <>
+                                            <div className="w-12 h-12 rounded-2xl bg-white dark:bg-slate-800 border utilitarian-border flex items-center justify-center text-slate-300 transition-transform group-hover:-translate-y-1 shadow-sm">
+                                                <Upload size={20} />
+                                            </div>
+                                            <p className="text-[11px] font-black text-slate-900 dark:text-white uppercase tracking-tight">Vincular Archivo CSV</p>
+                                            <p className="text-[9px] font-bold text-slate-400 uppercase tracking-wider">Arrastre o haga clic para sincronizar</p>
+                                        </>
+                                    )}
+                                </div>
+                            </div>
+                        </div>
+                    ))}
+                </div>
+
+                {/* Tactical Status & Reports */}
                 {status !== 'idle' && (
-                    <div className={`rounded-lg p-3 text-sm ${status === 'success' ? 'bg-green-100 text-green-800' :
-                        status === 'error' ? 'bg-red-100 text-red-800' :
-                            'bg-blue-100 text-blue-800'
-                        }`}>
-                        <div className="flex items-center gap-2 font-medium">
-                            {status === 'uploading' && <span className="animate-spin text-lg">⏳</span>}
-                            {status === 'success' && <CheckCircle size={16} />}
-                            {status === 'error' && <AlertCircle size={16} />}
-                            {message}
+                    <div className={clsx(
+                        "rounded-[28px] p-6 border-2 animate-in fade-in slide-in-from-bottom-4 duration-500",
+                        status === 'success' ? "bg-emerald-500/5 border-emerald-500/20 text-emerald-700 dark:text-emerald-400" :
+                        status === 'error' ? "bg-red-500/5 border-red-500/20 text-red-700 dark:text-red-400" :
+                        "bg-primary/5 border-primary/20 text-primary"
+                    )}>
+                        <div className="flex items-center gap-3 mb-4">
+                            <div className={clsx(
+                                "p-2 rounded-xl text-white shadow-lg",
+                                status === 'success' ? "bg-emerald-500" :
+                                status === 'error' ? "bg-red-500" : "bg-primary"
+                            )}>
+                                {status === 'uploading' && <Loader2 size={16} className="animate-spin" />}
+                                {status === 'success' && <CheckCircle size={16} strokeWidth={2.5} />}
+                                {status === 'error' && <AlertCircle size={16} strokeWidth={2.5} />}
+                            </div>
+                            <span className="text-xs font-black uppercase tracking-widest">{message}</span>
                         </div>
 
                         {errors.length > 0 && (
-                            <div className="mt-2 pl-6 space-y-1 max-h-40 overflow-y-auto">
-                                <p className="font-bold underline">Validation Errors:</p>
+                            <div className="space-y-2 mt-4 max-h-60 overflow-y-auto custom-scrollbar pr-2">
+                                <div className="text-[10px] font-black uppercase tracking-widest opacity-60 mb-2 flex items-center gap-2">
+                                    <Info size={12} /> Informe de Conflictos
+                                </div>
                                 {errors.map((err, i) => (
-                                    <div key={i} className="text-xs">
-                                        Row {err.row} ({err.file}): {err.message}
+                                    <div key={i} className="bg-white/50 dark:bg-slate-900/50 p-3 rounded-xl border border-red-500/10 text-[11px] font-bold leading-relaxed flex gap-3">
+                                        <span className="text-red-500 font-mono shrink-0">L{err.row}</span>
+                                        <span className="text-slate-600 dark:text-slate-300">{err.message}</span>
                                     </div>
                                 ))}
                             </div>
                         )}
                     </div>
                 )}
-
             </div>
 
-            {/* Footer */}
-            <div className="p-4 border-t border-gray-100 dark:border-gray-800 bg-gray-50 dark:bg-gray-800/50">
+            {/* Interaction Footer */}
+            <div className="p-8 border-t utilitarian-border bg-slate-50 dark:bg-slate-800/30">
                 <button
                     onClick={handleUpload}
                     disabled={status === 'uploading'}
-                    className={`w-full py-2.5 rounded-lg font-bold text-white shadow-lg transition-all ${status === 'uploading'
-                        ? 'bg-gray-400 cursor-not-allowed'
-                        : 'bg-blue-600 hover:bg-blue-700 hover:shadow-blue-500/30 active:scale-95'
-                        }`}
+                    className={clsx(
+                        "w-full py-5 rounded-[20px] font-black text-[11px] uppercase tracking-[0.2em] shadow-2xl transition-all flex items-center justify-center gap-3",
+                        status === 'uploading'
+                            ? "bg-slate-300 text-white cursor-not-allowed"
+                            : "bg-primary text-white hover:scale-[1.02] active:scale-95 shadow-primary/20 hover:shadow-primary/40"
+                    )}
                 >
-                    {status === 'uploading' ? 'Processing...' : 'Start Import'}
+                    {status === 'uploading' ? (
+                        <>
+                            <Loader2 size={18} className="animate-spin" />
+                            Procesando Red...
+                        </>
+                    ) : (
+                        <>
+                            <Database size={18} strokeWidth={2.5} />
+                            Iniciar Sincronización
+                        </>
+                    )}
                 </button>
             </div>
         </div>

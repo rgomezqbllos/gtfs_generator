@@ -25,7 +25,7 @@ const server = Fastify({
 server.register(cors, {
     origin: '*', // Allow all origins for dev
     methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
-    allowedHeaders: ['Content-Type', 'Authorization'],
+    allowedHeaders: ['Content-Type', 'Authorization', 'X-Project-Id'],
     exposedHeaders: ['Content-Disposition']
 });
 

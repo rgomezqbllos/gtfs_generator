@@ -1,6 +1,5 @@
-
 import React, { useState, useEffect } from 'react';
-import { Trash2, AlertTriangle, MapPin, Download, Upload } from 'lucide-react';
+import { Trash2, AlertTriangle, MapPin, Download, Upload, X, RotateCcw, Save, Settings, Users, Globe, ExternalLink } from 'lucide-react';
 import ConfirmModal from './ConfirmModal';
 import AgencyManager from './AgencyManager';
 import MapManager from './MapManager';
@@ -8,6 +7,7 @@ import { useSettings } from '../context/SettingsContext';
 import { useEditor } from '../context/EditorContext';
 import { useAuth } from '../context/AuthContext';
 import { clsx } from 'clsx';
+import { API_URL } from '../config';
 
 interface SettingsPanelProps {
     onClose: () => void;
@@ -17,8 +17,6 @@ interface SettingsPanelProps {
         zoom: number;
     };
 }
-
-import { API_URL } from '../config';
 
 const SettingsPanel: React.FC<SettingsPanelProps> = ({ onClose, currentViewState }) => {
     const { defaultLocation, setDefaultLocation } = useSettings();
@@ -52,7 +50,7 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({ onClose, currentViewState
             zoom: Number(zoom)
         };
         setDefaultLocation(newLocation);
-        alert('Default location saved!');
+        alert('Ubicación predeterminada sincronizada!');
     };
 
     const handleUseCurrentLocation = () => {
@@ -69,15 +67,15 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({ onClose, currentViewState
             });
 
             if (res.ok) {
-                alert('Database has been reset successfully. The page will now reload.');
+                alert('La base de datos ha sido reestablecida. La aplicación se reiniciará.');
                 window.location.reload();
             } else {
                 const data = await res.json();
-                alert(`Failed to reset database: ${data.error || 'Unknown error'}`);
+                alert(`Error al resetear: ${data.error || 'Unknown error'}`);
             }
         } catch (error) {
             console.error('Error resetting database:', error);
-            alert('Error connecting to server.');
+            alert('Error de conexión con el servidor.');
         } finally {
             setIsResetting(false);
             setShowResetConfirm(false);
@@ -85,153 +83,156 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({ onClose, currentViewState
     };
 
     return (
-        <div className="absolute top-0 right-0 h-full w-96 bg-white dark:bg-gray-900 border-l border-gray-200 dark:border-gray-800 shadow-xl overflow-hidden z-30 flex flex-col transition-colors duration-300">
-            {/* Header */}
-            <div className="px-6 py-4 border-b border-gray-100 dark:border-gray-800 flex justify-between items-center bg-gray-50/50 dark:bg-gray-800/50">
-                <h2 className="text-xl font-bold text-gray-800 dark:text-white">Settings</h2>
-                <button
-                    onClick={onClose}
-                    className="p-1 rounded-full hover:bg-gray-200 dark:hover:bg-gray-700 text-gray-500 transition-colors"
-                >
-                    ✕
-                </button>
+        <div className="absolute top-0 right-0 h-full w-[420px] glass-panel border-l border-white/20 dark:border-slate-800 shadow-[0_0_80px_rgba(0,0,0,0.4)] overflow-hidden z-30 flex flex-col animate-in slide-in-from-right-full duration-700 ease-out-expo pointer-events-auto">
+            
+            {/* Header Content */}
+            <div className="px-8 py-8 border-b utilitarian-border bg-slate-50/80 dark:bg-slate-900/80 backdrop-blur-xl">
+                <div className="flex justify-between items-start mb-6">
+                    <div>
+                        <h2 className="text-2xl font-display font-black text-slate-900 dark:text-white tracking-tight leading-none mb-2 underline decoration-primary/40 underline-offset-8">
+                            Ajustes Operativos
+                        </h2>
+                        <p className="text-[10px] font-bold text-slate-400 uppercase tracking-[0.2em]">Geo-Configuración & Red</p>
+                    </div>
+                    <button
+                        onClick={onClose}
+                        className="p-2.5 rounded-xl hover:bg-white dark:hover:bg-slate-800 text-slate-400 hover:text-red-500 transition-all border utilitarian-border"
+                    >
+                        <X size={20} strokeWidth={2.5} />
+                    </button>
+                </div>
+
+                {/* Tactical Tabs */}
+                <div className="flex p-1.5 bg-slate-100 dark:bg-slate-800/80 rounded-2xl border utilitarian-border">
+                    <button
+                        onClick={() => setActiveTab('general')}
+                        className={clsx(
+                            "flex-1 flex items-center justify-center gap-2 py-3 text-[11px] font-bold uppercase tracking-widest rounded-xl transition-all",
+                            activeTab === 'general'
+                                ? "bg-white dark:bg-slate-700 text-primary shadow-sm"
+                                : "text-slate-500 hover:text-slate-900 dark:hover:text-slate-200"
+                        )}
+                    >
+                        <Settings size={14} className={activeTab === 'general' ? "text-primary" : "text-slate-400"} />
+                        General
+                    </button>
+                    <button
+                        onClick={() => setActiveTab('agency')}
+                        className={clsx(
+                            "flex-1 flex items-center justify-center gap-2 py-3 text-[11px] font-bold uppercase tracking-widest rounded-xl transition-all",
+                            activeTab === 'agency'
+                                ? "bg-white dark:bg-slate-700 text-primary shadow-sm"
+                                : "text-slate-500 hover:text-slate-900 dark:hover:text-slate-200"
+                        )}
+                    >
+                        <Users size={14} className={activeTab === 'agency' ? "text-primary" : "text-slate-400"} />
+                        Agencias
+                    </button>
+                    <button
+                        onClick={() => setActiveTab('map')}
+                        className={clsx(
+                            "flex-1 flex items-center justify-center gap-2 py-3 text-[11px] font-bold uppercase tracking-widest rounded-xl transition-all",
+                            activeTab === 'map'
+                                ? "bg-white dark:bg-slate-700 text-primary shadow-sm"
+                                : "text-slate-500 hover:text-slate-900 dark:hover:text-slate-200"
+                        )}
+                    >
+                        <Globe size={14} className={activeTab === 'map' ? "text-primary" : "text-slate-400"} />
+                        Red OSRM
+                    </button>
+                </div>
             </div>
 
-            {/* Tabs */}
-            <div className="flex border-b border-gray-200 dark:border-gray-800">
-                <button
-                    onClick={() => setActiveTab('general')}
-                    className={clsx(
-                        "flex-1 py-3 text-sm font-medium transition-colors relative",
-                        activeTab === 'general'
-                            ? "text-blue-600 dark:text-blue-400"
-                            : "text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200"
-                    )}
-                >
-                    General
-                    {activeTab === 'general' && (
-                        <div className="absolute bottom-0 left-0 w-full h-0.5 bg-blue-600 dark:bg-blue-400" />
-                    )}
-                </button>
-                <button
-                    onClick={() => setActiveTab('agency')}
-                    className={clsx(
-                        "flex-1 py-3 text-sm font-medium transition-colors relative",
-                        activeTab === 'agency'
-                            ? "text-blue-600 dark:text-blue-400"
-                            : "text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200"
-                    )}
-                >
-                    Agency
-                    {activeTab === 'agency' && (
-                        <div className="absolute bottom-0 left-0 w-full h-0.5 bg-blue-600 dark:bg-blue-400" />
-                    )}
-                </button>
-                <button
-                    onClick={() => setActiveTab('map')}
-                    className={clsx(
-                        "flex-1 py-3 text-sm font-medium transition-colors relative",
-                        activeTab === 'map'
-                            ? "text-blue-600 dark:text-blue-400"
-                            : "text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200"
-                    )}
-                >
-                    Online Maps
-                    {activeTab === 'map' && (
-                        <div className="absolute bottom-0 left-0 w-full h-0.5 bg-blue-600 dark:bg-blue-400" />
-                    )}
-                </button>
-            </div>
-
-            {/* Content */}
-            <div className="p-6 overflow-y-auto flex-1 custom-scrollbar">
+            {/* Scrollable Content Area */}
+            <div className="p-8 overflow-y-auto flex-1 custom-scrollbar bg-white/20">
                 {activeTab === 'general' && (
-                    <div className="space-y-8 fade-in animate-in duration-300">
-                        {/* Map Location */}
-                        <div>
-                            <h3 className="text-sm font-bold text-gray-900 dark:text-white uppercase tracking-wider mb-4 flex items-center gap-2">
-                                <MapPin size={16} className="text-blue-500" /> Default Location
-                            </h3>
-                            <div className="space-y-4">
+                    <div className="space-y-10 fade-in animate-in duration-500">
+                        
+                        {/* Map Location Section */}
+                        <div className="space-y-4">
+                            <div className="flex items-center gap-2 text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] mb-4">
+                                <MapPin size={14} className="text-primary" /> Punto Geodésico Base
+                            </div>
+                            
+                            <div className="space-y-5 bg-slate-50/50 dark:bg-slate-900/40 p-6 rounded-[32px] border utilitarian-border shadow-inner">
                                 <div>
-                                    <label className="block text-xs font-semibold text-gray-500 mb-1">City Name</label>
+                                    <label className="block text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest mb-2 px-1">Nombre de la Región</label>
                                     <input
                                         type="text"
                                         value={cityName}
                                         onChange={(e) => setCityName(e.target.value)}
-                                        className="w-full px-3 py-2 rounded-lg bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 text-sm focus:ring-2 focus:ring-blue-500 outline-none transition-all"
+                                        className="w-full px-4 py-3 rounded-2xl bg-white dark:bg-slate-800 border utilitarian-border text-[13px] font-bold text-slate-900 dark:text-white focus:ring-4 focus:ring-primary/10 outline-none transition-all"
                                     />
                                 </div>
-                                <div className="grid grid-cols-2 gap-3">
-                                    <div>
-                                        <label className="block text-xs font-semibold text-gray-500 mb-1">Latitude</label>
+                                <div className="grid grid-cols-2 gap-4">
+                                    <div className="relative group">
+                                        <span className="absolute left-4 top-1/2 -translate-y-1/2 text-[9px] font-black text-slate-300">LAT</span>
                                         <input
                                             type="number"
                                             step="any"
                                             value={lat}
                                             onChange={(e) => setLat(Number(e.target.value))}
-                                            className="w-full px-3 py-2 rounded-lg bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 text-sm focus:ring-2 focus:ring-blue-500 outline-none"
+                                            className="w-full pl-12 pr-4 py-3 rounded-2xl bg-white dark:bg-slate-800 border utilitarian-border text-[13px] font-mono text-slate-900 dark:text-white focus:ring-4 focus:ring-primary/10 outline-none"
                                         />
                                     </div>
-                                    <div>
-                                        <label className="block text-xs font-semibold text-gray-500 mb-1">Longitude</label>
+                                    <div className="relative group">
+                                        <span className="absolute left-4 top-1/2 -translate-y-1/2 text-[9px] font-black text-slate-300">LON</span>
                                         <input
                                             type="number"
                                             step="any"
                                             value={lng}
                                             onChange={(e) => setLng(Number(e.target.value))}
-                                            className="w-full px-3 py-2 rounded-lg bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 text-sm focus:ring-2 focus:ring-blue-500 outline-none"
+                                            className="w-full pl-12 pr-4 py-3 rounded-2xl bg-white dark:bg-slate-800 border utilitarian-border text-[13px] font-mono text-slate-900 dark:text-white focus:ring-4 focus:ring-primary/10 outline-none"
                                         />
                                     </div>
                                 </div>
                                 <div>
-                                    <label className="block text-xs font-semibold text-gray-500 mb-1">Zoom Level</label>
+                                    <label className="block text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest mb-2 px-1">Nivel de Proximidad (Zoom)</label>
                                     <input
                                         type="number"
                                         step="any"
                                         value={zoom}
                                         onChange={(e) => setZoom(Number(e.target.value))}
-                                        className="w-full px-3 py-2 rounded-lg bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 text-sm focus:ring-2 focus:ring-blue-500 outline-none"
+                                        className="w-full px-4 py-3 rounded-2xl bg-white dark:bg-slate-800 border utilitarian-border text-[13px] font-mono text-slate-900 dark:text-white focus:ring-4 focus:ring-primary/10 outline-none"
                                     />
                                 </div>
 
-                                <div className="flex gap-2 pt-2">
+                                <div className="flex gap-3 pt-2">
                                     <button
                                         onClick={handleUseCurrentLocation}
-                                        className="flex-1 py-2 px-3 bg-blue-50 dark:bg-blue-900/20 text-blue-600 dark:text-blue-400 rounded-lg text-xs font-bold hover:bg-blue-100 dark:hover:bg-blue-900/40 transition-colors"
+                                        className="flex-1 py-3 text-[10px] font-black uppercase tracking-widest border border-primary/20 text-primary rounded-2xl bg-white dark:bg-slate-800 hover:bg-primary/5 transition-all flex items-center justify-center gap-2 group"
                                     >
-                                        Snap to Map
+                                        <RotateCcw size={14} className="group-hover:rotate-180 transition-transform duration-500" /> Map Capture
                                     </button>
                                     <button
                                         onClick={handleSaveLocation}
-                                        className="flex-1 py-2 px-3 bg-green-600 text-white rounded-lg text-xs font-bold hover:bg-green-700 transition-colors shadow-sm"
+                                        className="flex-1 py-3 bg-primary text-white rounded-2xl text-[10px] font-black uppercase tracking-widest shadow-lg shadow-primary/20 hover:scale-[1.02] active:scale-95 transition-all flex items-center justify-center gap-2"
                                     >
-                                        Save Changes
+                                        <Save size={14} /> Sincronizar
                                     </button>
                                 </div>
                             </div>
                         </div>
 
-                        {/* Backup & Restore */}
-                        <div>
-                            <h3 className="text-sm font-bold text-gray-900 dark:text-white uppercase tracking-wider mb-4 flex items-center gap-2">
-                                <Download size={16} className="text-emerald-500" /> Database Backup
-                            </h3>
-                            <div className="bg-emerald-50 dark:bg-emerald-900/10 border border-emerald-100 dark:border-emerald-900/50 rounded-xl p-4 space-y-3">
-                                <p className="text-[11px] text-emerald-700/80 dark:text-emerald-300/80 leading-relaxed">
-                                    Download a ZIP with the entire database and current settings to move it to another system.
+                        {/* Management Grid */}
+                        <div className="grid grid-cols-1 gap-6">
+                            {/* Backup Card */}
+                            <div className="bg-emerald-500/5 border border-emerald-500/10 rounded-[32px] p-6 space-y-4">
+                                <div className="flex items-center gap-2 text-[10px] font-black text-emerald-600 dark:text-emerald-400 uppercase tracking-[0.15em]">
+                                    <Download size={16} /> Respaldo Consolidado
+                                </div>
+                                <p className="text-[11px] text-emerald-700/60 dark:text-emerald-300/40 font-medium leading-relaxed">
+                                    Genera un paquete ZIP con la infraestructura completa de nodos, rutas e inteligencia de red.
                                 </p>
-                                <div className="flex gap-2">
+                                <div className="grid grid-cols-2 gap-3">
                                     <button
-                                        onClick={async () => {
-                                            window.open(`${API_URL}/admin/backup`, '_blank');
-                                        }}
-                                        className="flex-1 py-2 bg-emerald-600 text-white rounded-lg text-xs font-bold hover:bg-emerald-700 transition-colors shadow-sm flex items-center justify-center gap-2"
+                                        onClick={() => window.open(`${API_URL}/admin/backup`, '_blank')}
+                                        className="py-3 bg-emerald-500 text-white rounded-2xl text-[10px] font-black uppercase tracking-widest shadow-lg shadow-emerald-500/20 hover:scale-[1.02] active:scale-95 transition-all flex items-center justify-center gap-2"
                                     >
-                                        <Download size={14} /> Download (.zip)
+                                        <Download size={14} /> Exportar
                                     </button>
 
-                                    <label className="flex-1 cursor-pointer">
+                                    <label className="cursor-pointer">
                                         <input
                                             type="file"
                                             accept=".zip"
@@ -239,8 +240,7 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({ onClose, currentViewState
                                             onChange={async (e) => {
                                                 const file = e.target.files?.[0];
                                                 if (!file) return;
-
-                                                if (!confirm("Are you sure you want to RESTORE this database? This will OVERWRITE all current data.")) return;
+                                                if (!confirm("Confirmar restauración integral: Se sobreescribirán todos los datos actuales.")) return;
 
                                                 const formData = new FormData();
                                                 formData.append('file', file);
@@ -252,66 +252,58 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({ onClose, currentViewState
                                                     });
                                                     const payload = await res.json().catch(() => ({}));
                                                     if (res.ok) {
-                                                        const stats = payload?.stats;
-                                                        const summary = stats
-                                                            ? `\nStops: ${stats.stops}\nRoutes: ${stats.routes}\nTrips: ${stats.trips}\nSegments: ${stats.segments}`
-                                                            : '';
-                                                        alert(`Database restored successfully!${summary}\nReloading...`);
+                                                        alert("Red restaurada con éxito. Reiniciando núcleo...");
                                                         window.location.reload();
                                                     } else {
-                                                        alert("Error: " + (payload.error || "Failed restore"));
+                                                        alert("Fallo crítico en restauración: " + (payload.error || "Código Desconocido"));
                                                     }
                                                 } catch (err) {
-                                                    alert("Connection failed");
+                                                    alert("Fallo de comunicación persistente");
                                                 } finally {
                                                     e.target.value = '';
                                                 }
                                             }}
                                         />
-                                        <div className="w-full h-full py-2 bg-white dark:bg-emerald-900/20 border border-emerald-200 dark:border-emerald-800 text-emerald-600 dark:text-emerald-400 font-bold rounded-lg hover:bg-emerald-50 dark:hover:bg-emerald-900/30 transition-colors text-xs flex items-center justify-center gap-2">
-                                            <Upload size={14} /> Import Backup
+                                        <div className="w-full py-3 bg-white dark:bg-emerald-900/20 border border-emerald-200 dark:border-emerald-800 text-emerald-600 dark:text-emerald-400 text-[10px] font-black uppercase tracking-widest rounded-2xl hover:bg-emerald-50 transition-all text-center flex items-center justify-center gap-2">
+                                            <Upload size={14} /> Importar
                                         </div>
                                     </label>
                                 </div>
                             </div>
-                        </div>
 
-                        {/* Admin Linking */}
-                        {isAdmin && (
-                            <div>
-                                <h3 className="text-sm font-bold text-gray-900 dark:text-white uppercase tracking-wider mb-4 flex items-center gap-2">
-                                    ⚙️ Advanced Actions
-                                </h3>
-                                <div className="bg-blue-50 dark:bg-blue-900/10 border border-blue-100 dark:border-blue-900/50 rounded-xl p-4">
-                                    <p className="text-xs text-blue-600/80 dark:text-blue-400/80 mb-3 leading-relaxed">
-                                        Manage User limits, create new accounts and control GTFS Project assignment.
+                            {/* Admin Link Area */}
+                            {isAdmin && (
+                                <div className="bg-indigo-500/5 border border-indigo-500/10 rounded-[32px] p-6 space-y-4">
+                                     <div className="flex items-center gap-2 text-[10px] font-black text-indigo-600 dark:text-indigo-400 uppercase tracking-[0.15em]">
+                                        <ExternalLink size={16} /> Panel Maestro
+                                    </div>
+                                    <p className="text-[11px] text-indigo-700/60 dark:text-indigo-300/40 font-medium leading-relaxed">
+                                        Administración de identidades, cuotas de proyecto y seguridad de tenencia.
                                     </p>
                                     <button
                                         onClick={() => setActivePanel('admin_panel')}
-                                        className="w-full py-2 bg-blue-600 text-white font-bold rounded-lg hover:bg-blue-700 transition-colors text-sm flex items-center justify-center gap-2"
+                                        className="w-full py-3.5 bg-indigo-500 text-white font-black text-[10px] uppercase tracking-widest rounded-2xl shadow-xl shadow-indigo-500/20 hover:scale-[1.02] active:scale-95 transition-all flex items-center justify-center gap-2"
                                     >
-                                        Go to Admin Panel
+                                        Consola Administrativa
                                     </button>
                                 </div>
-                            </div>
-                        )}
+                            )}
 
-                        {/* Danger Zone */}
-                        <div>
-                            <h3 className="text-sm font-bold text-red-600 dark:text-red-400 uppercase tracking-wider mb-4 flex items-center gap-2">
-                                <AlertTriangle size={16} /> Danger Zone
-                            </h3>
-                            <div className="bg-red-50 dark:bg-red-900/10 border border-red-100 dark:border-red-900/50 rounded-xl p-4">
-                                <p className="text-xs text-red-600/80 dark:text-red-400/80 mb-3 leading-relaxed">
-                                    Irreversible action. Deletes all stops, routes, and trips.
+                            {/* Danger Area */}
+                            <div className="bg-red-500/5 border border-red-500/10 rounded-[32px] p-6 space-y-4">
+                                <div className="flex items-center gap-2 text-[10px] font-black text-red-600 dark:text-red-400 uppercase tracking-[0.15em]">
+                                    <AlertTriangle size={16} /> Zona Crítica
+                                </div>
+                                <p className="text-[11px] text-red-700/60 dark:text-red-300/40 font-medium leading-relaxed">
+                                    Purgado total de infraestructura: Elimina nodos, rutas y lógica de red de forma irreversible.
                                 </p>
                                 <button
                                     onClick={() => setShowResetConfirm(true)}
                                     disabled={isResetting}
-                                    className="w-full py-2 bg-white dark:bg-red-900/20 border border-red-200 dark:border-red-800 text-red-600 dark:text-red-400 font-bold rounded-lg hover:bg-red-50 dark:hover:bg-red-900/30 transition-colors text-sm flex items-center justify-center gap-2"
+                                    className="w-full py-3 bg-white dark:bg-red-900/20 border border-red-200 dark:border-red-900 text-red-600 text-[10px] font-black uppercase tracking-widest rounded-2xl hover:bg-red-50 transition-all flex items-center justify-center gap-2 active:scale-95"
                                 >
                                     <Trash2 size={16} />
-                                    {isResetting ? 'Resetting...' : 'Clear Database'}
+                                    {isResetting ? 'Purgando...' : 'Reestablecer Base de Datos'}
                                 </button>
                             </div>
                         </div>
@@ -319,10 +311,10 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({ onClose, currentViewState
                 )}
 
                 {activeTab === 'agency' && (
-                    <div className="fade-in animate-in duration-300">
-                        <div className="bg-blue-50 dark:bg-blue-900/20 p-4 rounded-xl border border-blue-100 dark:border-blue-900/50 mb-6">
-                            <p className="text-xs text-blue-700 dark:text-blue-300 leading-relaxed">
-                                Manage the Transit Agencies for this GTFS feed. Multiple agencies can be supported.
+                    <div className="fade-in animate-in duration-500">
+                        <div className="bg-blue-500/10 border border-blue-500/20 p-6 rounded-[32px] mb-8 shadow-inner">
+                            <p className="text-[11px] text-blue-700/80 dark:text-blue-300/60 font-bold leading-relaxed uppercase tracking-widest text-center">
+                                Gestión de Operadores de Tránsito
                             </p>
                         </div>
                         <AgencyManager />
@@ -330,10 +322,10 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({ onClose, currentViewState
                 )}
 
                 {activeTab === 'map' && (
-                    <div className="fade-in animate-in duration-300">
-                        <div className="bg-indigo-50 dark:bg-indigo-900/20 p-4 rounded-xl border border-indigo-100 dark:border-indigo-900/50 mb-6">
-                            <p className="text-xs text-indigo-700 dark:text-indigo-300 leading-relaxed">
-                                Download maps for offline routing. Requires Docker to be running on the host machine.
+                    <div className="fade-in animate-in duration-500">
+                        <div className="bg-primary/10 border border-primary/20 p-6 rounded-[32px] mb-8 shadow-inner">
+                             <p className="text-[11px] text-primary/80 dark:text-primary/60 font-bold leading-relaxed uppercase tracking-widest text-center">
+                                Núcleo de Enrutamiento Offline
                             </p>
                         </div>
                         <MapManager />
@@ -343,9 +335,9 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({ onClose, currentViewState
 
             <ConfirmModal
                 isOpen={showResetConfirm}
-                title="Clear Database?"
-                message="Are you sure you want to delete ALL data? This will remove all routes, stops, segments, and shapes. This action cannot be undone."
-                confirmText="Yes, Clear Everything"
+                title="¿Purgar Base de Datos?"
+                message="Esta acción es irreversible y removerá toda la infraestructura de red creada (paradas, rutas, aristas y planificación). ¿Proceder con el purgado total?"
+                confirmText="Sí, Purgar Datos"
                 onConfirm={handleResetDatabase}
                 onCancel={() => setShowResetConfirm(false)}
             />

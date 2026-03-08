@@ -3,6 +3,7 @@ import db from '../db';
 import { randomUUID } from 'crypto';
 import { fetchRoute } from '../services/routing';
 import { mapToOsrmProfile, normalizeRoutingProfile, RoutingProfile } from '../constants/routingProfiles';
+import { resolveProjectRouting } from '../services/ProjectRoutingService';
 
 interface SegmentBody {
     start_node_id: string;
@@ -65,14 +66,19 @@ export default async function segmentsRoutes(fastify: FastifyInstance) {
         
         const normalizedProfile = normalizeRoutingProfile(routing_profile);
         const osrmProfile = mapToOsrmProfile(normalizedProfile);
+        const routing = await resolveProjectRouting(request.projectId);
+
+        if (routing.mapAssigned && !routing.routingUrl) {
+            return reply.code(409).send({
+                error: routing.error || 'El proyecto tiene un mapa asignado, pero su motor OSRM no está listo.'
+            });
+        }
 
         try {
-            const project = db.prepare('SELECT routing_engine_url FROM projects WHERE id = ?').get(request.projectId) as any;
-
             const routeData = await fetchRoute(
                 [startNode.stop_lon, startNode.stop_lat],
                 [endNode.stop_lon, endNode.stop_lat],
-                project?.routing_engine_url,
+                routing.routingUrl || undefined,
                 osrmProfile
             );
 
@@ -80,6 +86,10 @@ export default async function segmentsRoutes(fastify: FastifyInstance) {
                 distance = routeData.distance;
                 travel_time = routeData.duration;
                 geometry = JSON.stringify(routeData.geometry);
+            } else if (routing.mapAssigned) {
+                return reply.code(409).send({
+                    error: 'OSRM no pudo calcular una ruta vial para este segmento en el mapa asociado al proyecto.'
+                });
             }
         } catch (e) {
             request.log.error(e, 'Failed to fetch route from OSRM');

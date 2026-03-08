@@ -1,16 +1,15 @@
 import * as React from 'react';
-import { X, Check, Bus, Save, Building2 } from 'lucide-react';
+import { X, Check, Bus, Save, Building2, Activity, Palette, Type, Globe, Layers } from 'lucide-react';
 import { clsx } from 'clsx';
 import type { Route } from '../types';
+import { API_URL } from '../config';
 
 interface RouteCreationModalProps {
     isOpen: boolean;
     onClose: () => void;
-    onCreated: () => void; // Trigger refresh
+    onCreated: () => void;
     routeToEdit?: Route | null;
 }
-
-import { API_URL } from '../config';
 
 const ROUTE_TYPES = [
     { value: 0, label: 'Tram / Streetcar' },
@@ -27,11 +26,10 @@ const ROUTE_TYPES = [
 
 const RouteCreationModal: React.FC<RouteCreationModalProps> = ({ isOpen, onClose, onCreated, routeToEdit }) => {
     const isEditMode = !!routeToEdit;
-
     const [formData, setFormData] = React.useState<Partial<Route>>({
         route_short_name: '',
         route_long_name: '',
-        route_type: 3, // Bus
+        route_type: 3,
         route_color: '1337ec',
         route_text_color: 'FFFFFF',
         agency_name: '',
@@ -52,7 +50,6 @@ const RouteCreationModal: React.FC<RouteCreationModalProps> = ({ isOpen, onClose
             if (routeToEdit) {
                 setFormData(routeToEdit);
             } else {
-                // Reset defaults
                 setFormData({
                     route_short_name: '',
                     route_long_name: '',
@@ -85,13 +82,10 @@ const RouteCreationModal: React.FC<RouteCreationModalProps> = ({ isOpen, onClose
 
     const fetchParkingStops = async () => {
         try {
-            const res = await fetch(`${API_URL}/stops`); // Assuming GET /stops returns all stops
+            const res = await fetch(`${API_URL}/stops`);
             if (res.ok) {
                 const data = await res.json();
-                // Filter for parkings
-                // Check if API returns array directly or inside object, assuming array based on usage elsewhere
                 const stops = Array.isArray(data) ? data : [];
-                // Filter where node_type is 'parking'
                 const parkings = stops.filter((s: any) => s.node_type === 'parking');
                 setParkingStops(parkings);
             }
@@ -104,18 +98,14 @@ const RouteCreationModal: React.FC<RouteCreationModalProps> = ({ isOpen, onClose
 
     const handleSubmit = async () => {
         if (!formData.route_short_name || !formData.route_long_name) {
-            alert("Please fill in required fields (Short Name, Long Name)");
+            alert("Protocol Violation: Required fields missing (ID & Label)");
             return;
         }
 
         setLoading(true);
         try {
-            const url = isEditMode
-                ? `${API_URL}/routes/${routeToEdit.route_id}`
-                : `${API_URL}/routes`;
-
+            const url = isEditMode ? `${API_URL}/routes/${routeToEdit.route_id}` : `${API_URL}/routes`;
             const method = isEditMode ? 'PUT' : 'POST';
-
             const res = await fetch(url, {
                 method,
                 headers: { 'Content-Type': 'application/json' },
@@ -126,125 +116,133 @@ const RouteCreationModal: React.FC<RouteCreationModalProps> = ({ isOpen, onClose
                 onCreated();
                 onClose();
             } else {
-                alert(`Failed to ${isEditMode ? 'update' : 'create'} route`);
+                alert(`Critical Failure: ${isEditMode ? 'Update' : 'Creation'} rejected by core.`);
             }
         } catch (err) {
             console.error(err);
-            alert("Error saving route");
+            alert("Network Congestion: Error saving route intelligence.");
         } finally {
             setLoading(false);
         }
     };
 
     return (
-        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/50 backdrop-blur-sm animate-in fade-in duration-200">
-            <div className="bg-white dark:bg-gray-900 rounded-2xl shadow-2xl w-full max-w-xl border border-gray-200 dark:border-gray-700 overflow-hidden transform transition-all scale-100 flex flex-col max-h-[90vh]">
+        <div className="fixed inset-0 z-[100] flex items-center justify-center p-6 animate-in fade-in duration-300">
+            <div className="absolute inset-0 bg-slate-950/60 backdrop-blur-sm" onClick={onClose} />
+            
+            <div className="relative bg-white dark:bg-slate-900 rounded-[40px] shadow-[0_40px_100px_rgba(0,0,0,0.6)] w-full max-w-2xl border utilitarian-border overflow-hidden animate-in zoom-in-95 duration-400 ease-out-expo flex flex-col max-h-[90vh]">
 
-                {/* Header */}
-                <div className="px-6 py-4 border-b border-gray-100 dark:border-gray-800 flex justify-between items-center bg-gray-50/50 dark:bg-gray-800/50">
-                    <h3 className="text-lg font-bold text-gray-900 dark:text-white flex items-center gap-2">
-                        <div className="bg-blue-100 dark:bg-blue-900/30 p-2 rounded-lg text-blue-600 dark:text-blue-400">
-                            <Bus size={20} />
+                {/* Tactical Header */}
+                <div className="px-10 py-8 border-b utilitarian-border bg-slate-50 dark:bg-slate-800/50 flex justify-between items-center transition-all">
+                    <div className="flex items-center gap-5">
+                        <div className="p-3 bg-indigo-600 text-white rounded-2xl shadow-xl shadow-indigo-600/20">
+                            <Bus size={24} strokeWidth={2.5} />
                         </div>
-                        {isEditMode ? 'Edit Route' : 'Create New Route'}
-                    </h3>
-                    <button onClick={onClose} className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 transition-colors">
-                        <X size={24} />
+                        <div>
+                            <h3 className="text-xl font-display font-black text-slate-900 dark:text-white uppercase tracking-tight leading-none">
+                                {isEditMode ? 'Reconfigurar Ruta' : 'Nueva Inteligencia de Ruta'}
+                            </h3>
+                            <p className="text-[10px] font-bold text-slate-400 uppercase tracking-[0.2em] mt-2 flex items-center gap-2">
+                                <Activity size={12} className="text-indigo-500" />
+                                Protocolo de Suministro GTFS
+                            </p>
+                        </div>
+                    </div>
+                    <button onClick={onClose} className="p-2.5 hover:bg-white dark:hover:bg-slate-700 rounded-xl transition-all text-slate-400 hover:text-red-500 border utilitarian-border">
+                        <X size={20} strokeWidth={2.5} />
                     </button>
                 </div>
 
-                {/* Tabs */}
-                <div className="flex border-b border-gray-100 dark:border-gray-800 bg-white dark:bg-gray-900">
+                {/* Sub-Navigation Tabs */}
+                <div className="flex border-b utilitarian-border bg-white dark:bg-slate-900 px-10">
                     <button
                         onClick={() => setActiveTab('basic')}
                         className={clsx(
-                            "flex-1 py-3 text-sm font-bold border-b-2 transition-colors",
+                            "py-6 text-[11px] font-black uppercase tracking-[0.2em] border-b-4 transition-all mr-10",
                             activeTab === 'basic'
-                                ? "border-blue-600 text-blue-600 dark:border-blue-400 dark:text-blue-400"
-                                : "border-transparent text-gray-500 hover:text-gray-700 dark:text-gray-400"
+                                ? "border-indigo-600 text-indigo-600"
+                                : "border-transparent text-slate-400 hover:text-slate-600 dark:hover:text-slate-200"
                         )}
                     >
-                        Basic Info
+                        Arquitectura Base
                     </button>
                     <button
                         onClick={() => setActiveTab('advanced')}
                         className={clsx(
-                            "flex-1 py-3 text-sm font-bold border-b-2 transition-colors",
+                            "py-6 text-[11px] font-black uppercase tracking-[0.2em] border-b-4 transition-all",
                             activeTab === 'advanced'
-                                ? "border-blue-600 text-blue-600 dark:border-blue-400 dark:text-blue-400"
-                                : "border-transparent text-gray-500 hover:text-gray-700 dark:text-gray-400"
+                                ? "border-indigo-600 text-indigo-600"
+                                : "border-transparent text-slate-400 hover:text-slate-600 dark:hover:text-slate-200"
                         )}
                     >
-                        Advanced Details
+                        Configuración Maestra
                     </button>
                 </div>
 
-                {/* Body */}
-                <div className="p-6 space-y-5 overflow-y-auto">
+                {/* Scrollable Form Body */}
+                <div className="p-10 space-y-10 overflow-y-auto flex-1 custom-scrollbar">
                     {activeTab === 'basic' && (
-                        <div className="space-y-4 animate-in fade-in slide-in-from-right-4 duration-300">
-                            <div className="grid grid-cols-4 gap-4">
-                                <div className="col-span-1">
-                                    <label className="block text-xs font-bold text-gray-500 uppercase mb-1.5">Short Name *</label>
+                        <div className="space-y-8 animate-in fade-in slide-in-from-right-4 duration-500">
+                             <div className="grid grid-cols-5 gap-6">
+                                <div className="col-span-2 space-y-2">
+                                    <label className="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] px-1">ID Operativo *</label>
                                     <input
                                         autoFocus={!isEditMode}
                                         type="text"
-                                        placeholder="101"
-                                        className="w-full px-3 py-2.5 bg-gray-50 dark:bg-gray-800 border-gray-200 dark:border-gray-700 rounded-lg text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 outline-none transition-all font-mono font-bold"
+                                        placeholder="E.g. 101"
+                                        className="w-full px-5 py-4 bg-slate-50 dark:bg-slate-800 border utilitarian-border rounded-2xl text-slate-900 dark:text-white focus:ring-4 focus:ring-indigo-500/10 outline-none transition-all font-mono font-black placeholder:text-slate-300"
                                         value={formData.route_short_name}
                                         onChange={e => setFormData({ ...formData, route_short_name: e.target.value })}
                                     />
                                 </div>
-                                <div className="col-span-3">
-                                    <label className="block text-xs font-bold text-gray-500 uppercase mb-1.5">Long Name *</label>
+                                <div className="col-span-3 space-y-2">
+                                    <label className="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] px-1">Denominación Comercial *</label>
                                     <input
                                         type="text"
-                                        placeholder="Downtown Express"
-                                        className="w-full px-3 py-2.5 bg-gray-50 dark:bg-gray-800 border-gray-200 dark:border-gray-700 rounded-lg text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 outline-none transition-all"
+                                        placeholder="Corredor Central Express"
+                                        className="w-full px-5 py-4 bg-slate-50 dark:bg-slate-800 border utilitarian-border rounded-2xl text-[15px] font-bold text-slate-900 dark:text-white focus:ring-4 focus:ring-indigo-500/10 outline-none transition-all placeholder:text-slate-300"
                                         value={formData.route_long_name}
                                         onChange={e => setFormData({ ...formData, route_long_name: e.target.value })}
                                     />
                                 </div>
                             </div>
 
-                            <div>
-                                <label className="block text-xs font-bold text-gray-500 uppercase mb-1.5">Agency</label>
-                                <div className="relative">
-                                    <Building2 className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={16} />
+                            <div className="space-y-2">
+                                <label className="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] px-1">Agencia de Adscripción</label>
+                                <div className="relative group">
+                                    <Building2 className="absolute left-5 top-1/2 -translate-y-1/2 text-slate-300 group-focus-within:text-indigo-500 transition-colors" size={20} />
                                     <select
-                                        className="w-full pl-10 pr-3 py-2.5 bg-gray-50 dark:bg-gray-800 border-gray-200 dark:border-gray-700 rounded-lg text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 outline-none transition-all appearance-none"
+                                        className="w-full pl-14 pr-6 py-4 bg-slate-50 dark:bg-slate-800 border utilitarian-border rounded-2xl text-[14px] font-bold text-slate-900 dark:text-white focus:ring-4 focus:ring-indigo-500/10 outline-none transition-all appearance-none"
                                         value={formData.agency_id || ''}
                                         onChange={e => setFormData({ ...formData, agency_id: e.target.value, agency_name: agencies.find(a => a.agency_id === e.target.value)?.agency_name })}
                                     >
-                                        <option value="">-- Select Agency --</option>
+                                        <option value="">-- Seleccionar Agencia --</option>
                                         {agencies.map(a => (
-                                            <option key={a.agency_id} value={a.agency_id}>
-                                                {a.agency_name}
-                                            </option>
+                                            <option key={a.agency_id} value={a.agency_id}>{a.agency_name}</option>
                                         ))}
                                     </select>
                                 </div>
                             </div>
 
-                            <div className="grid grid-cols-2 gap-4">
-                                <div>
-                                    <label className="block text-xs font-bold text-gray-500 uppercase mb-1.5">Route Type</label>
+                            <div className="grid grid-cols-2 gap-6">
+                                <div className="space-y-2">
+                                    <label className="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] px-1">Modalidad de Tránsito</label>
                                     <select
-                                        className="w-full px-3 py-2.5 bg-gray-50 dark:bg-gray-800 border-gray-200 dark:border-gray-700 rounded-lg text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 outline-none transition-all"
+                                        className="w-full px-5 py-4 bg-slate-50 dark:bg-slate-800 border utilitarian-border rounded-2xl text-[14px] font-bold text-slate-900 dark:text-white focus:ring-4 focus:ring-indigo-500/10 outline-none transition-all"
                                         value={formData.route_type}
                                         onChange={e => setFormData({ ...formData, route_type: Number(e.target.value) })}
                                     >
                                         {ROUTE_TYPES.map(t => (
-                                            <option key={t.value} value={t.value}>{t.label} ({t.value})</option>
+                                            <option key={t.value} value={t.value}>{t.label}</option>
                                         ))}
                                     </select>
                                 </div>
-                                <div>
-                                    <label className="block text-xs font-bold text-gray-500 uppercase mb-1.5">Sort Order</label>
+                                <div className="space-y-2">
+                                    <label className="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] px-1">Prioridad en Red</label>
                                     <input
                                         type="number"
-                                        placeholder="e.g. 1"
-                                        className="w-full px-3 py-2.5 bg-gray-50 dark:bg-gray-800 border-gray-200 dark:border-gray-700 rounded-lg text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 outline-none transition-all"
+                                        placeholder="Orden (E.g. 1)"
+                                        className="w-full px-5 py-4 bg-slate-50 dark:bg-slate-800 border utilitarian-border rounded-2xl text-[14px] font-mono font-black text-slate-900 dark:text-white focus:ring-4 focus:ring-indigo-500/10 outline-none"
                                         value={formData.route_sort_order || ''}
                                         onChange={e => setFormData({ ...formData, route_sort_order: parseInt(e.target.value) || undefined })}
                                     />
@@ -254,124 +252,122 @@ const RouteCreationModal: React.FC<RouteCreationModalProps> = ({ isOpen, onClose
                     )}
 
                     {activeTab === 'advanced' && (
-                        <div className="space-y-4 animate-in fade-in slide-in-from-right-4 duration-300">
-                            {/* Colors */}
-                            <div className="grid grid-cols-2 gap-4">
-                                <div>
-                                    <label className="block text-xs font-bold text-gray-500 uppercase mb-1.5">Route Color</label>
-                                    <div className="flex gap-3 items-center p-3 bg-gray-50 dark:bg-gray-800 rounded-xl border border-gray-100 dark:border-gray-700">
-                                        <div className="relative w-10 h-10 rounded-lg overflow-hidden shadow-sm border border-black/10">
+                        <div className="space-y-10 animate-in fade-in slide-in-from-right-4 duration-500">
+                            {/* Color Programming Matrix */}
+                            <div className="grid grid-cols-2 gap-8">
+                                <div className="space-y-3 p-6 bg-slate-50 dark:bg-slate-800/30 rounded-[32px] border utilitarian-border group">
+                                    <label className="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] px-1 flex items-center gap-2">
+                                        <Palette size={14} className="text-indigo-500" /> Cromática de Fondo
+                                    </label>
+                                    <div className="flex items-center gap-5">
+                                        <div className="relative group/color">
                                             <input
                                                 type="color"
-                                                className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
+                                                className="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-10"
                                                 value={`#${formData.route_color}`}
                                                 onChange={e => setFormData({ ...formData, route_color: e.target.value.substring(1) })}
                                             />
-                                            <div className="w-full h-full" style={{ backgroundColor: `#${formData.route_color}` }} />
+                                            <div className="w-16 h-16 rounded-[20px] shadow-2xl border-4 border-white dark:border-slate-700 transition-transform group-hover/color:scale-105" style={{ backgroundColor: `#${formData.route_color}` }} />
                                         </div>
                                         <div className="flex-1">
-                                            <div className="text-xs text-gray-400 mb-0.5">Background</div>
-                                            <div className="font-mono font-bold text-gray-700 dark:text-gray-300">#{formData.route_color}</div>
+                                            <p className="text-[14px] font-mono font-black text-slate-900 dark:text-white uppercase">#{formData.route_color}</p>
+                                            <p className="text-[9px] font-bold text-slate-400 uppercase tracking-widest mt-1">Suministro Hexadecimal</p>
                                         </div>
                                     </div>
                                 </div>
-                                <div>
-                                    <label className="block text-xs font-bold text-gray-500 uppercase mb-1.5">Text Color</label>
-                                    <div className="flex gap-3 items-center p-3 bg-gray-50 dark:bg-gray-800 rounded-xl border border-gray-100 dark:border-gray-700">
-                                        <div className="relative w-10 h-10 rounded-lg overflow-hidden shadow-sm border border-black/10">
+                                <div className="space-y-3 p-6 bg-slate-50 dark:bg-slate-800/30 rounded-[32px] border utilitarian-border group">
+                                    <label className="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] px-1 flex items-center gap-2">
+                                        <Type size={14} className="text-indigo-500" /> Cromática de Texto
+                                    </label>
+                                    <div className="flex items-center gap-5">
+                                        <div className="relative group/color">
                                             <input
                                                 type="color"
-                                                className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
+                                                className="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-10"
                                                 value={`#${formData.route_text_color}`}
                                                 onChange={e => setFormData({ ...formData, route_text_color: e.target.value.substring(1) })}
                                             />
-                                            <div className="w-full h-full border border-gray-200" style={{ backgroundColor: `#${formData.route_text_color}` }} />
+                                            <div className="w-16 h-16 rounded-[20px] shadow-2xl border-4 border-white dark:border-slate-700 transition-transform group-hover/color:scale-105" style={{ backgroundColor: `#${formData.route_text_color}` }} />
                                         </div>
                                         <div className="flex-1">
-                                            <div className="text-xs text-gray-400 mb-0.5">Text</div>
-                                            <div className="font-mono font-bold text-gray-700 dark:text-gray-300">#{formData.route_text_color}</div>
+                                            <p className="text-[14px] font-mono font-black text-slate-900 dark:text-white uppercase">#{formData.route_text_color}</p>
+                                            <p className="text-[9px] font-bold text-slate-400 uppercase tracking-widest mt-1">Contraste Legible</p>
                                         </div>
                                     </div>
                                 </div>
                             </div>
 
-                            {/* Preview */}
-                            <div className="p-4 bg-gray-50 dark:bg-gray-800/50 rounded-xl border border-dashed border-gray-200 dark:border-gray-700 flex justify-center items-center gap-4">
-                                <span className="text-xs font-bold text-gray-400 uppercase">Preview:</span>
+                            {/* Unified Preview Center */}
+                            <div className="flex flex-col items-center justify-center p-10 bg-slate-950 rounded-[40px] shadow-2xl relative overflow-hidden group">
+                                <div className="absolute top-0 left-0 w-full h-full bg-gradient-to-br from-indigo-600/10 to-transparent opacity-50" />
+                                <span className="text-[10px] font-black text-slate-500 uppercase tracking-[0.3em] mb-8 relative z-10">Visualización de Activo</span>
                                 <div
-                                    className="px-4 py-1.5 rounded-full font-bold shadow-sm"
-                                    style={{
-                                        backgroundColor: `#${formData.route_color}`,
-                                        color: `#${formData.route_text_color}`
-                                    }}
+                                    className="px-10 py-5 rounded-[24px] text-2xl font-display font-black shadow-[0_20px_50px_rgba(0,0,0,0.5)] transition-all duration-700 group-hover:scale-110 relative z-10"
+                                    style={{ backgroundColor: `#${formData.route_color}`, color: `#${formData.route_text_color}` }}
                                 >
                                     {formData.route_short_name || '101'}
                                 </div>
+                                <p className="text-[11px] font-bold text-slate-400 uppercase tracking-widest mt-8 relative z-10">{formData.route_long_name || 'Downtown Express'}</p>
                             </div>
 
-                            <div>
-                                <label className="block text-xs font-bold text-gray-500 uppercase mb-1.5">Route URL</label>
-                                <input
-                                    type="url"
-                                    placeholder="https://"
-                                    className="w-full px-3 py-2.5 bg-gray-50 dark:bg-gray-800 border-gray-200 dark:border-gray-700 rounded-lg text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 outline-none transition-all text-sm"
-                                    value={formData.route_url || ''}
-                                    onChange={e => setFormData({ ...formData, route_url: e.target.value })}
-                                />
-                            </div>
-
-                            <div>
-                                <label className="block text-xs font-bold text-gray-500 uppercase mb-1.5">Description</label>
-                                <textarea
-                                    rows={3}
-                                    placeholder="Route description..."
-                                    className="w-full px-3 py-2.5 bg-gray-50 dark:bg-gray-800 border-gray-200 dark:border-gray-700 rounded-lg text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 outline-none transition-all text-sm resize-none"
-                                    value={formData.route_desc || ''}
-                                    onChange={e => setFormData({ ...formData, route_desc: e.target.value })}
-                                />
-                            </div>
-
-                            {/* Associated Parkings */}
-                            <div>
-                                <div className="flex justify-between items-center mb-1.5">
-                                    <label className="block text-xs font-bold text-gray-500 uppercase">Associated Parkings</label>
-                                    {parkingStops.length > 0 && (
-                                        <div className="flex gap-2">
-                                            <button
-                                                type="button"
-                                                onClick={() => setFormData({ ...formData, parkings: parkingStops.map(p => p.stop_id) })}
-                                                className="text-xs text-blue-600 dark:text-blue-400 hover:underline focus:outline-none"
-                                            >Select All</button>
-                                            <button
-                                                type="button"
-                                                onClick={() => setFormData({ ...formData, parkings: [] })}
-                                                className="text-xs text-blue-600 dark:text-blue-400 hover:underline focus:outline-none"
-                                            >Deselect All</button>
-                                        </div>
-                                    )}
+                            <div className="space-y-8">
+                                <div className="space-y-2">
+                                    <label className="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] px-1 flex items-center gap-2">
+                                        <Globe size={14} className="text-indigo-500" /> Link de Inteligencia de Red
+                                    </label>
+                                    <input
+                                        type="url"
+                                        placeholder="https://transit-authority.gov/routes/101"
+                                        className="w-full px-5 py-4 bg-slate-50 dark:bg-slate-800 border utilitarian-border rounded-2xl text-[13px] font-bold text-slate-900 dark:text-white focus:ring-4 focus:ring-indigo-500/10 outline-none"
+                                        value={formData.route_url || ''}
+                                        onChange={e => setFormData({ ...formData, route_url: e.target.value })}
+                                    />
                                 </div>
-                                <div className="p-3 bg-gray-50 dark:bg-gray-800 border-gray-200 dark:border-gray-700 rounded-lg max-h-40 overflow-y-auto space-y-2">
+
+                                <div className="space-y-2">
+                                    <label className="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] px-1">Resumen Operativo</label>
+                                    <textarea
+                                        rows={3}
+                                        placeholder="Especificaciones de contingencia, requerimientos de flota o notas de servicio..."
+                                        className="w-full px-5 py-4 bg-slate-50 dark:bg-slate-800 border utilitarian-border rounded-2xl text-[13px] font-bold text-slate-900 dark:text-white focus:ring-4 focus:ring-indigo-500/10 outline-none resize-none"
+                                        value={formData.route_desc || ''}
+                                        onChange={e => setFormData({ ...formData, route_desc: e.target.value })}
+                                    />
+                                </div>
+                            </div>
+
+                            {/* Complex Property - Parking Linkage */}
+                            <div className="space-y-4">
+                                <div className="flex justify-between items-end px-1">
+                                    <label className="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] flex items-center gap-2">
+                                        <Layers size={14} className="text-indigo-500" /> Nodos de Pernocta Vinculados
+                                    </label>
+                                    <div className="flex gap-4">
+                                        <button type="button" onClick={() => setFormData({ ...formData, parkings: parkingStops.map(p => p.stop_id) })} className="text-[9px] font-black text-indigo-500 uppercase tracking-widest hover:text-indigo-600 transition-colors">Seleccionar Todo</button>
+                                        <button type="button" onClick={() => setFormData({ ...formData, parkings: [] })} className="text-[9px] font-black text-slate-400 uppercase tracking-widest hover:text-slate-600 transition-colors">Purgar Selección</button>
+                                    </div>
+                                </div>
+                                <div className="p-4 bg-slate-50 dark:bg-slate-800/30 border utilitarian-border rounded-[32px] max-h-48 overflow-y-auto grid grid-cols-2 gap-2 custom-scrollbar">
                                     {parkingStops.length === 0 ? (
-                                        <div className="text-xs text-gray-400 italic">No parking nodes found. Create stops with type "Parking" first.</div>
+                                        <div className="col-span-2 py-6 text-center text-[11px] font-bold text-slate-400 uppercase tracking-widest">No se detectaron nodos tipo "Estacionamiento"</div>
                                     ) : (
                                         parkingStops.map(stop => (
-                                            <label key={stop.stop_id} className="flex items-center gap-2 cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-700/50 p-1.5 rounded transition-colors">
-                                                <input
-                                                    type="checkbox"
-                                                    className="rounded border-gray-300 text-blue-600 focus:ring-blue-500 w-4 h-4"
-                                                    checked={formData.parkings?.includes(stop.stop_id) || false}
-                                                    onChange={(e) => {
-                                                        const currentParkings = formData.parkings || [];
-                                                        let newParkings;
-                                                        if (e.target.checked) {
-                                                            newParkings = [...currentParkings, stop.stop_id];
-                                                        } else {
-                                                            newParkings = currentParkings.filter(id => id !== stop.stop_id);
-                                                        }
-                                                        setFormData({ ...formData, parkings: newParkings });
-                                                    }}
-                                                />
-                                                <span className="text-sm text-gray-700 dark:text-gray-200">{stop.stop_name}</span>
+                                            <label key={stop.stop_id} className="flex items-center gap-3 cursor-pointer hover:bg-white dark:hover:bg-slate-700 p-3 rounded-2xl transition-all border border-transparent hover:border-indigo-500/20 group">
+                                                <div className="relative flex items-center">
+                                                    <input
+                                                        type="checkbox"
+                                                        className="peer appearance-none w-5 h-5 rounded-lg border-2 border-slate-200 dark:border-slate-700 checked:bg-indigo-600 checked:border-indigo-600 transition-all cursor-pointer shadow-sm"
+                                                        checked={formData.parkings?.includes(stop.stop_id) || false}
+                                                        onChange={(e) => {
+                                                            const currentParkings = formData.parkings || [];
+                                                            setFormData({ ...formData, parkings: e.target.checked ? [...currentParkings, stop.stop_id] : currentParkings.filter(id => id !== stop.stop_id) });
+                                                        }}
+                                                    />
+                                                    <div className="absolute inset-0 pointer-events-none flex items-center justify-center text-white opacity-0 peer-checked:opacity-100 scale-50 peer-checked:scale-100 transition-all">
+                                                        <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="4"><path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" /></svg>
+                                                    </div>
+                                                </div>
+                                                <span className="text-[12px] font-bold text-slate-700 dark:text-slate-200 transition-colors group-hover:text-indigo-600">{stop.stop_name}</span>
                                             </label>
                                         ))
                                     )}
@@ -381,26 +377,26 @@ const RouteCreationModal: React.FC<RouteCreationModalProps> = ({ isOpen, onClose
                     )}
                 </div>
 
-                {/* Footer */}
-                <div className="px-6 py-4 bg-gray-50 dark:bg-gray-800/80 border-t border-gray-100 dark:border-gray-800 flex justify-end gap-3 mt-auto">
+                {/* Final Protocol Controls */}
+                <div className="px-10 py-10 border-t utilitarian-border bg-slate-50 dark:bg-slate-800/50 flex justify-end gap-6">
                     <button
                         onClick={onClose}
-                        className="px-4 py-2 text-sm font-bold text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200 transition-colors"
+                        className="px-8 py-5 text-[11px] font-black uppercase tracking-[0.2em] text-slate-400 hover:text-red-500 transition-colors"
                     >
-                        Cancel
+                        Abortar
                     </button>
                     <button
                         onClick={handleSubmit}
                         disabled={loading}
                         className={clsx(
-                            "px-6 py-2 rounded-xl bg-blue-600 text-white font-bold text-sm shadow-lg shadow-blue-500/20 hover:bg-blue-700 transition-all flex items-center gap-2",
+                            "px-12 py-5 rounded-[24px] bg-indigo-600 text-white text-[11px] font-black uppercase tracking-[0.25em] shadow-2xl shadow-indigo-600/30 hover:bg-indigo-700 transition-all flex items-center gap-4 hover:scale-[1.02] active:scale-95",
                             loading && "opacity-70 cursor-wait"
                         )}
                     >
-                        {loading ? 'Saving...' : (
+                        {loading ? 'Sincronizando...' : (
                             <>
-                                {isEditMode ? <Save size={18} /> : <Check size={18} />}
-                                {isEditMode ? 'Save Changes' : 'Create Route'}
+                                {isEditMode ? <Save size={18} strokeWidth={2.5} /> : <Check size={18} strokeWidth={2.5} />}
+                                {isEditMode ? 'Consolidar Cambios' : 'Anclar Nueva Ruta'}
                             </>
                         )}
                     </button>

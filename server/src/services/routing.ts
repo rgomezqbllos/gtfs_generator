@@ -12,6 +12,7 @@ export async function fetchRoute(start: [number, number], end: [number, number],
         'bus_mixed_exclusive': 5002,
         'bus_trunk': 5003
     };
+    const profileHostPattern = /-(bus_mixed|bus_mixed_exclusive|bus_trunk)$/;
 
     let OSRM_API = routingUrl;
 
@@ -31,6 +32,27 @@ export async function fetchRoute(start: [number, number], end: [number, number],
             } catch (e) {
                 console.warn('Failed to rewrite OSRM URL', e);
             }
+        }
+
+        // When running against named OSRM containers on a shared Docker network,
+        // switch hostname by profile instead of shifting ports.
+        try {
+            const apiObj = new URL(OSRM_API);
+            if (profileHostPattern.test(apiObj.hostname)) {
+                apiObj.hostname = apiObj.hostname.replace(profileHostPattern, `-${profile}`);
+                OSRM_API = apiObj.toString();
+            } else {
+                // Fix: Adjust port based on profile if it's a multi-tenant OSRM URL.
+                // We assume the stored URL is for 'bus_mixed' (index 0).
+                const profileIndex = ['bus_mixed', 'bus_mixed_exclusive', 'bus_trunk'].indexOf(profile);
+                if (profileIndex > 0 && apiObj.port) {
+                    const newPort = parseInt(apiObj.port) + profileIndex;
+                    apiObj.port = newPort.toString();
+                    OSRM_API = apiObj.toString();
+                }
+            }
+        } catch (e) {
+            // Keep the original URL if parsing fails.
         }
     }
 

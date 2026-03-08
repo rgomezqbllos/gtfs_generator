@@ -1,6 +1,5 @@
-
 import React, { useState, useEffect } from 'react';
-import { X, Save, MapPin } from 'lucide-react';
+import { X, Save, MapPin, Hash, Info } from 'lucide-react';
 
 interface StopCreationModalProps {
     isOpen: boolean;
@@ -25,68 +24,95 @@ const StopCreationModal: React.FC<StopCreationModalProps> = ({ isOpen, lat, lon,
 
     const handleSubmit = (e: React.FormEvent) => {
         e.preventDefault();
-        onSave({ stop_name: name, stop_code: code });
+        onSave({ stop_name: name.trim(), stop_code: code.trim() });
     };
 
     return (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-            <div className="bg-white dark:bg-gray-800 rounded-lg shadow-xl w-96 p-6">
-                <div className="flex justify-between items-center mb-4">
-                    <h3 className="text-lg font-bold flex items-center gap-2 dark:text-white">
-                        <MapPin className="text-blue-600" size={20} />
-                        Add New Stop
-                    </h3>
-                    <button onClick={onClose} className="text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200">
-                        <X size={20} />
-                    </button>
+        <div className="fixed inset-0 bg-slate-950/60 backdrop-blur-sm flex items-center justify-center z-[100] animate-in fade-in duration-300">
+            <div className="bg-white dark:bg-slate-900 rounded-[32px] shadow-[0_0_50px_rgba(0,0,0,0.3)] w-full max-w-md border utilitarian-border overflow-hidden animate-in zoom-in-95 duration-300">
+                
+                {/* Tactical Header */}
+                <div className="p-8 border-b utilitarian-border bg-slate-50 dark:bg-slate-800/50">
+                    <div className="flex items-center justify-between mb-2">
+                        <div className="flex items-center gap-3">
+                            <div className="p-2.5 rounded-xl bg-primary text-white shadow-lg shadow-primary/20">
+                                <MapPin size={20} strokeWidth={2.5} />
+                            </div>
+                            <h2 className="text-lg font-display font-black text-slate-900 dark:text-white uppercase tracking-tight">Alta de Nodo</h2>
+                        </div>
+                        <button
+                            onClick={onClose}
+                            className="p-2 hover:bg-white dark:hover:bg-slate-800 rounded-xl transition-all text-slate-400 hover:text-slate-900 dark:hover:text-white border utilitarian-border"
+                        >
+                            <X size={20} strokeWidth={2.5} />
+                        </button>
+                    </div>
+                    <p className="text-[11px] font-bold text-slate-400 uppercase tracking-widest leading-relaxed">
+                        Definición de nuevo punto de red en coordenadas geográficas.
+                    </p>
                 </div>
 
-                <form onSubmit={handleSubmit} className="space-y-4">
-                    <div>
-                        <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Stop Name</label>
+                <form onSubmit={handleSubmit} className="p-8 space-y-6">
+                    {/* Name Field */}
+                    <div className="space-y-2">
+                        <label className="text-[11px] font-black text-slate-500 dark:text-slate-400 uppercase tracking-[0.15em] flex items-center gap-2 px-1">
+                            <MapPin size={14} className="text-primary/50" /> Denominación
+                        </label>
                         <input
                             type="text"
                             required
-                            className="w-full border dark:border-gray-600 rounded p-2 dark:bg-gray-700 dark:text-white focus:ring-2 focus:ring-blue-500 outline-none"
-                            placeholder="e.g. Central Station"
+                            className="w-full bg-slate-50 dark:bg-slate-800/50 border-2 border-slate-100 dark:border-slate-800 rounded-2xl p-4 text-sm font-bold text-slate-900 dark:text-white placeholder:text-slate-300 dark:placeholder:text-slate-600 focus:border-primary focus:bg-white dark:focus:bg-slate-800 transition-all outline-none"
+                            placeholder="Ej: Terminal Central"
                             value={name}
                             onChange={(e) => setName(e.target.value)}
                             autoFocus
                         />
                     </div>
 
-                    <div>
-                        <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                            Stop Code <span className="text-xs text-gray-500 font-normal">(Optional)</span>
+                    {/* Code Field */}
+                    <div className="space-y-2">
+                        <label className="text-[11px] font-black text-slate-500 dark:text-slate-400 uppercase tracking-[0.15em] flex items-center justify-between px-1">
+                            <span className="flex items-center gap-2">
+                                <Hash size={14} className="text-primary/50" /> Código Técnico
+                            </span>
+                            <span className="text-[9px] text-slate-400">Opcional</span>
                         </label>
                         <input
                             type="text"
-                            className="w-full border dark:border-gray-600 rounded p-2 dark:bg-gray-700 dark:text-white focus:ring-2 focus:ring-blue-500 outline-none"
-                            placeholder="e.g. CS-001"
+                            className="w-full bg-slate-50 dark:bg-slate-800/50 border-2 border-slate-100 dark:border-slate-800 rounded-2xl p-4 text-sm font-bold font-mono text-slate-900 dark:text-white placeholder:text-slate-300 dark:placeholder:text-slate-600 focus:border-primary focus:bg-white dark:focus:bg-slate-800 transition-all outline-none"
+                            placeholder="Ej: TC-104"
                             value={code}
                             onChange={(e) => setCode(e.target.value)}
                         />
-                        <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">If empty, a code will be auto-generated.</p>
                     </div>
 
-                    <div className="bg-gray-50 dark:bg-gray-700/50 p-3 rounded text-sm text-gray-600 dark:text-gray-400">
-                        <p><strong>Location:</strong> {lat.toFixed(6)}, {lon.toFixed(6)}</p>
+                    {/* Coordinates Read-only Info */}
+                    <div className="p-4 bg-slate-50 dark:bg-slate-800/50 rounded-2xl border utilitarian-border flex items-center gap-4">
+                        <div className="p-2 bg-white dark:bg-slate-800 border utilitarian-border rounded-lg text-slate-400">
+                             <Info size={16} />
+                        </div>
+                        <div className="flex-1">
+                            <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest leading-none mb-1">Coordenadas del Nodo</p>
+                            <p className="text-[12px] font-mono font-bold text-slate-600 dark:text-slate-300 leading-none tracking-tight">
+                                {lat.toFixed(6)}, {lon.toFixed(6)}
+                            </p>
+                        </div>
                     </div>
 
-                    <div className="flex justify-end gap-2 mt-6">
+                    {/* Action Footer */}
+                    <div className="pt-4 flex gap-3">
                         <button
                             type="button"
                             onClick={onClose}
-                            className="px-4 py-2 border rounded text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700"
+                            className="flex-1 py-4 text-[11px] font-black uppercase tracking-widest text-slate-500 hover:text-red-500 transition-colors"
                         >
-                            Cancel
+                            Abortar
                         </button>
                         <button
                             type="submit"
-                            className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 flex items-center gap-2"
+                            className="flex-[2] py-4 bg-primary text-white text-[11px] font-black uppercase tracking-[0.2em] rounded-2xl shadow-xl shadow-primary/20 hover:scale-[1.02] active:scale-95 transition-all flex items-center justify-center gap-2"
                         >
-                            <Save size={18} />
-                            Create Stop
+                            <Save size={16} strokeWidth={2.5} /> Consolidar Nodo
                         </button>
                     </div>
                 </form>

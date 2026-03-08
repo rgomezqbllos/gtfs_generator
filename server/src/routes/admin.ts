@@ -8,6 +8,7 @@ import os from 'os';
 import { pipeline } from 'stream/promises';
 import KcAdminClient from '@keycloak/keycloak-admin-client';
 import OsrmService from '../services/OsrmService';
+import { resolveProjectRouting } from '../services/ProjectRoutingService';
 
 let kcAdminClient: KcAdminClient | null = null;
 async function getKcAdminClient() {
@@ -279,25 +280,40 @@ export default async function adminRoutes(fastify: FastifyInstance) {
     // List all projects
     fastify.get('/admin/projects', async (request: any, reply: any) => {
         try {
+            let rawProjects: any[];
             if (request.isSuperAdmin) {
-                const projects = db.prepare('SELECT * FROM projects').all();
-                return projects;
+                rawProjects = db.prepare(`
+                    SELECT p.*, m.name AS map_name, m.status AS map_status
+                    FROM projects p
+                    LEFT JOIN map_instances m ON m.id = p.map_instance_id
+                `).all();
             } else {
                 const userId = request.user?.sub;
-                const projects = db.prepare(`
-                    SELECT p.* FROM projects p
+                rawProjects = db.prepare(`
+                    SELECT p.*, m.name AS map_name, m.status AS map_status
+                    FROM projects p
                     JOIN user_projects up ON p.id = up.project_id
+                    LEFT JOIN map_instances m ON m.id = p.map_instance_id
                     WHERE up.user_id = ? AND up.role = 'admin'
                 `).all(userId);
-                return projects;
             }
+
+            return Promise.all(rawProjects.map(async (project) => {
+                const routing = await resolveProjectRouting(project.id);
+                return {
+                    ...project,
+                    routing_engine_url: routing.routingUrl,
+                    map_status: routing.map?.status || project.map_status || null,
+                    map_base_port: routing.map?.base_port || null
+                };
+            }));
         } catch (error) {
             return reply.code(500).send({ error: 'Failed to fetch projects' });
         }
     });
 
     // Create a new project
-    fastify.post<{ Body: { name: string, description: string, map_center_lat?: number, map_center_lon?: number, routing_engine_url?: string, region_id?: string, region_url?: string } }>('/admin/projects', async (request: any, reply: any) => {
+    fastify.post<{ Body: { name: string, description: string, map_center_lat?: number, map_center_lon?: number, routing_engine_url?: string, region_id?: string, region_url?: string, map_instance_id?: string } }>('/admin/projects', async (request: any, reply: any) => {
         if (!request.isSuperAdmin) {
             return reply.code(403).send({ error: 'Only SuperAdmin can create projects' });
         }
@@ -323,8 +339,7 @@ export default async function adminRoutes(fastify: FastifyInstance) {
                 }
                 // Use a gap to account for multi-profile ports (mixed, exclusive, trunk)
                 port = highestPort + 10;
-                const baseUrl = process.env.OSRM_BASE_URL || 'http://host.docker.internal';
-                routing_engine_url = `${baseUrl}:${port}/route/v1/driving`;
+                routing_engine_url = OsrmService.buildRoutingUrl(port);
             }
 
             const extractNumber = (val: any, isLat: boolean): number | null => {
@@ -344,29 +359,23 @@ export default async function adminRoutes(fastify: FastifyInstance) {
                 description: p.description || null,
                 map_center_lat: extractNumber(p.map_center_lat, true),
                 map_center_lon: extractNumber(p.map_center_lon, false),
-                routing_engine_url
+                routing_engine_url,
+                map_instance_id: p.map_instance_id || null
             };
 
             db.prepare(`
-                INSERT INTO projects (id, name, description, map_center_lat, map_center_lon, routing_engine_url)
-                VALUES (@id, @name, @description, @map_center_lat, @map_center_lon, @routing_engine_url)
+                INSERT INTO projects (id, name, description, map_center_lat, map_center_lon, routing_engine_url, map_instance_id)
+                VALUES (@id, @name, @description, @map_center_lat, @map_center_lon, @routing_engine_url, @map_instance_id)
             `).run(payload);
 
-            // Execute OSRM Setup asynchronously if a region was provided
-            if (p.region_url && p.region_id) {
-                const activationPort = port;
-                console.log(`Starting background OSRM setup for project ${p.name} using region ${p.region_id} and URL ${p.region_url} on port ${activationPort}`);
-                
-                OsrmService.downloadMap(p.region_id, p.region_url, `${p.region_id}.osm.pbf`)
-                    .then(() => {
-                        console.log(`Download for ${p.region_id} complete. Activating map on port ${activationPort}...`);
-                        return OsrmService.activateMap(p.region_id, activationPort);
-                    })
-                    .catch(e => {
-                        console.error('Failed to configure OSRM background map:', e);
-                    });
-            }
-            return { id, routing_engine_url, ...p };
+            const routing = await resolveProjectRouting(id);
+            return {
+                id,
+                ...p,
+                routing_engine_url: routing.routingUrl,
+                map_status: routing.map?.status || null,
+                map_base_port: routing.map?.base_port || null
+            };
         } catch (error) {
             console.error('Failed to create project:', error);
             return reply.code(500).send({ error: 'Failed to create project' });
@@ -566,4 +575,51 @@ export default async function adminRoutes(fastify: FastifyInstance) {
             return reply.code(500).send({ error: error.response?.data?.errorMessage || 'Failed to delete user' });
         }
     });
+
+    // ==========================================
+    // MAP HUB ENDPOINTS
+    // ==========================================
+
+    fastify.get('/admin/maps', async () => {
+        return OsrmService.getMaps();
+    });
+
+    fastify.post<{ Body: { name: string, url: string } }>('/admin/maps', async (request, reply) => {
+        if (!request.isSuperAdmin) return reply.code(403).send({ error: 'Forbidden' });
+        const MapRepository = (await import('../services/MapRepository')).default;
+        const map = MapRepository.create(request.body.name, request.body.url);
+        return map;
+    });
+
+    fastify.post<{ Params: { id: string } }>('/admin/maps/:id/download', async (request, reply) => {
+        if (!request.isSuperAdmin) return reply.code(403).send({ error: 'Forbidden' });
+        OsrmService.downloadMap(request.params.id).catch(e => console.error(e));
+        return { message: 'Download started' };
+    });
+
+    fastify.post<{ Params: { id: string } }>('/admin/maps/:id/activate', async (request, reply) => {
+        if (!request.isSuperAdmin) return reply.code(403).send({ error: 'Forbidden' });
+        OsrmService.activateMap(request.params.id).catch(e => console.error(e));
+        return { message: 'Activation started' };
+    });
+
+    fastify.delete<{ Params: { id: string } }>('/admin/maps/:id', async (request, reply) => {
+        if (!request.isSuperAdmin) return reply.code(403).send({ error: 'Forbidden' });
+        return OsrmService.deleteMap(request.params.id);
+    });
+
+    fastify.get('/admin/osrm/status', async () => {
+        return OsrmService.getStatus();
+    });
+
+    fastify.post('/admin/osrm/cancel', async (request, reply) => {
+        if (!request.isSuperAdmin) return reply.code(403).send({ error: 'Forbidden' });
+        return OsrmService.cancelProcess();
+    });
+
+    // Initialize Predefined Regions
+    (async () => {
+        const MapRepository = (await import('../services/MapRepository')).default;
+        await MapRepository.ensurePredefinedRegions();
+    })().catch(e => console.error('Failed to init maps', e));
 }

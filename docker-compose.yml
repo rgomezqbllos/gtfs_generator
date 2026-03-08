@@ -1,4 +1,3 @@
-version: '3.8'
 services:
   app:
     build: .
@@ -7,14 +6,16 @@ services:
     volumes:
       - ./gtfs_data:/data
       - /var/run/docker.sock:/var/run/docker.sock
+    restart: unless-stopped
     environment:
-      - HOST_PROJECT_PATH=${PWD:-/Volumes/ssd_256/Proyectos/gtfs_generator}
+      - HOST_PROJECT_PATH=${PWD:-.}
       - PORT=3001
       - DB_PATH=/data/gtfs.db
       - KEYCLOAK_URL=http://keycloak:8080
       - KEYCLOAK_ADMIN=superadmin
       - KEYCLOAK_ADMIN_PASSWORD=superadmin
       - OSRM_BASE_URL=http://host.docker.internal
+      - OSRM_DOCKER_NETWORK=gtfs_generator_default
 
   keycloak:
     image: quay.io/keycloak/keycloak:26.1.1
@@ -33,10 +34,17 @@ services:
       - ./import:/opt/keycloak/data/import
     ports:
       - "8080:8080"
+    restart: unless-stopped
     depends_on:
-      - postgres
+      postgres:
+        condition: service_healthy
     networks:
       - default
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/health/live"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
 
   postgres:
     image: postgres:15
@@ -46,8 +54,14 @@ services:
       POSTGRES_PASSWORD: password
     volumes:
       - postgres_data:/var/lib/postgresql/data
+    restart: unless-stopped
     networks:
       - default
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U keycloak"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
 
 volumes:
   postgres_data:

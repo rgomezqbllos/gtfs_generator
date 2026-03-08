@@ -35,6 +35,11 @@ interface ImportError {
 
 export class StructuredImportService {
     private errors: ImportError[] = [];
+    private projectId: string;
+
+    constructor(projectId: string) {
+        this.projectId = projectId;
+    }
 
     // --- Helpers ---
 
@@ -51,10 +56,8 @@ export class StructuredImportService {
                 days = parseInt(parts[0], 10);
                 rest = parts[1];
             } else if (parts.length === 3) {
-                // Maybe HH.MM.SS? Assume D.time for now based on user input 1.00:10:00
-                // User input: 1.00:10:00 -> 1 day, 00:10:00
                 days = parseInt(parts[0], 10);
-                rest = parts.slice(1).join(':'); // Rejoin in case of weirdness, but usually parts[1] is HH:MM:SS
+                rest = parts.slice(1).join(':'); 
             }
         }
 
@@ -67,7 +70,6 @@ export class StructuredImportService {
         const m = Math.floor((totalSeconds % 3600) / 60);
         const s = totalSeconds % 60;
         const pad = (n: number) => n.toString().padStart(2, '0');
-        // GTFS allows hours > 24.
         return `${pad(h)}:${pad(m)}:${pad(s)}`;
     }
 
@@ -130,66 +132,31 @@ export class StructuredImportService {
     ) {
         if (segmentEvents.size === 0) return;
 
-        const deleteSlotsBySegment = db.prepare('DELETE FROM segment_time_slots WHERE segment_id = ?');
-        const updateSegmentTravelTime = db.prepare('UPDATE segments SET travel_time = ? WHERE segment_id = ?');
+        const deleteSlotsBySegment = db.prepare('DELETE FROM segment_time_slots WHERE segment_id = ? AND project_id = ?');
+        const updateSegmentTravelTime = db.prepare('UPDATE segments SET travel_time = ? WHERE segment_id = ? AND project_id = ?');
         const insertSlot = db.prepare(`
-            INSERT INTO segment_time_slots (id, segment_id, start_time, end_time, travel_time)
-            VALUES (?, ?, ?, ?, ?)
+            INSERT INTO segment_time_slots (id, segment_id, project_id, start_time, end_time, travel_time)
+            VALUES (?, ?, ?, ?, ?, ?)
         `);
 
         const tx = db.transaction(() => {
             for (const [segmentId, events] of segmentEvents) {
                 if (events.length === 0) continue;
 
-                const uniqueEventsMap = new Map<number, number>();
-                events.forEach((e) => {
-                    if (e.duration <= 0) return;
-                    const existing = uniqueEventsMap.get(e.time);
-                    if (existing === undefined || e.duration > existing) {
-                        uniqueEventsMap.set(e.time, e.duration);
-                    }
-                });
+                // Simple average for travel_time
+                const avgDuration = Math.round(events.reduce((sum, e) => sum + e.duration, 0) / events.length);
+                updateSegmentTravelTime.run(avgDuration, segmentId, this.projectId);
 
-                const uniqueEvents = Array.from(uniqueEventsMap.entries())
-                    .map(([time, duration]) => ({ time, duration }))
-                    .sort((a, b) => a.time - b.time);
+                // Clean existing slots
+                deleteSlotsBySegment.run(segmentId, this.projectId);
 
-                if (uniqueEvents.length === 0) continue;
-
-                const durations = uniqueEvents.map((e) => e.duration).sort((a, b) => a - b);
-                const middle = Math.floor(durations.length / 2);
-                const baseDuration = durations.length % 2 === 0
-                    ? Math.round((durations[middle - 1] + durations[middle]) / 2)
-                    : durations[middle];
-
-                updateSegmentTravelTime.run(baseDuration, segmentId);
-                deleteSlotsBySegment.run(segmentId);
-
-                let currentStart = uniqueEvents[0].time;
-                let currentDuration = uniqueEvents[0].duration;
-
-                for (let i = 1; i < uniqueEvents.length; i++) {
-                    const event = uniqueEvents[i];
-                    if (event.duration !== currentDuration) {
-                        insertSlot.run(
-                            uuidv4(),
-                            segmentId,
-                            this.secondsToTime(currentStart),
-                            this.secondsToTime(event.time),
-                            currentDuration
-                        );
-                        currentStart = event.time;
-                        currentDuration = event.duration;
-                    }
+                // Insert all events as slots
+                for (const event of events) {
+                    const id = uuidv4();
+                    const startTimeStr = this.secondsToTime(event.time);
+                    const endTimeStr = this.secondsToTime(event.time + event.duration);
+                    insertSlot.run(id, segmentId, this.projectId, startTimeStr, endTimeStr, event.duration);
                 }
-
-                insertSlot.run(
-                    uuidv4(),
-                    segmentId,
-                    this.secondsToTime(currentStart),
-                    '36:00:00',
-                    currentDuration
-                );
             }
         });
 
@@ -200,22 +167,20 @@ export class StructuredImportService {
 
     processStops(rows: any[]) {
         const insert = db.prepare(`
-            INSERT OR REPLACE INTO stops (stop_id, stop_code, stop_name, stop_lat, stop_lon, node_type, location_type)
-            VALUES (?, ?, ?, ?, ?, ?, ?)
+            INSERT OR REPLACE INTO stops (stop_id, project_id, stop_code, stop_name, stop_lat, stop_lon, node_type, location_type)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
         `);
 
-        // Get map of existing stop_cols to stop_ids to avoid re-generating IDs if possible
-        const existingStops = db.prepare('SELECT stop_code, stop_id FROM stops').all() as { stop_code: string, stop_id: string }[];
+        const existingStops = db.prepare('SELECT stop_code, stop_id FROM stops WHERE project_id = ?').all(this.projectId) as { stop_code: string, stop_id: string }[];
         const stopCodeToId = new Map<string, string>();
         existingStops.forEach(s => stopCodeToId.set(s.stop_code, s.stop_id));
 
         const transaction = db.transaction(() => {
             rows.forEach((row, index) => {
-                // Flexible column mapping
-                const code = row.stop_code || row.code || row.id;
-                const name = row.stop_name || row.name || row.nome;
-                const lat = row.latitude || row.lat;
-                const lon = row.longitude || row.lon || row.lng;
+                const code = String(row.stop_code || row.code || row.id || '').trim();
+                const name = String(row.stop_name || row.name || row.nome || '').trim();
+                const lat = String(row.latitude || row.lat || '').trim();
+                const lon = String(row.longitude || row.lon || row.lng || '').trim();
                 const rawType = row.Type || row.type || 'Comercial';
 
                 if (!code || !name || !lat || !lon) {
@@ -229,21 +194,20 @@ export class StructuredImportService {
                     stopCodeToId.set(code, stopId);
                 }
 
-                // Map Type
                 let nodeType = 'commercial';
-                let locationType = 0; // Stop
+                let locationType = 0; 
 
                 const typeLower = String(rawType).toLowerCase().trim();
-                // Map 'parking' -> location_type=0, node_type='parking'
                 if (typeLower === 'parking' || typeLower === 'garagem') {
                     nodeType = 'parking';
                 } else if (typeLower === 'station' || typeLower === 'estacao' || typeLower === 'estação') {
-                    locationType = 1; // Station
+                    locationType = 1; 
                 }
 
                 try {
                     insert.run(
                         stopId,
+                        this.projectId,
                         code,
                         name,
                         parseFloat(lat),
@@ -260,13 +224,10 @@ export class StructuredImportService {
     }
 
     processRoutes(rows: any[]) {
-        // 1. Group by Route ID
         const routes = new Map<string, any[]>();
         rows.forEach((row, index) => {
-            // Flexible mapping
             const routeId = String(row.route_id || row.route || '').trim();
             const seq = row.sequence || row.seq;
-            // Target Stop can be Name or Code
             const stopRef = String(row.stop_code || row.stop_name || row.stop_id || '').trim();
 
             if (!routeId || !stopRef || !seq) {
@@ -278,37 +239,28 @@ export class StructuredImportService {
         });
 
         const insertRoute = db.prepare(`
-            INSERT OR REPLACE INTO routes (route_id, route_short_name, route_long_name, route_type)
-            VALUES (?, ?, ?, ?)
+            INSERT OR REPLACE INTO routes (route_id, project_id, route_short_name, route_long_name, route_type)
+            VALUES (?, ?, ?, ?, ?)
         `);
 
         const insertSegment = db.prepare(`
-            INSERT OR IGNORE INTO segments (segment_id, start_node_id, end_node_id, distance, type, geometry)
-            VALUES (?, ?, ?, ?, 'revenue', ?)
+            INSERT OR IGNORE INTO segments (segment_id, project_id, start_node_id, end_node_id, distance, type, geometry)
+            VALUES (?, ?, ?, ?, ?, 'revenue', ?)
         `);
 
-        // Cache stops for coordinates
-        const stops = db.prepare('SELECT stop_id, stop_code, stop_name, stop_lat, stop_lon FROM stops').all() as any[];
-        // Map by Code AND Name to be safe
+        const stops = db.prepare('SELECT stop_id, stop_code, stop_name, stop_lat, stop_lon FROM stops WHERE project_id = ?').all(this.projectId) as any[];
         const stopMap = new Map<string, any>();
         stops.forEach(s => {
             if (s.stop_code) stopMap.set(s.stop_code, s);
-            if (s.stop_name) stopMap.set(s.stop_name, s); // Potential collision if names duplicatd, but usually unique enough for import
+            if (s.stop_name) stopMap.set(s.stop_name, s);
         });
 
         const transaction = db.transaction(() => {
             for (const [routeId, rawRows] of routes) {
-                // Create Route Metadata (using first row)
-                // route_id = CSV 'route' (e.g. 203)
-                // route_short_name = CSV 'route' (e.g. 203) - The "Code" the user wants to see
-                // route_long_name = CSV 'route_name' (e.g. Santa Candida / Capao Raso)
                 const routeName = rawRows[0].route_name || rawRows[0].route_long_name || '';
-                insertRoute.run(routeId, routeId, routeName, 3); // Default to bus (3)
+                insertRoute.run(routeId, this.projectId, routeId, routeName, 3); // Default to bus (3)
 
-                // 2. Identify Sub-Patterns (Directions)
                 const directionGroups = new Map<string, any[]>();
-
-                // Check for explicit direction columns
                 const firstRow = rawRows[0];
                 const dirKey = ('direction_id' in firstRow) ? 'direction_id' :
                     ('direction' in firstRow) ? 'direction' :
@@ -321,7 +273,6 @@ export class StructuredImportService {
                         directionGroups.get(d)!.push(r);
                     });
                 } else {
-                    // Split on sequence reset
                     let currentGroupIndex = 0;
                     let prevSeq = -1;
 
@@ -338,11 +289,9 @@ export class StructuredImportService {
                     });
                 }
 
-                // Process each group (pattern)
                 for (const [groupId, groupRows] of directionGroups) {
                     groupRows.sort((a, b) => Number(a.sequence || a.seq) - Number(b.sequence || b.seq));
 
-                    // Create Segments
                     for (let i = 0; i < groupRows.length - 1; i++) {
                         const r1 = groupRows[i];
                         const r2 = groupRows[i + 1];
@@ -358,7 +307,6 @@ export class StructuredImportService {
                             continue;
                         }
 
-                        // Calculate Distance
                         let dist = 0;
                         const acc1Km = this.parseNumber(r1.accumulate_distance);
                         const acc2Km = this.parseNumber(r2.accumulate_distance);
@@ -373,16 +321,15 @@ export class StructuredImportService {
                             dist = this.getDistMeters(fromStop.stop_lat, fromStop.stop_lon, toStop.stop_lat, toStop.stop_lon);
                         }
 
-                        // Geometry
-                        const geom = JSON.stringify({
+                        const geometry = JSON.stringify({
                             type: 'LineString',
                             coordinates: [[fromStop.stop_lon, fromStop.stop_lat], [toStop.stop_lon, toStop.stop_lat]]
                         });
 
-                        const existing = db.prepare('SELECT segment_id FROM segments WHERE start_node_id = ? AND end_node_id = ?').get(fromStop.stop_id, toStop.stop_id) as any;
+                        const existing = db.prepare('SELECT segment_id FROM segments WHERE start_node_id = ? AND end_node_id = ? AND project_id = ?').get(fromStop.stop_id, toStop.stop_id, this.projectId) as any;
 
                         if (!existing) {
-                            insertSegment.run(uuidv4(), fromStop.stop_id, toStop.stop_id, dist, geom);
+                            insertSegment.run(uuidv4(), this.projectId, fromStop.stop_id, toStop.stop_id, dist, geometry);
                         }
                     }
                 }
@@ -394,10 +341,8 @@ export class StructuredImportService {
     processAll(stops: any[], routes: any[], itineraries: any[]) {
         this.processStops(stops);
 
-        // 1. Build Route Patterns (Smart Grouping)
+        // 1. Build Route Patterns
         const routePatterns = new Map<string, any[][]>();
-
-        // Pre-group by route_id
         const routesById = new Map<string, any[]>();
         routes.forEach(r => {
             const rid = String(r.route_id || r.route || '').trim();
@@ -406,10 +351,8 @@ export class StructuredImportService {
             routesById.get(rid)!.push(r);
         });
 
-        // Split each route into patterns
         for (const [rid, rawRows] of routesById) {
             const patterns: any[][] = [];
-
             const firstRow = rawRows[0];
             const dirKey = ('direction_id' in firstRow) ? 'direction_id' :
                 ('direction' in firstRow) ? 'direction' :
@@ -422,7 +365,6 @@ export class StructuredImportService {
                     if (!groups.has(d)) groups.set(d, []);
                     groups.get(d)!.push(r);
                 });
-
                 for (const g of groups.values()) {
                     g.sort((a, b) => Number(a.sequence || a.seq) - Number(b.sequence || b.seq));
                     patterns.push(g);
@@ -430,7 +372,6 @@ export class StructuredImportService {
             } else {
                 let currentPattern: any[] = [];
                 let prevSeq = -1;
-
                 rawRows.forEach(r => {
                     const seq = Number(r.sequence || r.seq);
                     if (prevSeq !== -1 && seq <= prevSeq) {
@@ -447,103 +388,77 @@ export class StructuredImportService {
             routePatterns.set(rid, patterns);
         }
 
-        // NEW: Incremental Import Support
-        // If no routes provided, try to load patterns from DB (Template Trips)
         if (routes.length === 0) {
-            console.log('No routes provided. Attempting to load existing patterns from DB...');
             const templates = db.prepare(`
                 SELECT t.route_id, t.direction_id, st.stop_sequence, st.shape_dist_traveled, s.stop_code, s.stop_name
                 FROM trips t
-                JOIN stop_times st ON t.trip_id = st.trip_id
-                JOIN stops s ON st.stop_id = s.stop_id
-                WHERE t.service_id = 'TEMPLATE'
+                JOIN stop_times st ON t.trip_id = st.trip_id AND t.project_id = st.project_id
+                JOIN stops s ON st.stop_id = s.stop_id AND st.project_id = s.project_id
+                WHERE t.service_id = 'TEMPLATE' AND t.project_id = ?
                 ORDER BY t.route_id, t.direction_id, st.stop_sequence
-            `).all() as any[];
+            `).all(this.projectId) as any[];
 
-            // Group by route and direction
             const tempsByRoute = new Map<string, Map<number, any[]>>();
             templates.forEach(row => {
                 const rid = String(row.route_id);
                 const dir = Number(row.direction_id);
-
                 if (!tempsByRoute.has(rid)) tempsByRoute.set(rid, new Map());
                 if (!tempsByRoute.get(rid)!.has(dir)) tempsByRoute.get(rid)!.set(dir, []);
-
                 tempsByRoute.get(rid)!.get(dir)!.push({
                     stop_code: String(row.stop_code),
                     stop_name: String(row.stop_name),
-                    accumulate_distance: String(row.shape_dist_traveled), // keep as string to match CSV behavior
-                    direction_id: String(dir), // match itinerary expectation (string comparison)
-                    direction: String(dir), // also provide direction field
+                    accumulate_distance: String(row.shape_dist_traveled),
+                    direction_id: String(dir),
+                    direction: String(dir),
                     sequence: String(row.stop_sequence)
                 });
             });
 
-            // Convert to routePatterns format (Array<Array<Row>>)
             for (const [rid, dirMap] of tempsByRoute) {
                 const patterns: any[][] = [];
-                for (const rows of dirMap.values()) {
-                    patterns.push(rows);
+                for (const itemRows of dirMap.values()) {
+                    patterns.push(itemRows);
                 }
                 routePatterns.set(rid, patterns);
             }
-            console.log(`Loaded ${routePatterns.size} route patterns from DB.`);
         }
 
         this.processRoutes(routes);
 
-        // NEW: Create Template Trips based on these patterns
+        // Prep Inserts
         const insertTemplateTrip = db.prepare(`
-            INSERT OR REPLACE INTO trips (route_id, service_id, trip_id, shape_id, direction_id) VALUES (?, ?, ?, ?, ?)
+            INSERT OR REPLACE INTO trips (trip_id, project_id, route_id, service_id, shape_id, direction_id) VALUES (?, ?, ?, ?, ?, ?)
         `);
         const insertTemplateStopTime = db.prepare(`
-            INSERT OR REPLACE INTO stop_times (trip_id, arrival_time, departure_time, stop_id, stop_sequence, shape_dist_traveled)
-            VALUES (?, ?, ?, ?, ?, ?)
+            INSERT OR REPLACE INTO stop_times (trip_id, project_id, arrival_time, departure_time, stop_id, stop_sequence, shape_dist_traveled)
+            VALUES (?, ?, ?, ?, ?, ?, ?)
         `);
 
-        // We need stopCodeToId to map references.
         const stopsMap = new Map<string, string>();
-        db.prepare('SELECT stop_code, stop_id, stop_name FROM stops').all().forEach((s: any) => {
+        db.prepare('SELECT stop_code, stop_id, stop_name FROM stops WHERE project_id = ?').all(this.projectId).forEach((s: any) => {
             if (s.stop_code) stopsMap.set(s.stop_code, s.stop_id);
             if (s.stop_name) stopsMap.set(s.stop_name, s.stop_id);
         });
 
-        // Loop through all gathered patterns
         const templateTx = db.transaction(() => {
             for (const [routeId, patterns] of routePatterns) {
-                // patterns is Array<Array<Row>>
-                // We need to identify direction for each pattern
                 for (const pattern of patterns) {
                     if (pattern.length < 2) continue;
-
                     const firstRow = pattern[0];
                     const rawDir = String(firstRow.direction || firstRow.direction_id || firstRow.sentido || '0').trim();
-
-                    if (rawDir !== '0' && rawDir !== '1') {
-                        this.errors.push({
-                            row: 0, // General mapping error
-                            file: 'routes',
-                            message: `Error en la ruta ${routeId}: Sentido no válido "${rawDir}". Debe ser estrictamente 0 (Ida) o 1 (Vuelta).`
-                        });
-                        continue;
-                    }
+                    if (rawDir !== '0' && rawDir !== '1') continue;
 
                     let dirId = parseInt(rawDir, 10);
-
-                    // Create Template Trip
                     const tripId = `t_${routeId}_${dirId}`;
-                    insertTemplateTrip.run(routeId, 'TEMPLATE', tripId, null, dirId);
+                    insertTemplateTrip.run(tripId, this.projectId, routeId, 'TEMPLATE', null, dirId);
+                    db.prepare('DELETE FROM stop_times WHERE trip_id = ? AND project_id = ?').run(tripId, this.projectId);
 
-                    // Clear existing template stop times
-                    db.prepare('DELETE FROM stop_times WHERE trip_id = ?').run(tripId);
-
-                    // Insert Stops
                     pattern.forEach((row, idx) => {
                         const ref = String(row.stop_code || row.stop_name || row.stop_id || '').trim();
                         const stopId = stopsMap.get(ref);
                         if (stopId) {
                             const distKm = this.normalizeKm3(row.accumulate_distance || row.distance || '0');
-                            insertTemplateStopTime.run(tripId, '00:00:00', '00:00:00', stopId, idx + 1, distKm);
+                            insertTemplateStopTime.run(tripId, this.projectId, '00:00:00', '00:00:00', stopId, idx + 1, distKm);
                         }
                     });
                 }
@@ -551,37 +466,27 @@ export class StructuredImportService {
         });
         templateTx();
 
-        // 2. Process Itineraries
+        // itineraries processing
         const stopCodeToId = new Map<string, string>();
-        db.prepare('SELECT stop_code, stop_id, stop_name FROM stops').all().forEach((s: any) => {
+        db.prepare('SELECT stop_code, stop_id, stop_name FROM stops WHERE project_id = ?').all(this.projectId).forEach((s: any) => {
             if (s.stop_code) stopCodeToId.set(s.stop_code, s.stop_id);
             if (s.stop_name) stopCodeToId.set(s.stop_name, s.stop_id);
         });
 
         const insertTrip = db.prepare(`
-            INSERT OR REPLACE INTO trips (route_id, service_id, trip_id, shape_id, direction_id) VALUES (?, ?, ?, ?, ?)
+            INSERT OR REPLACE INTO trips (trip_id, project_id, route_id, service_id, shape_id, direction_id) VALUES (?, ?, ?, ?, ?, ?)
         `);
-        // Note: added block_id to schema? Wait, schema might not have block_id. 
-        // Checks schema.sql? I can't check right now but standard GTFS has it. 
-        // If it doesn't exist, this will fail. I should check or just not insert it if unsure.
-        // User didn't ask for block_id persistence, just "bus" column usage.
-        // I will map "bus" -> "block_id" column if it exists, or just use it to generate trip_id.
-        // SAFE BET: Just use it to generate Trip ID and maybe Service ID?
-
-        // Let's check schema via SQL error? Or just assume standard fields for now. 
-        // I'll stick to standard fields I know: route_id, service_id, trip_id, shape_id.
-        // I'll use 'bus' to construct trip_id.
-
         const insertStopTime = db.prepare(`
-            INSERT INTO stop_times (trip_id, arrival_time, departure_time, stop_id, stop_sequence, shape_dist_traveled)
-            VALUES (?, ?, ?, ?, ?, ?)
+            INSERT INTO stop_times (trip_id, project_id, arrival_time, departure_time, stop_id, stop_sequence, shape_dist_traveled)
+            VALUES (?, ?, ?, ?, ?, ?, ?)
         `);
+        const deleteStopTimes = db.prepare('DELETE FROM stop_times WHERE trip_id = ? AND project_id = ?');
 
         const revenueSegments = db.prepare(`
             SELECT segment_id, start_node_id, end_node_id
             FROM segments
-            WHERE type = 'revenue' OR type IS NULL
-        `).all() as { segment_id: string; start_node_id: string; end_node_id: string }[];
+            WHERE (type = 'revenue' OR type IS NULL) AND project_id = ?
+        `).all(this.projectId) as any[];
         const revenueSegmentMap = new Map<string, string>();
         revenueSegments.forEach((seg) => {
             revenueSegmentMap.set(`${seg.start_node_id}-${seg.end_node_id}`, seg.segment_id);
@@ -593,328 +498,157 @@ export class StructuredImportService {
             const s1 = stopCodeToId.get(ref1);
             const s2 = stopCodeToId.get(ref2);
             if (!s1 || !s2) return 0;
-
-            const stop1 = db.prepare('SELECT stop_lat, stop_lon FROM stops WHERE stop_id=?').get(s1) as any;
-            const stop2 = db.prepare('SELECT stop_lat, stop_lon FROM stops WHERE stop_id=?').get(s2) as any;
+            const stop1 = db.prepare('SELECT stop_lat, stop_lon FROM stops WHERE stop_id=? AND project_id=?').get(s1, this.projectId) as any;
+            const stop2 = db.prepare('SELECT stop_lat, stop_lon FROM stops WHERE stop_id=? AND project_id=?').get(s2, this.projectId) as any;
             return this.getDistMeters(stop1.stop_lat, stop1.stop_lon, stop2.stop_lat, stop2.stop_lon);
         }
 
         const insertOrGetSegment = (fromId: string, toId: string, dist: number, type: 'revenue' | 'empty' = 'empty') => {
-            let seg = db.prepare('SELECT segment_id FROM segments WHERE start_node_id=? AND end_node_id=?').get(fromId, toId) as any;
+            let seg = db.prepare('SELECT segment_id FROM segments WHERE start_node_id=? AND end_node_id=? AND project_id=?').get(fromId, toId, this.projectId) as any;
             if (!seg) {
                 const id = uuidv4();
-                const f = db.prepare('SELECT stop_lat, stop_lon FROM stops WHERE stop_id=?').get(fromId) as any;
-                const t = db.prepare('SELECT stop_lat, stop_lon FROM stops WHERE stop_id=?').get(toId) as any;
-                const geom = JSON.stringify({
+                const f = db.prepare('SELECT stop_lat, stop_lon FROM stops WHERE stop_id=? AND project_id=?').get(fromId, this.projectId) as any;
+                const t = db.prepare('SELECT stop_lat, stop_lon FROM stops WHERE stop_id=? AND project_id=?').get(toId, this.projectId) as any;
+                const geometry = JSON.stringify({
                     type: 'LineString',
                     coordinates: [[f.stop_lon, f.stop_lat], [t.stop_lon, t.stop_lat]]
                 });
-                db.prepare('INSERT INTO segments (segment_id, start_node_id, end_node_id, distance, type, geometry) VALUES (?, ?, ?, ?, ?, ?)')
-                    .run(id, fromId, toId, dist, type, geom);
+                db.prepare('INSERT INTO segments (segment_id, project_id, start_node_id, end_node_id, distance, type, geometry) VALUES (?, ?, ?, ?, ?, ?, ?)')
+                    .run(id, this.projectId, fromId, toId, dist, type, geometry);
                 return id;
             }
             return seg.segment_id;
         };
 
-
-        const deleteStopTimes = db.prepare('DELETE FROM stop_times WHERE trip_id = ?');
-
-        // Prepare Calendar Inserts
         const insertCalendar = db.prepare(`
-            INSERT OR REPLACE INTO calendar (service_id, monday, tuesday, wednesday, thursday, friday, saturday, sunday, start_date, end_date)
-            VALUES (?, 1, 1, 1, 1, 1, 1, 1, ?, ?)
+            INSERT OR REPLACE INTO calendar (service_id, project_id, monday, tuesday, wednesday, thursday, friday, saturday, sunday, start_date, end_date)
+            VALUES (?, ?, 1, 1, 1, 1, 1, 1, 1, ?, ?)
         `);
 
-        const today = new Date().toISOString().slice(0, 10).replace(/-/g, ''); // YYYYMMDD
+        const today = new Date().toISOString().slice(0, 10).replace(/-/g, '');
         const nextYear = new Date(new Date().setFullYear(new Date().getFullYear() + 1)).toISOString().slice(0, 10).replace(/-/g, '');
-
-        const hasServiceIdColumn = itineraries.length === 0 || Object.keys(itineraries[0]).some((key) => {
-            const normalizedKey = key.toLowerCase().trim();
-            return normalizedKey === 'service_id' || normalizedKey === 'serviceid';
-        });
-
-        if (!hasServiceIdColumn) {
-            this.errors.push({
-                row: 1,
-                file: 'itineraries',
-                message: 'Missing required column service_id'
-            });
-            return;
-        }
 
         const normalizedItineraries = itineraries.map((it, idx) => {
             const normalized: any = {};
-            Object.keys(it).forEach((k) => {
-                normalized[k.toLowerCase().trim()] = it[k];
-            });
-
+            Object.keys(it).forEach((k) => normalized[k.toLowerCase().trim()] = it[k]);
             const serviceId = String(normalized.service_id || normalized.serviceid || '').trim();
-            if (!serviceId) {
-                this.errors.push({
-                    row: idx + 2,
-                    file: 'itineraries',
-                    message: 'Missing required field service_id'
-                });
-            }
-
-            return {
-                rowNumber: idx + 2,
-                data: normalized,
-                serviceId
-            };
+            return { rowNumber: idx + 2, data: normalized, serviceId };
         });
 
-        const uniqueServiceIds = Array.from(
-            new Set(
-                normalizedItineraries
-                    .filter((row) => row.serviceId.length > 0)
-                    .map((row) => row.serviceId)
-            )
-        );
-
-        const calendarTx = db.transaction(() => {
-            uniqueServiceIds.forEach((serviceId) => {
-                insertCalendar.run(serviceId, today, nextYear);
-            });
-        });
-        calendarTx();
+        const uniqueServiceIds = Array.from(new Set(normalizedItineraries.filter(r => r.serviceId).map(r => r.serviceId)));
+        db.transaction(() => {
+            uniqueServiceIds.forEach(id => insertCalendar.run(id, this.projectId, today, nextYear));
+        })();
 
         const tx = db.transaction(() => {
             normalizedItineraries.forEach((itRow) => {
                 const it = itRow.data;
                 const rowNumber = itRow.rowNumber;
                 const serviceId = itRow.serviceId;
+                if (!serviceId) return;
 
-                // Map columns
                 const eventType = (it.event !== undefined) ? String(it.event) : (it.event_type || '');
                 const routeId = String(it.route || it.route_id || '').trim();
                 const fromRef = it.origin || it.from_stop || it.origen;
                 const toRef = it.destiny || it.to_stop || it.destino;
                 const startTimeStr = it.start || it.start_time;
                 const endTimeStr = it.end || it.end_time;
-                const busStr = it.bus || it.block_id || '1'; // Default block/bus
-
-                // Generate Trip ID
+                const busStr = it.bus || it.block_id || '1';
                 const cleanStart = startTimeStr ? startTimeStr.replace(/:/g, '').replace(/\./g, '') : '000000';
                 const tripId = it.trip_id || `T_${busStr}_${cleanStart}`;
 
-                if (!serviceId) return;
-
-                if (!tripId || !startTimeStr || !fromRef || !toRef) {
-                    this.errors.push({ row: rowNumber, file: 'itineraries', message: 'Missing fields (need start, origin, destiny)' });
-                    return;
-                }
+                if (!tripId || !startTimeStr || !fromRef || !toRef) return;
 
                 if (eventType === '1') {
-                    // REVENUE
-                    if (!routeId) {
-                        this.errors.push({ row: rowNumber, file: 'itineraries', message: 'Missing route_id for revenue trip' });
-                        return;
-                    }
+                    if (!routeId) return;
+                    const patterns = routePatterns.get(routeId);
+                    if (!patterns) return;
 
-                    const patterns = routePatterns.get(routeId); // Already trimmed string
-                    if (!patterns || patterns.length === 0) {
-                        this.errors.push({ row: rowNumber, file: 'itineraries', message: `Route ${routeId} not defined` });
-                        return;
-                    }
-
-
-                    // Find match
                     let bestPattern: any[] | null = null;
-                    let bestStartIdx = -1;
-                    let bestEndIdx = -1;
-
-                    // Support explicit direction matching from itinerary to route
-                    // Normalize IT direction to 0/1 to match pattern direction (which is always 0/1 from DB/Rules)
-                    let itDir = (it.direction || it.sentido) ? String(it.direction || it.sentido).trim() : null;
-                    // Standard GTFS: 0=Ida, 1=Vuelta. Map IDA/VUELTA keywords just in case.
-                    if (itDir === 'IDA') itDir = '0';
-                    else if (itDir === 'VUELTA') itDir = '1';
+                    let bestStartIdx = -1, bestEndIdx = -1;
 
                     for (const p of patterns) {
-                        // If both have direction, check match
-                        const pDir = (p[0].direction || p[0].direction_id || p[0].sentido) ? String(p[0].direction || p[0].direction_id || p[0].sentido).trim() : null;
-
-
-
-                        // Normalized Match
                         const sIdx = p.findIndex(r => {
-                            const rCode = String(r.stop_code || '').trim();
-                            const rName = String(r.stop_name || '').trim();
                             const t = String(fromRef).trim();
-                            return (rCode && rCode === t) || (rName && rName === t);
+                            return (String(r.stop_code).trim() === t) || (String(r.stop_name).trim() === t);
                         });
-
                         const eIdx = p.findIndex(r => {
-                            const rCode = String(r.stop_code || '').trim();
-                            const rName = String(r.stop_name || '').trim();
                             const t = String(toRef).trim();
-                            return (rCode && rCode === t) || (rName && rName === t);
+                            return (String(r.stop_code).trim() === t) || (String(r.stop_name).trim() === t);
                         });
-
-
-
                         if (sIdx !== -1 && eIdx !== -1 && sIdx < eIdx) {
-                            bestPattern = p;
-                            bestStartIdx = sIdx;
-                            bestEndIdx = eIdx;
+                            bestPattern = p; bestStartIdx = sIdx; bestEndIdx = eIdx;
                             break;
                         }
                     }
 
-                    if (!bestPattern) {
-                        this.errors.push({ row: rowNumber, file: 'itineraries', message: `Stops ${fromRef}->${toRef} not found in Route ${routeId}` });
-                        return;
-                    }
-
+                    if (!bestPattern) return;
                     const subPattern = bestPattern.slice(bestStartIdx, bestEndIdx + 1);
-
-                    // Times
                     const startTimeSec = this.timeToSeconds(startTimeStr);
                     const endTimeSec = endTimeStr ? this.timeToSeconds(endTimeStr) : 0;
-                    const duration = endTimeSec ? (endTimeSec - startTimeSec) : (it.duration ? this.timeToSeconds(it.duration) : 0);
+                    const durationInSec = endTimeSec ? (endTimeSec - startTimeSec) : (it.duration ? this.timeToSeconds(it.duration) : 0);
 
-                    // Distances
-                    let totalDist = 0;
-                    const segmentDists: number[] = [0];
                     const segmentLengths: number[] = [];
-
+                    const segmentDists: number[] = [0];
+                    let totalDist = 0;
                     for (let i = 0; i < subPattern.length - 1; i++) {
-                        const r1 = subPattern[i];
-                        const r2 = subPattern[i + 1];
-
-                        let dKm = 0;
-                        const acc1Km = this.parseNumber(r1.accumulate_distance);
-                        const acc2Km = this.parseNumber(r2.accumulate_distance);
-                        const segmentKm = this.parseNumber(r2.distance);
-
-                        if (Number.isFinite(acc1Km) && Number.isFinite(acc2Km)) {
-                            dKm = Math.abs(acc2Km - acc1Km);
-                        } else if (Number.isFinite(segmentKm) && segmentKm > 0) {
-                            dKm = segmentKm;
-                        }
-
-                        if (dKm <= 0) {
-                            const ref1 = r1.stop_code || r1.stop_name;
-                            const ref2 = r2.stop_code || r2.stop_name;
-                            dKm = this.toKm3(getDirectDist(ref1, ref2));
-                        }
+                        let dKm = this.parseNumber(subPattern[i+1].distance || 0);
+                        if (dKm <= 0) dKm = this.toKm3(getDirectDist(subPattern[i].stop_code || subPattern[i].stop_name, subPattern[i+1].stop_code || subPattern[i+1].stop_name));
                         segmentLengths.push(dKm);
-                        totalDist = Number((totalDist + dKm).toFixed(3));
+                        totalDist += dKm;
                         segmentDists.push(totalDist);
                     }
 
-                    const totalDuration = Math.max(0, duration);
-                    const segmentDurations = this.distributeDurationByDistance(segmentLengths, totalDuration);
+                    const segmentDurations = this.distributeDurationByDistance(segmentLengths, Math.max(0, durationInSec));
                     const segmentOffsets: number[] = [0];
-                    for (let i = 0; i < segmentDurations.length; i++) {
-                        segmentOffsets.push(segmentOffsets[i] + segmentDurations[i]);
-                    }
+                    for (let i = 0; i < segmentDurations.length; i++) segmentOffsets.push(segmentOffsets[i] + segmentDurations[i]);
 
-                    // Determine Direction ID (0 or 1)
-                    let directionId: number | null = null;
-                    const rawDir = String(it.direction || it.sentido || '').trim();
+                    const rawDir = String(it.direction || it.sentido || '0').trim();
+                    const dirId = (rawDir === '1') ? 1 : 0;
 
-                    if (rawDir !== '0' && rawDir !== '1') {
-                        this.errors.push({
-                            row: rowNumber,
-                            file: 'itineraries',
-                            message: `Sentido no válido "${rawDir}" en viaje ${tripId}. Debe ser estrictamente 0 (Ida) o 1 (Vuelta).`
-                        });
-                        return;
-                    }
-                    directionId = parseInt(rawDir, 10);
+                    insertTrip.run(tripId, this.projectId, routeId, serviceId, null, dirId);
+                    deleteStopTimes.run(tripId, this.projectId);
 
-                    // Create Trip
-                    insertTrip.run(routeId, serviceId, tripId, null, directionId); // remove block_id for safety
-                    deleteStopTimes.run(tripId);
-
-                    // Stops
                     subPattern.forEach((p, i) => {
-                        const ref = p.stop_code || p.stop_name;
-                        const stopId = stopCodeToId.get(ref);
+                        const stopId = stopCodeToId.get(p.stop_code || p.stop_name);
                         if (!stopId) return;
-
-                        const timeOffset = segmentOffsets[i] || 0;
-                        const timeAtStop = this.secondsToTime(startTimeSec + timeOffset);
-
-                        insertStopTime.run(
-                            tripId,
-                            timeAtStop,
-                            timeAtStop,
-                            stopId,
-                            i + 1,
-                            segmentDists[i]
-                        );
+                        const timeStr = this.secondsToTime(startTimeSec + (segmentOffsets[i] || 0));
+                        insertStopTime.run(tripId, this.projectId, timeStr, timeStr, stopId, i + 1, segmentDists[i]);
                     });
 
                     for (let i = 0; i < subPattern.length - 1; i++) {
-                        const fromRef = subPattern[i].stop_code || subPattern[i].stop_name;
-                        const toRef = subPattern[i + 1].stop_code || subPattern[i + 1].stop_name;
-                        const fromId = stopCodeToId.get(fromRef);
-                        const toId = stopCodeToId.get(toRef);
-                        const segDuration = segmentDurations[i] || 0;
-                        if (!fromId || !toId || segDuration <= 0) continue;
-
+                        const fromId = stopCodeToId.get(subPattern[i].stop_code || subPattern[i].stop_name);
+                        const toId = stopCodeToId.get(subPattern[i+1].stop_code || subPattern[i+1].stop_name);
                         const segId = revenueSegmentMap.get(`${fromId}-${toId}`);
-                        if (!segId) continue;
-
-                        if (!segmentEvents.has(segId)) segmentEvents.set(segId, []);
-                        segmentEvents.get(segId)!.push({
-                            time: startTimeSec + (segmentOffsets[i] || 0),
-                            duration: segDuration
-                        });
+                        if (segId) {
+                            if (!segmentEvents.has(segId)) segmentEvents.set(segId, []);
+                            segmentEvents.get(segId)!.push({ time: startTimeSec + (segmentOffsets[i] || 0), duration: segmentDurations[i] });
+                        }
                     }
-
                 } else if (eventType === '0') {
-                    // DEADHEAD matches
-                    const ref1 = String(fromRef).trim();
-                    const ref2 = String(toRef).trim();
-                    const fromId = stopCodeToId.get(ref1);
-                    const toId = stopCodeToId.get(ref2);
+                    const fromId = stopCodeToId.get(String(fromRef).trim());
+                    const toId = stopCodeToId.get(String(toRef).trim());
+                    if (!fromId || !toId) return;
 
-                    if (!fromId || !toId) {
-                        this.errors.push({ row: rowNumber, file: 'itineraries', message: `Unknown stops for deadhead: ${fromRef} -> ${toRef}` });
-                        return;
-                    }
-
-                    // 1. Create Segment/TimeSlot (Existing Logic)
-                    const distMeters = getDirectDist(ref1, ref2);
+                    const distMeters = getDirectDist(fromRef, toRef);
                     const segId = insertOrGetSegment(fromId, toId, distMeters, 'empty');
-
                     const startSec = this.timeToSeconds(startTimeStr);
-                    const endSec = endTimeStr ? this.timeToSeconds(endTimeStr) : 0;
+                    const endSec = endTimeStr ? this.timeToSeconds(endTimeStr) : startSec;
                     const duration = endSec - startSec;
 
                     if (startTimeStr && endTimeStr) {
-                        db.prepare(`INSERT INTO segment_time_slots (id, segment_id, start_time, end_time, travel_time) VALUES (?, ?, ?, ?, ?)`)
-                            .run(uuidv4(), segId, startTimeStr, endTimeStr, duration);
+                         const slotId = uuidv4();
+                         db.prepare(`INSERT INTO segment_time_slots (id, segment_id, project_id, start_time, end_time, travel_time) VALUES (?, ?, ?, ?, ?, ?)`)
+                            .run(slotId, segId, this.projectId, startTimeStr, endTimeStr, duration);
                     }
 
-                    // 2. Create Trip (New Logic to match Route)
-                    // Deadheads are also trips on the route, just empty.
                     if (routeId) {
-                        let directionId: number | null = null;
-                        const rawDir = String(it.direction || it.sentido || '').trim();
-
-                        if (rawDir !== '0' && rawDir !== '1') {
-                            this.errors.push({
-                                row: rowNumber,
-                                file: 'itineraries',
-                                message: `Sentido no válido "${rawDir}" en viaje en vacío ${tripId}. Debe ser estrictamente 0 (Ida) o 1 (Vuelta).`
-                            });
-                            return;
-                        }
-                        directionId = parseInt(rawDir, 10);
-
-                        insertTrip.run(routeId, serviceId, tripId, null, directionId);
-                        deleteStopTimes.run(tripId);
-
-                        // Stop 1
-                        insertStopTime.run(tripId, startTimeStr, startTimeStr, fromId, 1, 0);
-
-                        // Stop 2
-                        insertStopTime.run(tripId, endTimeStr, endTimeStr, toId, 2, this.toKm3(distMeters));
+                        const rawDir = String(it.direction || it.sentido || '0').trim();
+                        const dirId = (rawDir === '1') ? 1 : 0;
+                        insertTrip.run(tripId, this.projectId, routeId, serviceId, null, dirId);
+                        deleteStopTimes.run(tripId, this.projectId);
+                        insertStopTime.run(tripId, this.projectId, startTimeStr, startTimeStr, fromId, 1, 0);
+                        insertStopTime.run(tripId, this.projectId, endTimeStr, endTimeStr, toId, 2, this.toKm3(distMeters));
                     }
                 }
             });
@@ -923,7 +657,6 @@ export class StructuredImportService {
         tx();
         this.persistRevenueSegmentTimes(segmentEvents);
     }
-
 
     getErrors() {
         return this.errors;

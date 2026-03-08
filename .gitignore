@@ -35,3 +35,10 @@ server/uploads/
 gtfs_data/
 import/
 *.zip
+
+# AI Tools/Agents
+.*/
+!./
+!.github/
+!.gitignore
+!.env.example

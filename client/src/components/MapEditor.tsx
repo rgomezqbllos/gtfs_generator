@@ -2,7 +2,7 @@ import * as React from 'react';
 import Map, { Marker, type MapLayerMouseEvent, Source, Layer } from 'react-map-gl/maplibre';
 import 'maplibre-gl/dist/maplibre-gl.css';
 import type { Stop, Route, RoutingProfile } from '../types';
-import { MapPin } from 'lucide-react';
+import { MapPin, GitBranch, ChevronRight, Activity, CheckCircle } from 'lucide-react';
 import { clsx } from 'clsx';
 import RouteDetailsPanel from './RouteDetailsPanel';
 import StopDetails from './StopDetails';
@@ -45,41 +45,46 @@ const ConnectionModal: React.FC<ConnectionModalProps> = ({ isOpen, onSelect, onC
     }));
 
     return (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[9999] animate-in fade-in duration-200">
-            <div className="bg-white dark:bg-slate-900 p-6 rounded-xl shadow-2xl w-full max-w-md border border-slate-200 dark:border-slate-800">
-                <h3 className="text-xl font-bold mb-4 flex items-center gap-2">
-                    🛣️ Tipo de Conexión
-                </h3>
-                <p className="text-sm text-slate-500 dark:text-slate-400 mb-6">
-                    Elige el perfil operativo que describe correctamente la infraestructura (mixta, exclusiva o ambas).
-                </p>
-
-                <div className="space-y-3">
-                    {options.map(opt => (
-                        <button
-                            key={opt.id}
-                            onClick={() => onSelect(opt.id)}
-                            className="w-full flex items-center gap-4 p-4 rounded-lg border border-slate-200 dark:border-slate-800 hover:border-blue-500 hover:bg-blue-50 dark:hover:bg-blue-900/20 text-left transition-all group"
-                        >
-                            <div
-                                className="h-10 w-10 rounded-full border border-slate-200 dark:border-slate-700 flex items-center justify-center"
-                                style={{ backgroundColor: opt.color }}
-                            />
-                            <div>
-                                <div className="font-bold text-slate-900 dark:text-white">{opt.name}</div>
-                                <div className="text-xs text-slate-500 dark:text-slate-400">{opt.desc}</div>
-                            </div>
-                        </button>
-                    ))}
+        <div className="fixed inset-0 bg-slate-950/60 backdrop-blur-sm flex items-center justify-center z-[9999] animate-in fade-in duration-300">
+            <div className="bg-white dark:bg-slate-900 rounded-[32px] shadow-[0_0_50px_rgba(0,0,0,0.3)] w-full max-w-md border utilitarian-border overflow-hidden animate-in zoom-in-95 duration-300">
+                <div className="p-8 border-b utilitarian-border bg-slate-50 dark:bg-slate-800/50">
+                    <h3 className="text-base font-display font-black text-slate-900 dark:text-white uppercase tracking-tight mb-1 flex items-center gap-3">
+                         <div className="p-2 bg-primary text-white rounded-xl shadow-lg shadow-primary/20">
+                            <GitBranch size={20} strokeWidth={2.5} />
+                         </div>
+                         Definir Perfil de Red
+                    </h3>
+                    <p className="text-[10px] font-bold text-slate-500 uppercase tracking-widest mt-1">Suministro de Capa Operativa</p>
                 </div>
 
-                <div className="mt-6 flex justify-end">
-                    <button
-                        onClick={onCancel}
-                        className="px-4 py-2 text-sm text-slate-500 hover:text-slate-700 dark:hover:text-slate-300"
-                    >
-                        Cancelar
-                    </button>
+                <div className="p-8 space-y-4">
+                    <div className="space-y-3">
+                        {options.map(opt => (
+                            <button
+                                key={opt.id}
+                                onClick={() => onSelect(opt.id)}
+                                className="w-full flex items-center gap-4 p-5 rounded-2xl border utilitarian-border hover:border-primary/50 hover:bg-primary/5 text-left transition-all group relative overflow-hidden active:scale-[0.98]"
+                            >
+                                <div className="absolute top-0 left-0 w-1.5 h-full transition-all group-hover:w-2"
+                                     style={{ backgroundColor: opt.color }} />
+                                
+                                <div className="flex-1">
+                                    <div className="font-display font-black text-[13px] text-slate-900 dark:text-white uppercase tracking-tight">{opt.name}</div>
+                                    <div className="text-[10px] font-bold text-slate-500 uppercase tracking-widest mt-0.5">{opt.desc}</div>
+                                </div>
+                                <ChevronRight size={16} className="text-slate-300 group-hover:text-primary transition-transform group-hover:translate-x-1" />
+                            </button>
+                        ))}
+                    </div>
+
+                    <div className="pt-4 flex justify-center">
+                        <button
+                            onClick={onCancel}
+                            className="text-[10px] font-black uppercase tracking-widest text-slate-400 hover:text-red-500 transition-colors"
+                        >
+                            Cancelar Suministro
+                        </button>
+                    </div>
                 </div>
             </div>
         </div>
@@ -567,7 +572,8 @@ const MapEditor: React.FC = () => {
                 setCursorLoc(null);
                 setIsConnectionModalOpen(false);
             } else {
-                alert("Failed to create segment");
+                const errorData = await res.json().catch(() => null);
+                alert(errorData?.error || "Failed to create segment");
             }
         } catch (err) {
             console.error("Error creating segment:", err);
@@ -779,13 +785,10 @@ const MapEditor: React.FC = () => {
 
 
     // Map Bounds State
-    const [mapBounds, setMapBounds] = React.useState<{ _ne: { lng: number, lat: number }, _sw: { lng: number, lat: number } } | null>(null);
+
 
     const handleMapMove = React.useCallback((evt: any) => {
         setViewState(evt.viewState);
-        if (evt.target) {
-            setMapBounds(evt.target.getBounds());
-        }
     }, []);
 
     const handleSearch = (coords: { lat: number; lon: number }) => {
@@ -832,7 +835,7 @@ const MapEditor: React.FC = () => {
                 {...viewState}
                 onMove={handleMapMove}
                 onMouseMove={handleMouseMove}
-                onLoad={(evt) => setMapBounds(evt.target.getBounds())}
+                onLoad={() => {}}
                 style={mapContainerStyle}
                 mapStyle={{
                     version: 8,
@@ -1114,7 +1117,6 @@ const MapEditor: React.FC = () => {
                         }}
                         onOpenTrips={() => setActivePanel('trips')}
                         onOpenCalendar={() => setActivePanel('calendar')}
-                        mapBounds={mapBounds}
                     />
                 )
             }
@@ -1184,85 +1186,102 @@ const MapEditor: React.FC = () => {
             {/* Path Editor UI Overlay */}
             {
                 activeRoute && (
-                    <div className="absolute top-4 right-4 w-64 bg-white dark:bg-gray-800 dark:text-gray-100 p-4 rounded shadow-lg z-20">
-                        <h3 className="font-bold border-b pb-2 dark:border-gray-700">Editing: {activeRoute.route_short_name}</h3>
-                        <div className="mt-2 flex items-center gap-2 text-sm">
-                            <span>Direction:</span>
-                            <div className="flex bg-gray-100 dark:bg-gray-700 rounded">
-                                <button
-                                    onClick={() => setDirectionId(0)}
-                                    className={clsx("px-2 py-1 rounded", directionId === 0 ? "bg-blue-600 text-white" : "hover:bg-gray-200 dark:hover:bg-gray-600")}
-                                >0</button>
-                                <button
-                                    onClick={() => setDirectionId(1)}
-                                    className={clsx("px-2 py-1 rounded", directionId === 1 ? "bg-blue-600 text-white" : "hover:bg-gray-200 dark:hover:bg-gray-600")}
-                                >1</button>
+                    <div className="absolute top-4 right-4 w-72 bg-white/40 dark:bg-slate-900/40 backdrop-blur-xl p-8 rounded-[32px] border utilitarian-border shadow-2xl z-[60] flex flex-col gap-6 animate-in slide-in-from-right-12 duration-500 ease-out-expo">
+                        <div>
+                            <div className="flex items-center gap-2 mb-1">
+                                <Activity size={16} className="text-primary animate-pulse" />
+                                <h3 className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-400">Constructor de Red</h3>
                             </div>
+                            <h4 className="text-base font-display font-black text-slate-900 dark:text-white leading-tight uppercase tracking-tight">
+                                {activeRoute.route_short_name}
+                            </h4>
                         </div>
 
-                        <div className="mt-3 text-sm text-gray-600 dark:text-gray-400">
-                            <p>Stops selected: {pathStops.length}</p>
-                            <p>Total Distance: {(pathDistance / 1000).toFixed(2)} km</p>
-                            <p className="text-xs italic mt-1">Click nodes on map in order to define path.</p>
-                        </div>
-
-                        <div className="mt-3 space-y-2">
-                            <div className="text-[10px] uppercase font-semibold tracking-widest text-slate-500 dark:text-slate-400">Perfil operativo</div>
-                            <div className="space-y-2 max-h-40 overflow-y-auto pr-1">
-                                {routingProfiles.map(profile => {
-                                    const meta = routingProfileMetadata[profile];
-                                    const isActive = profile === pathRoutingProfile;
-                                    return (
+                        <div className="space-y-4">
+                            <div className="flex items-center justify-between bg-slate-100/50 dark:bg-slate-800/50 p-1.5 rounded-2xl border utilitarian-border">
+                                <span className="text-[10px] font-black text-slate-500 uppercase tracking-widest pl-3">Sentido</span>
+                                <div className="flex gap-1">
+                                    {[0, 1].map(id => (
                                         <button
-                                            key={profile}
-                                            onClick={() => setPathRoutingProfile(profile)}
+                                            key={id}
+                                            onClick={() => setDirectionId(id as 0 | 1)}
                                             className={clsx(
-                                                'w-full rounded-lg border px-3 py-2 text-left transition flex flex-col gap-1',
-                                                isActive
-                                                    ? 'border-slate-900 bg-slate-100 dark:bg-slate-700 dark:border-slate-500 shadow-inner'
-                                                    : 'border-slate-200 dark:border-slate-700 hover:border-slate-400 dark:hover:border-slate-500'
+                                                "px-4 py-1.5 rounded-xl text-[11px] font-black uppercase tracking-widest transition-all",
+                                                directionId === id 
+                                                    ? "bg-white dark:bg-slate-700 text-primary shadow-sm ring-1 ring-slate-200 dark:ring-slate-600" 
+                                                    : "text-slate-400 hover:text-slate-600"
                                             )}
                                         >
-                                            <div className="flex items-center justify-between gap-2">
+                                            {id}
+                                        </button>
+                                    ))}
+                                </div>
+                            </div>
+
+                            <div className="grid grid-cols-2 gap-3">
+                                <div className="p-4 bg-white/50 dark:bg-slate-800/50 rounded-2xl border utilitarian-border text-center">
+                                    <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-1">Nodos</p>
+                                    <p className="text-[15px] font-display font-black text-slate-900 dark:text-white leading-none">{pathStops.length}</p>
+                                </div>
+                                <div className="p-4 bg-white/50 dark:bg-slate-800/50 rounded-2xl border utilitarian-border text-center">
+                                    <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-1">Red (KM)</p>
+                                    <p className="text-[15px] font-display font-black text-slate-900 dark:text-white leading-none">{(pathDistance / 1000).toFixed(2)}</p>
+                                </div>
+                            </div>
+
+                            <div className="space-y-3">
+                                <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest px-2">Perfil Cartográfico</label>
+                                <div className="space-y-2 max-h-48 overflow-y-auto custom-scrollbar pr-1">
+                                    {routingProfiles.map(profile => {
+                                        const meta = routingProfileMetadata[profile];
+                                        const isActive = profile === pathRoutingProfile;
+                                        return (
+                                            <button
+                                                key={profile}
+                                                onClick={() => setPathRoutingProfile(profile)}
+                                                className={clsx(
+                                                    'w-full rounded-2xl border p-4 text-left transition-all flex flex-col gap-1 relative overflow-hidden group',
+                                                    isActive
+                                                        ? 'bg-white dark:bg-slate-800 border-primary shadow-lg shadow-primary/10'
+                                                        : 'bg-transparent border-transparent hover:bg-white/50 dark:hover:bg-slate-800/30'
+                                                )}
+                                            >
+                                                {isActive && <div className="absolute top-0 left-0 w-1 h-full" style={{ backgroundColor: meta.color }} />}
                                                 <div className="flex items-center gap-2">
-                                                    <span
-                                                        className="h-3 w-3 rounded-full border border-slate-200 dark:border-slate-600"
-                                                        style={{ backgroundColor: meta.color }}
-                                                    />
-                                                    <span className="text-sm font-semibold" style={{ color: isActive ? meta.color : undefined }}>
+                                                    <span className="h-2 w-2 rounded-full" style={{ backgroundColor: meta.color }} />
+                                                    <span className={clsx("text-[11px] font-black uppercase tracking-tight", isActive ? "text-slate-900 dark:text-white" : "text-slate-500")}>
                                                         {meta.label}
                                                     </span>
                                                 </div>
-                                            </div>
-                                            <p className="text-[10px] text-slate-500 dark:text-slate-300 leading-tight">
-                                                {meta.description}
-                                            </p>
-                                        </button>
-                                    );
-                                })}
+                                            </button>
+                                        );
+                                    })}
+                                </div>
                             </div>
                         </div>
 
-                        <div className="mt-4 flex flex-col gap-2">
+                        <div className="space-y-3 pt-2">
                             <button
                                 onClick={savePath}
                                 disabled={loading || pathStops.length < 2}
-                                className={clsx("bg-green-600 text-white py-1 rounded hover:bg-green-700", (loading || pathStops.length < 2) && "opacity-50 cursor-not-allowed")}
+                                className="w-full py-4 bg-primary text-white text-[10px] font-black uppercase tracking-[0.2em] rounded-2xl shadow-xl shadow-primary/20 hover:scale-[1.02] active:scale-95 disabled:opacity-30 transition-all flex items-center justify-center gap-2"
                             >
-                                {loading ? 'Saving...' : 'Save Path'}
+                                <CheckCircle size={14} strokeWidth={2.5} /> Sincronizar Ruta
                             </button>
-                            <button
-                                onClick={() => setPathStops([])}
-                                className="bg-gray-200 text-gray-800 dark:bg-gray-700 dark:text-gray-200 py-1 rounded hover:bg-gray-300 dark:hover:bg-gray-600"
-                            >
-                                Clear Selection
-                            </button>
-                            <button
-                                onClick={cancelPathEdit}
-                                className="bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-300 py-1 rounded hover:bg-red-200"
-                            >
-                                Cancel / Back
-                            </button>
+                            <div className="flex gap-2">
+                                <button
+                                    onClick={() => setPathStops([])}
+                                    className="flex-1 py-3 bg-white dark:bg-slate-800 text-slate-500 text-[9px] font-black uppercase tracking-widest rounded-xl border utilitarian-border hover:bg-slate-50 transition-all"
+                                >
+                                    Reiniciar
+                                </button>
+                                <button
+                                    onClick={cancelPathEdit}
+                                    className="flex-1 py-3 bg-red-500/10 text-red-500 text-[9px] font-black uppercase tracking-widest rounded-xl border border-red-500/20 hover:bg-red-500 hover:text-white transition-all"
+                                >
+                                    Cerrar
+                                </button>
+                            </div>
                         </div>
                     </div>
                 )
@@ -1271,22 +1290,30 @@ const MapEditor: React.FC = () => {
             {/* Add Instruction Toast */}
             {
                 mode === 'add_stop' && (
-                    <div className="absolute top-4 left-1/2 transform -translate-x-1/2 bg-blue-600 text-white px-4 py-2 rounded-full shadow-lg z-50 flex items-center gap-2 animate-bounce">
-                        <MapPin size={16} />
-                        <span className="font-bold text-sm">Click map to add stops</span>
-                        <span className="text-xs opacity-80">(Right-click to exit)</span>
+                    <div className="absolute top-8 left-1/2 transform -translate-x-1/2 bg-white/40 dark:bg-slate-900/40 backdrop-blur-xl px-6 py-3 rounded-full border utilitarian-border shadow-2xl z-50 flex items-center gap-4 animate-in slide-in-from-top-4 duration-500 ease-out-expo ring-4 ring-primary/10">
+                        <div className="p-2 bg-primary text-white rounded-full animate-pulse shadow-lg shadow-primary/20">
+                            <MapPin size={16} strokeWidth={2.5} />
+                        </div>
+                        <div className="flex flex-col">
+                            <span className="text-[11px] font-black uppercase tracking-widest text-slate-900 dark:text-white">Modo: Alta de Nodo</span>
+                            <span className="text-[9px] font-bold text-slate-500 uppercase tracking-widest italic">Clic en mapa para posicionar • Esc para salir</span>
+                        </div>
                     </div>
                 )
             }
 
             {
                 mode === 'add_segment' && (
-                    <div className="absolute top-4 left-1/2 transform -translate-x-1/2 bg-indigo-600 text-white px-4 py-2 rounded-full shadow-lg z-50 flex items-center gap-2 animate-bounce">
-                        <MapPin size={16} />
-                        <span className="font-bold text-sm">
-                            {segmentStartNode ? "Select destination stop" : "Select starting stop"}
-                        </span>
-                        <span className="text-xs opacity-80">(Right-click to exit)</span>
+                    <div className="absolute top-8 left-1/2 transform -translate-x-1/2 bg-white/40 dark:bg-slate-900/40 backdrop-blur-xl px-6 py-3 rounded-full border utilitarian-border shadow-2xl z-50 flex items-center gap-4 animate-in slide-in-from-top-4 duration-500 ease-out-expo ring-4 ring-indigo-500/10">
+                         <div className="p-2 bg-indigo-600 text-white rounded-full animate-bounce shadow-lg shadow-indigo-500/20">
+                            <GitBranch size={16} strokeWidth={2.5} />
+                        </div>
+                        <div className="flex flex-col">
+                            <span className="text-[11px] font-black uppercase tracking-widest text-slate-900 dark:text-white">Modo: Vector de Red</span>
+                            <span className="text-[9px] font-bold text-slate-500 uppercase tracking-widest italic">
+                                {segmentStartNode ? "Definir nodo destino" : "Seleccionar nodo origen"}
+                            </span>
+                        </div>
                     </div>
                 )
             }

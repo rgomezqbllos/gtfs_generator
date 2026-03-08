@@ -73,6 +73,25 @@ export function initDB() {
             console.log('Migrated: Added routing_profile to segments');
         }
 
+        // Multi-Tenancy Migration: Ensure project_id exists in all GTFS tables
+        const gtfsTables = [
+            'agency', 'stops', 'routes', 'calendar', 'trips', 'stop_times', 
+            'shapes', 'segments', 'segment_time_slots', 'route_parkings'
+        ];
+
+        for (const table of gtfsTables) {
+            try {
+                const tableInfo = db.pragma(`table_info(${table})`) as { name: string }[];
+                const hasProjectId = tableInfo.some(c => c.name === 'project_id');
+                if (!hasProjectId) {
+                    db.prepare(`ALTER TABLE ${table} ADD COLUMN project_id TEXT`).run();
+                    console.log(`Migrated: Added project_id to ${table}`);
+                }
+            } catch (e) {
+                // Table might not exist yet, which is fine as initDB will create it if needed
+            }
+        }
+
         // Settings Migration
         db.exec(`
             CREATE TABLE IF NOT EXISTS settings (
@@ -80,6 +99,13 @@ export function initDB() {
                 value TEXT NOT NULL
             )
         `);
+
+        // Migration for project -> map_instance link
+        const projectColumns = db.pragma('table_info(projects)') as { name: string }[];
+        if (projectColumns.length > 0 && !projectColumns.some(c => c.name === 'map_instance_id')) {
+            db.prepare('ALTER TABLE projects ADD COLUMN map_instance_id TEXT').run();
+            console.log('Migrated: Added map_instance_id to projects');
+        }
     } catch (err) {
         console.warn('Migration warning:', err);
     }

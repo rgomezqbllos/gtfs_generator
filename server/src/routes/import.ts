@@ -81,7 +81,8 @@ export default async function importRoutes(fastify: FastifyInstance) {
         processGtfsImport(taskId, filePath, {
             services: new Set(selectedServices),
             routes: new Set(selectedRoutes),
-            allowedPairs
+            allowedPairs,
+            projectId: request.projectId!
         });
 
         return reply.send({ taskId });
@@ -109,7 +110,7 @@ export default async function importRoutes(fastify: FastifyInstance) {
             }
 
             const { StructuredImportService } = await import('../services/structuredImportService');
-            const service = new StructuredImportService();
+            const service = new StructuredImportService(request.projectId!);
             service.processAll(stopsRows, routesRows, itinerariesRows);
 
             const errors = service.getErrors();
@@ -335,7 +336,7 @@ function getEntries(filePath: string): Promise<Set<string>> {
     });
 }
 
-async function processGtfsImport(taskId: string, filePath: string, filters: { services: Set<string>, routes: Set<string>, allowedPairs: Set<string> | null }) {
+async function processGtfsImport(taskId: string, filePath: string, filters: { services: Set<string>, routes: Set<string>, allowedPairs: Set<string> | null, projectId: string }) {
     const updateStatus = (progress: number, message: string) => {
         const task = importTasks.get(taskId);
         if (task) {
@@ -444,8 +445,8 @@ async function processGtfsImport(taskId: string, filePath: string, filters: { se
 
         if (entries.has('routes.txt')) {
             updateStatus(30, "Importing Routes...");
-            const check = db.prepare('SELECT route_id FROM routes WHERE route_id = ?');
-            const insert = db.prepare(`INSERT INTO routes (route_id, agency_id, route_short_name, route_long_name, route_desc, route_type, route_url, route_color, route_text_color) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`);
+            const check = db.prepare('SELECT route_id FROM routes WHERE route_id = ? AND project_id = ?');
+            const insert = db.prepare(`INSERT INTO routes (route_id, project_id, agency_id, route_short_name, route_long_name, route_desc, route_type, route_url, route_color, route_text_color) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`);
 
             const stream = await readEntryStream(filePath, 'routes.txt');
 
@@ -464,12 +465,12 @@ async function processGtfsImport(taskId: string, filePath: string, filters: { se
 
                                 usedAgencyIds.add(r.agency_id || 'default_agency');
 
-                                if (check.get(r.route_id)) {
+                                if (check.get(r.route_id, filters.projectId)) {
                                     skippedRoutes.push(`${r.route_short_name || r.route_id} (Duplicate)`);
                                     return;
                                 }
                                 insert.run(
-                                    r.route_id, r.agency_id, r.route_short_name, r.route_long_name, r.route_desc, r.route_type, r.route_url, r.route_color, r.route_text_color
+                                    r.route_id, filters.projectId, r.agency_id, r.route_short_name, r.route_long_name, r.route_desc, r.route_type, r.route_url, r.route_color, r.route_text_color
                                 );
                             });
                         })();
@@ -482,7 +483,7 @@ async function processGtfsImport(taskId: string, filePath: string, filters: { se
         // Agency (Now filtered)
         if (entries.has('agency.txt')) {
             updateStatus(45, "Importing Agencies...");
-            const insert = db.prepare(`INSERT OR IGNORE INTO agency (agency_id, agency_name, agency_url, agency_timezone, agency_lang, agency_phone, agency_email) VALUES (?, ?, ?, ?, ?, ?, ?)`);
+            const insert = db.prepare(`INSERT OR IGNORE INTO agency (agency_id, project_id, agency_name, agency_url, agency_timezone, agency_lang, agency_phone, agency_email) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`);
             const stream = await readEntryStream(filePath, 'agency.txt');
             const batch: any[] = [];
             const flush = db.transaction((rows: any[]) => {
@@ -496,7 +497,7 @@ async function processGtfsImport(taskId: string, filePath: string, filters: { se
                     if (usedAgencyIds.size > 0 && !usedAgencyIds.has(aid)) return;
 
                     insert.run(
-                        aid, r.agency_name, r.agency_url, r.agency_timezone, r.agency_lang, r.agency_phone, r.agency_email
+                        aid, filters.projectId, r.agency_name, r.agency_url, r.agency_timezone, r.agency_lang, r.agency_phone, r.agency_email
                     );
                 });
             });
@@ -506,7 +507,7 @@ async function processGtfsImport(taskId: string, filePath: string, filters: { se
         // Stops
         if (entries.has('stops.txt')) {
             updateStatus(30, "Importing Stops...");
-            const insert = db.prepare(`INSERT OR IGNORE INTO stops (stop_id, stop_code, stop_name, stop_desc, stop_lat, stop_lon, zone_id, stop_url, location_type, parent_station, stop_timezone, wheelchair_boarding) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`);
+            const insert = db.prepare(`INSERT OR IGNORE INTO stops (stop_id, project_id, stop_code, stop_name, stop_desc, stop_lat, stop_lon, zone_id, stop_url, location_type, parent_station, stop_timezone, wheelchair_boarding) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`);
             const stream = await readEntryStream(filePath, 'stops.txt');
             const batch: any[] = [];
             const flush = db.transaction((rows: any[]) => {
@@ -515,7 +516,7 @@ async function processGtfsImport(taskId: string, filePath: string, filters: { se
                     if (usedStopIds.size > 0 && !usedStopIds.has(s.stop_id)) return;
 
                     insert.run(
-                        s.stop_id, s.stop_code, s.stop_name, s.stop_desc, s.stop_lat, s.stop_lon, s.zone_id, s.stop_url, s.location_type || 0, s.parent_station, s.stop_timezone, s.wheelchair_boarding || 0
+                        s.stop_id, filters.projectId, s.stop_code, s.stop_name, s.stop_desc, s.stop_lat, s.stop_lon, s.zone_id, s.stop_url, s.location_type || 0, s.parent_station, s.stop_timezone, s.wheelchair_boarding || 0
                     );
                 });
             });
@@ -525,7 +526,7 @@ async function processGtfsImport(taskId: string, filePath: string, filters: { se
         // Calendar
         if (entries.has('calendar.txt')) {
             updateStatus(55, "Importing Calendar...");
-            const insert = db.prepare(`INSERT OR REPLACE INTO calendar (service_id, monday, tuesday, wednesday, thursday, friday, saturday, sunday, start_date, end_date) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`);
+            const insert = db.prepare(`INSERT OR REPLACE INTO calendar (service_id, project_id, monday, tuesday, wednesday, thursday, friday, saturday, sunday, start_date, end_date) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`);
             const stream = await readEntryStream(filePath, 'calendar.txt');
             const batch: any[] = [];
             const flush = db.transaction((rows: any[]) => {
@@ -536,7 +537,7 @@ async function processGtfsImport(taskId: string, filePath: string, filters: { se
                     // It's safe to import extra calendars if they are not used.
                     // But we can filter by filters.services for optimization.
                     if (filters.services.has(c.service_id)) {
-                        insert.run(c.service_id, c.monday, c.tuesday, c.wednesday, c.thursday, c.friday, c.saturday, c.sunday, c.start_date, c.end_date);
+                        insert.run(c.service_id, filters.projectId, c.monday, c.tuesday, c.wednesday, c.thursday, c.friday, c.saturday, c.sunday, c.start_date, c.end_date);
                     }
                 });
             });
@@ -546,11 +547,11 @@ async function processGtfsImport(taskId: string, filePath: string, filters: { se
         // Trips
         if (entries.has('trips.txt')) {
             updateStatus(65, "Importing Trips...");
-            const insert = db.prepare(`INSERT INTO trips (route_id, service_id, trip_id, trip_headsign, trip_short_name, direction_id, block_id, shape_id, wheelchair_accessible, bikes_allowed) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`);
+            const insert = db.prepare(`INSERT INTO trips (trip_id, project_id, route_id, service_id, trip_headsign, trip_short_name, direction_id, block_id, shape_id, wheelchair_accessible, bikes_allowed) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`);
             const stream = await readEntryStream(filePath, 'trips.txt');
 
-            const checkTrip = db.prepare('SELECT trip_id FROM trips WHERE trip_id = ?');
-            const existingRouteIds = new Set(db.prepare('SELECT route_id FROM routes').all().map((r: any) => r.route_id));
+            const checkTrip = db.prepare('SELECT trip_id FROM trips WHERE trip_id = ? AND project_id = ?');
+            const existingRouteIds = new Set(db.prepare('SELECT route_id FROM routes WHERE project_id = ?').all(filters.projectId).map((r: any) => r.route_id));
 
             const batch: any[] = [];
             const flush = db.transaction((rows: any[]) => {
@@ -559,11 +560,11 @@ async function processGtfsImport(taskId: string, filePath: string, filters: { se
                     if (!finalValidTrips.has(t.trip_id)) return;
 
                     // Check if trip exists
-                    if (checkTrip.get(t.trip_id)) return;
+                    if (checkTrip.get(t.trip_id, filters.projectId)) return;
                     // Check if route exists (FK)
                     if (existingRouteIds.has(t.route_id)) {
                         insert.run(
-                            t.route_id, t.service_id, t.trip_id, t.trip_headsign, t.trip_short_name, t.direction_id, t.block_id, t.shape_id, t.wheelchair_accessible, t.bikes_allowed
+                            t.trip_id, filters.projectId, t.route_id, t.service_id, t.trip_headsign, t.trip_short_name, t.direction_id, t.block_id, t.shape_id, t.wheelchair_accessible, t.bikes_allowed
                         );
                     }
                 });
@@ -574,7 +575,7 @@ async function processGtfsImport(taskId: string, filePath: string, filters: { se
         // Stop Times
         if (entries.has('stop_times.txt')) {
             updateStatus(80, "Importing Stop Times...");
-            const insert = db.prepare(`INSERT INTO stop_times (trip_id, arrival_time, departure_time, stop_id, stop_sequence, stop_headsign, pickup_type, drop_off_type, shape_dist_traveled, timepoint) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`);
+            const insert = db.prepare(`INSERT INTO stop_times (trip_id, project_id, arrival_time, departure_time, stop_id, stop_sequence, stop_headsign, pickup_type, drop_off_type, shape_dist_traveled, timepoint) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`);
             const stream = await readEntryStream(filePath, 'stop_times.txt');
 
             const batch: any[] = [];
@@ -583,7 +584,7 @@ async function processGtfsImport(taskId: string, filePath: string, filters: { se
                     if (finalValidTrips.has(st.trip_id)) {
                         const shapeDistKm = normalizeDistanceToKm3(st.shape_dist_traveled);
                         insert.run(
-                            st.trip_id, st.arrival_time, st.departure_time, st.stop_id, st.stop_sequence, st.stop_headsign, st.pickup_type, st.drop_off_type, shapeDistKm, st.timepoint
+                            st.trip_id, filters.projectId, st.arrival_time, st.departure_time, st.stop_id, st.stop_sequence, st.stop_headsign, st.pickup_type, st.drop_off_type, shapeDistKm, st.timepoint
                         );
                     }
                 });
@@ -594,13 +595,13 @@ async function processGtfsImport(taskId: string, filePath: string, filters: { se
         // Shapes
         if (entries.has('shapes.txt')) {
             updateStatus(90, "Importing Shapes...");
-            const insert = db.prepare(`INSERT OR REPLACE INTO shapes (shape_id, shape_pt_lat, shape_pt_lon, shape_pt_sequence, shape_dist_traveled) VALUES (?, ?, ?, ?, ?)`);
+            const insert = db.prepare(`INSERT OR REPLACE INTO shapes (shape_id, project_id, shape_pt_lat, shape_pt_lon, shape_pt_sequence, shape_dist_traveled) VALUES (?, ?, ?, ?, ?, ?)`);
             const stream = await readEntryStream(filePath, 'shapes.txt');
 
             const batch: any[] = [];
             const flush = db.transaction((rows: any[]) => {
                 rows.forEach(s => insert.run(
-                    s.shape_id, s.shape_pt_lat, s.shape_pt_lon, s.shape_pt_sequence, normalizeDistanceToKm3(s.shape_dist_traveled)
+                    s.shape_id, filters.projectId, s.shape_pt_lat, s.shape_pt_lon, s.shape_pt_sequence, normalizeDistanceToKm3(s.shape_dist_traveled)
                 ));
             });
             await processStream(stream, batch, 5000, flush);
@@ -608,15 +609,15 @@ async function processGtfsImport(taskId: string, filePath: string, filters: { se
 
         // Generate Segments for Visualization
         if (finalValidTrips.size > 0 && entries.has('stop_times.txt')) {
-            await generateSegments(taskId, finalValidTrips);
-            await analyzeTimeSlots(taskId, finalValidTrips);
+            await generateSegments(taskId, finalValidTrips, filters.projectId);
+            await analyzeTimeSlots(taskId, finalValidTrips, filters.projectId);
         }
 
         const completionTask = importTasks.get(taskId);
         if (completionTask) {
             completionTask.status = 'completed';
             completionTask.progress = 100;
-            completionTask.message = 'Import completed successfuly.';
+            completionTask.message = 'Import completed successfully.';
             completionTask.details = {
                 importedRoutesCount: validRouteIds.size - skippedRoutes.length, // Approx
                 skippedRoutesCount: skippedRoutes.length,
@@ -642,7 +643,7 @@ async function processGtfsImport(taskId: string, filePath: string, filters: { se
 }
 
 // Helper to generate segments from imported trips
-async function generateSegments(taskId: string, tripIds: Set<string>) {
+async function generateSegments(taskId: string, tripIds: Set<string>, projectId: string) {
     const updateStatus = (msg: string) => {
         const task = importTasks.get(taskId);
         if (task) task.message = msg;
@@ -656,8 +657,8 @@ async function generateSegments(taskId: string, tripIds: Set<string>) {
     const processedSegments = new Set<string>(); // "start_id-end_id"
 
     const insertSegment = db.prepare(`
-        INSERT OR IGNORE INTO segments (segment_id, start_node_id, end_node_id, distance, travel_time, geometry)
-        VALUES (?, ?, ?, ?, ?, ?)
+        INSERT OR IGNORE INTO segments (segment_id, project_id, start_node_id, end_node_id, distance, travel_time, geometry)
+        VALUES (?, ?, ?, ?, ?, ?, ?)
     `);
 
     // Haversine formula for distance in meters
@@ -692,11 +693,11 @@ async function generateSegments(taskId: string, tripIds: Set<string>) {
                    st.arrival_time, st.departure_time, t.shape_id,
                    s.stop_lat, s.stop_lon
             FROM stop_times st
-            JOIN trips t ON st.trip_id = t.trip_id
-            JOIN stops s ON st.stop_id = s.stop_id
-            WHERE st.trip_id IN (${placeholders})
+            JOIN trips t ON st.trip_id = t.trip_id AND st.project_id = t.project_id
+            JOIN stops s ON st.stop_id = s.stop_id AND st.project_id = s.project_id
+            WHERE st.trip_id IN (${placeholders}) AND st.project_id = ?
             ORDER BY st.trip_id, st.stop_sequence
-        `).all(...chunk) as any[];
+        `).all(...chunk, projectId) as any[];
 
         const tripsMap = new Map<string, any[]>();
         rows.forEach(r => {
@@ -737,11 +738,11 @@ async function generateSegments(taskId: string, tripIds: Set<string>) {
                         const shapePoints = db.prepare(`
                             SELECT shape_pt_lat, shape_pt_lon
                             FROM shapes
-                            WHERE shape_id = ? 
+                            WHERE shape_id = ? AND project_id = ?
                               AND shape_dist_traveled >= ? 
                               AND shape_dist_traveled <= ?
                             ORDER BY shape_pt_sequence
-                         `).all(from.shape_id, from.shape_dist_traveled || 0, to.shape_dist_traveled || 9999999) as any[];
+                         `).all(from.shape_id, projectId, from.shape_dist_traveled || 0, to.shape_dist_traveled || 9999999) as any[];
 
                         if (shapePoints.length > 0) {
                             const coords = shapePoints.map(p => [p.shape_pt_lon, p.shape_pt_lat]);
@@ -770,7 +771,7 @@ async function generateSegments(taskId: string, tripIds: Set<string>) {
                         }
                     }
 
-                    insertSegment.run(uuidv4(), from.stop_id, to.stop_id, dist, travelTime, geom);
+                    insertSegment.run(uuidv4(), projectId, from.stop_id, to.stop_id, dist, travelTime, geom);
                 }
             }
         });
@@ -813,7 +814,7 @@ function secondsToTime(totalSeconds: number): string {
     return `${pad(h)}:${pad(m)}:${pad(s)}`;
 }
 
-async function analyzeTimeSlots(taskId: string, tripIds: Set<string>) {
+async function analyzeTimeSlots(taskId: string, tripIds: Set<string>, projectId: string) {
     const updateStatus = (msg: string) => {
         const task = importTasks.get(taskId);
         if (task) task.message = msg;
@@ -826,8 +827,7 @@ async function analyzeTimeSlots(taskId: string, tripIds: Set<string>) {
     if (tripIdArray.length === 0) return;
 
     // 1. Load Segments Lookup (StartNode-EndNode -> SegmentId)
-    // We need to know which segment corresponds to a stop pair
-    const segments = db.prepare('SELECT segment_id, start_node_id, end_node_id FROM segments').all() as any[];
+    const segments = db.prepare('SELECT segment_id, start_node_id, end_node_id FROM segments WHERE project_id = ?').all(projectId) as any[];
     const segmentMap = new Map<string, string>(); // "start-end" -> segment_id
     segments.forEach(s => {
         segmentMap.set(`${s.start_node_id}-${s.end_node_id}`, s.segment_id);
@@ -847,9 +847,9 @@ async function analyzeTimeSlots(taskId: string, tripIds: Set<string>) {
         const rows = db.prepare(`
             SELECT st.trip_id, st.stop_id, st.stop_sequence, st.arrival_time, st.departure_time
             FROM stop_times st
-            WHERE st.trip_id IN (${placeholders})
+            WHERE st.trip_id IN (${placeholders}) AND st.project_id = ?
             ORDER BY st.trip_id, st.stop_sequence
-        `).all(...chunk) as any[];
+        `).all(...chunk, projectId) as any[];
 
         // Group by Trip
         const tripsMap = new Map<string, any[]>();
@@ -886,9 +886,10 @@ async function analyzeTimeSlots(taskId: string, tripIds: Set<string>) {
 
     // 3. Generate Slots for each Segment
     const insertSlot = db.prepare(`
-        INSERT INTO segment_time_slots (id, segment_id, start_time, end_time, travel_time)
-        VALUES (?, ?, ?, ?, ?)
+        INSERT INTO segment_time_slots (id, segment_id, project_id, start_time, end_time, travel_time)
+        VALUES (?, ?, ?, ?, ?, ?)
     `);
+    const clearSlots = db.prepare('DELETE FROM segment_time_slots WHERE segment_id = ? AND project_id = ?');
 
     const transaction = db.transaction(() => {
         for (const [segId, events] of segmentEvents) {
@@ -913,40 +914,21 @@ async function analyzeTimeSlots(taskId: string, tripIds: Set<string>) {
 
             if (uniqueEvents.length === 0) continue;
 
-            // RLE (Run Length Encoding) logic
-            // We want to group continuous trips with SAME duration.
-            // Using a simple greedy approach:
-            // A slot starts at the time of the first trip in the group.
-            // It ends at the time of the *next* trip that has a DIFFERENT duration (or end of list).
+            clearSlots.run(segId, projectId);
 
+            // RLE (Run Length Encoding) logic
             let currentStart = uniqueEvents[0].time;
             let currentDuration = uniqueEvents[0].duration;
 
             for (let k = 1; k < uniqueEvents.length; k++) {
                 const e = uniqueEvents[k];
                 if (e.duration !== currentDuration) {
-                    // Close current slot
-                    // Slot is from currentStart to e.time
-                    insertSlot.run(uuidv4(), segId, secondsToTime(currentStart), secondsToTime(e.time), currentDuration);
-
-                    // Start new slot
+                    insertSlot.run(uuidv4(), segId, projectId, secondsToTime(currentStart), secondsToTime(e.time), currentDuration);
                     currentStart = e.time;
                     currentDuration = e.duration;
                 }
             }
-
-            // Close final slot
-            // To what time? The user example said "to the next time where it changes".
-            // Since there is no next change, we can extend it a bit or just cap it at the last trip time.
-            // Let's cap it at last trip time + travel time??
-            // Or just allow it to be valid "forever" (start_time -> 24:00+).
-            // For now, let's just use the last event time as the "start" of the last slot, 
-            // and maybe give it a theoretical generic end like 30 hours?
-            // Actually, if we just set End to currentStart + 1 hour (arbitrary) it might look weird.
-            // Let's set it to the max time found in this specific segment's events + 1 hour to cover stragglers?
-            // Or simpler: just use 30:00:00 (end of operational day usually).
-
-            insertSlot.run(uuidv4(), segId, secondsToTime(currentStart), "36:00:00", currentDuration);
+            insertSlot.run(uuidv4(), segId, projectId, secondsToTime(currentStart), "36:00:00", currentDuration);
         }
     });
 

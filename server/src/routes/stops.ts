@@ -2,6 +2,7 @@ import { FastifyInstance } from 'fastify';
 import db from '../db';
 import { randomUUID } from 'crypto';
 import { fetchRoute } from '../services/routing';
+import { resolveProjectRouting } from '../services/ProjectRoutingService';
 
 interface StopBody {
     stop_name: string;
@@ -113,6 +114,8 @@ export default async function stopsRoutes(fastify: FastifyInstance) {
 
             console.log(`Stop ${id} moved. Recalculating ${connectedSegments.length} segments...`);
 
+            const routing = await resolveProjectRouting(request.projectId);
+
             for (const seg of connectedSegments) {
                 // Determine start and end coordinates based on which node is the current one (it might be start or end or both if it's a loop)
                 // Actually, the query joins 'start' and 'end' tables, so we have fresh coordinates for OTHER nodes, but OLD coordinates for THIS node (because we just updated it in DB but maybe the join used the old value if transaction isolation... actually SQLite runs sequentially here typically).
@@ -131,8 +134,10 @@ export default async function stopsRoutes(fastify: FastifyInstance) {
                 }
 
                 try {
-                    const project = db.prepare('SELECT routing_engine_url FROM projects WHERE id = ?').get(request.projectId) as any;
-                    const routeData = await fetchRoute(startCoords, endCoords, project?.routing_engine_url);
+                    if (routing.mapAssigned && !routing.routingUrl) {
+                        continue;
+                    }
+                    const routeData = await fetchRoute(startCoords, endCoords, routing.routingUrl || undefined);
                     if (routeData) {
                         const updateStmt = db.prepare(`
                             UPDATE segments 

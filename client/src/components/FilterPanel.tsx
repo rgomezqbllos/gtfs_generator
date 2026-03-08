@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Filter, Search, X, ChevronDown, ChevronRight, Bus, MapPin, ArrowRightLeft, Route, Building } from 'lucide-react';
+import { Filter, Search, X, ChevronDown, ChevronRight, Bus, MapPin, ArrowRightLeft, Route, Building, RotateCcw } from 'lucide-react';
 import { clsx } from 'clsx';
 import { twMerge } from 'tailwind-merge';
 
@@ -14,11 +14,11 @@ export interface FilterState {
     selectedDirections: number[];
     selectedSegments: string[];
     selectedStops: string[];
-    selectedAgencies: string[]; // New
+    selectedAgencies: string[]; 
     routeSearch: string;
     segmentSearch: string;
     stopSearch: string;
-    agencySearch: string; // New
+    agencySearch: string; 
 }
 
 const FilterPanel: React.FC<FilterPanelProps> = ({ routesStructure, onFilterChange, className }) => {
@@ -117,18 +117,20 @@ const FilterPanel: React.FC<FilterPanelProps> = ({ routesStructure, onFilterChan
             <button
                 onClick={() => setIsOpen(true)}
                 className={twMerge(
-                    "bg-white p-3 rounded-xl shadow-lg hover:bg-gray-50 transition-all duration-200 border border-gray-100 flex items-center gap-2",
-                    activeCount > 0 && "ring-2 ring-blue-500 ring-offset-2",
+                    "glass-panel p-3.5 rounded-xl shadow-2xl hover:bg-white dark:hover:bg-slate-800 transition-all duration-300 pointer-events-auto group border utilitarian-border",
+                    activeCount > 0 && "ring-2 ring-primary ring-offset-2 dark:ring-offset-slate-900",
                     className
                 )}
-                title="Open Advanced Filters"
+                title="Abrir Filtros Avanzados"
             >
-                <Filter className={clsx("w-5 h-5", activeCount > 0 ? "text-blue-600" : "text-gray-600")} />
-                {activeCount > 0 && (
-                    <span className="bg-blue-600 text-white text-[10px] font-bold px-1.5 py-0.5 rounded-full min-w-[1.25rem] text-center">
-                        {activeCount}
-                    </span>
-                )}
+                <div className="relative">
+                    <Filter className={clsx("w-5 h-5 transition-colors", activeCount > 0 ? "text-primary" : "text-slate-500 group-hover:text-primary")} />
+                    {activeCount > 0 && (
+                        <span className="absolute -top-2 -right-2 bg-primary text-white text-[9px] font-bold h-4 min-w-[1rem] flex items-center justify-center px-1 rounded-full shadow-lg shadow-primary/20">
+                            {activeCount}
+                        </span>
+                    )}
+                </div>
             </button>
         );
     }
@@ -152,87 +154,95 @@ const FilterPanel: React.FC<FilterPanelProps> = ({ routesStructure, onFilterChan
     );
 
     return (
-        <div className={twMerge("bg-white rounded-xl shadow-2xl flex flex-col w-80 h-full max-h-[calc(100vh-4rem)] border border-gray-100 overflow-hidden animate-in slide-in-from-left-2 duration-200", className)}>
+        <div className={twMerge(
+            "glass-panel rounded-2xl shadow-[0_32px_64px_-16px_rgba(0,0,0,0.4)] flex flex-col w-80 h-full max-h-[calc(100vh-6rem)] border border-white/20 dark:border-slate-800 overflow-hidden animate-in slide-in-from-left-4 duration-500 ease-out-expo pointer-events-auto", 
+            className
+        )}>
 
             {/* Header */}
-            <div className="p-4 border-b border-gray-100 flex justify-between items-center bg-gray-50/50 backdrop-blur-sm">
+            <div className="p-5 border-b utilitarian-border flex justify-between items-center bg-slate-50/50 dark:bg-slate-900/30">
                 <div className="flex items-center gap-2">
-                    <Filter className="w-4 h-4 text-blue-600" />
-                    <span className="font-semibold text-gray-800">Filters</span>
-                    {activeCount > 0 && (
-                        <span className="bg-blue-100 text-blue-700 text-xs px-2 py-0.5 rounded-full font-medium">
-                            {activeCount} active
-                        </span>
-                    )}
+                    <Filter className="w-4 h-4 text-primary" />
+                    <span className="text-[13px] font-display font-bold text-slate-900 dark:text-white uppercase tracking-wider">Filtros de Red</span>
                 </div>
                 <div className="flex items-center gap-1">
                     {activeCount > 0 && (
                         <button
                             onClick={clearFilters}
-                            className="text-xs text-red-500 hover:text-red-700 font-medium px-2 py-1 rounded hover:bg-red-50 transition-colors"
+                            className="p-1.5 text-slate-400 hover:text-red-500 transition-colors"
+                            title="Resetear filtros"
                         >
-                            Reset
+                            <RotateCcw className="w-4 h-4" />
                         </button>
                     )}
-                    <button onClick={() => setIsOpen(false)} className="p-1 hover:bg-gray-200 rounded-full text-gray-400 hover:text-gray-600 transition-colors">
-                        <X className="w-4 h-4" />
+                    <button onClick={() => setIsOpen(false)} className="p-1.5 text-slate-400 hover:text-slate-900 dark:hover:text-white transition-colors">
+                        <X className="w-4 h-4" strokeWidth={2.5} />
                     </button>
                 </div>
             </div>
 
-            <div className="flex-1 overflow-y-auto p-4 space-y-4 scrollbar-thin scrollbar-thumb-gray-200">
+            <div className="flex-1 overflow-y-auto px-5 py-6 space-y-6 custom-scrollbar">
 
                 {/* AGENCIES SECTION */}
-                <div className="rounded-lg border border-gray-100 overflow-hidden">
+                <div className="space-y-3">
                     <button
                         onClick={() => toggleSection('agencies')}
-                        className="w-full flex items-center justify-between p-3 bg-gray-50 hover:bg-gray-100 transition-colors text-left"
+                        className="w-full flex items-center justify-between text-left group"
                     >
-                        <div className="flex items-center gap-2 text-sm font-medium text-gray-700">
-                            <Building className="w-4 h-4 text-gray-500" /> Agencies
+                        <div className="flex items-center gap-2 text-[10px] font-bold uppercase tracking-widest text-slate-500 group-hover:text-primary transition-colors">
+                            <Building className="w-3.5 h-3.5" /> Agencias
                         </div>
                         <div className="flex items-center gap-2">
-                            {filters.selectedAgencies.length > 0 && <span className="text-xs bg-gray-200 text-gray-700 px-1.5 rounded-full">{filters.selectedAgencies.length}</span>}
-                            {expandedSection === 'agencies' ? <ChevronDown className="w-3 h-3 text-gray-400" /> : <ChevronRight className="w-3 h-3 text-gray-400" />}
+                            {filters.selectedAgencies.length > 0 && (
+                                <span className="text-[10px] bg-primary/10 text-primary font-bold px-1.5 rounded-full">
+                                    {filters.selectedAgencies.length}
+                                </span>
+                            )}
+                            {expandedSection === 'agencies' ? <ChevronDown className="w-3 h-3 text-slate-400" /> : <ChevronRight className="w-3 h-3 text-slate-400" />}
                         </div>
                     </button>
 
                     {expandedSection === 'agencies' && (
-                        <div className="p-3 bg-white space-y-2">
+                        <div className="space-y-3 animate-in fade-in slide-in-from-top-1 duration-300">
                             <div className="relative">
-                                <Search className="w-3 h-3 absolute left-2 top-2.5 text-gray-400" />
+                                <Search className="w-3 h-3 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
                                 <input
                                     type="text"
-                                    placeholder="Search agencies..."
-                                    className="w-full pl-7 pr-2 py-1.5 text-xs bg-gray-50 border border-gray-200 rounded-md focus:outline-none focus:ring-1 focus:ring-blue-500 transition-shadow"
+                                    placeholder="Filtrar agencias..."
+                                    className="w-full pl-8 pr-3 py-1.5 text-[11px] bg-slate-100 dark:bg-slate-800 border utilitarian-border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary/20 transition-all font-medium"
                                     value={filters.agencySearch}
                                     onChange={e => updateFilters({ agencySearch: e.target.value })}
                                 />
                             </div>
-                            <div className="max-h-40 overflow-y-auto space-y-0.5">
+                            <div className="max-h-40 overflow-y-auto space-y-1 pr-1 custom-scrollbar">
                                 {visibleAgencies.map(agency => (
                                     <label
                                         key={agency}
-                                        className="flex items-center gap-2 px-2 py-1.5 rounded cursor-pointer hover:bg-gray-50 transition-colors"
+                                        className="flex items-center gap-2.5 px-2 py-2 rounded-lg cursor-pointer hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
                                     >
-                                        <input
-                                            type="checkbox"
-                                            className="w-3.5 h-3.5 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
-                                            checked={filters.selectedAgencies.includes(agency)}
-                                            onChange={() => {
-                                                const current = filters.selectedAgencies;
-                                                updateFilters({
-                                                    selectedAgencies: current.includes(agency)
-                                                        ? current.filter(a => a !== agency)
-                                                        : [...current, agency]
-                                                });
-                                            }}
-                                        />
-                                        <span className="text-xs font-medium text-gray-700 flex-1">{agency}</span>
+                                        <div className="relative flex items-center">
+                                            <input
+                                                type="checkbox"
+                                                className="peer appearance-none w-3.5 h-3.5 rounded border-2 border-slate-300 dark:border-slate-700 checked:bg-primary checked:border-primary transition-all cursor-pointer"
+                                                checked={filters.selectedAgencies.includes(agency)}
+                                                onChange={() => {
+                                                    const current = filters.selectedAgencies;
+                                                    updateFilters({
+                                                        selectedAgencies: current.includes(agency)
+                                                            ? current.filter(a => a !== agency)
+                                                            : [...current, agency]
+                                                    });
+                                                }}
+                                            />
+                                            <div className="absolute inset-0 pointer-events-none flex items-center justify-center text-white opacity-0 peer-checked:opacity-100 scale-50 peer-checked:scale-100 transition-all">
+                                                <svg className="w-2.5 h-2.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="4"><path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" /></svg>
+                                            </div>
+                                        </div>
+                                        <span className="text-xs font-semibold text-slate-700 dark:text-slate-300 truncate">{agency}</span>
                                     </label>
                                 ))}
                                 {visibleAgencies.length === 0 && (
-                                    <div className="text-xs text-gray-400 text-center py-2">No agencies found</div>
+                                    <div className="text-[10px] text-slate-400 text-center py-4 font-bold uppercase tracking-widest">Sin resultados</div>
                                 )}
                             </div>
                         </div>
@@ -240,41 +250,45 @@ const FilterPanel: React.FC<FilterPanelProps> = ({ routesStructure, onFilterChan
                 </div>
 
                 {/* ROUTES SECTION */}
-                <div className="rounded-lg border border-gray-100 overflow-hidden">
+                <div className="space-y-3">
                     <button
                         onClick={() => toggleSection('routes')}
-                        className="w-full flex items-center justify-between p-3 bg-gray-50 hover:bg-gray-100 transition-colors text-left"
+                        className="w-full flex items-center justify-between text-left group"
                     >
-                        <div className="flex items-center gap-2 text-sm font-medium text-gray-700">
-                            <Bus className="w-4 h-4 text-gray-500" /> Routes
+                        <div className="flex items-center gap-2 text-[10px] font-bold uppercase tracking-widest text-slate-500 group-hover:text-primary transition-colors">
+                            <Bus className="w-3.5 h-3.5" /> Rutas
                         </div>
                         <div className="flex items-center gap-2">
-                            {filters.selectedRoutes.length > 0 && <span className="text-xs bg-gray-200 text-gray-700 px-1.5 rounded-full">{filters.selectedRoutes.length}</span>}
-                            {expandedSection === 'routes' ? <ChevronDown className="w-3 h-3 text-gray-400" /> : <ChevronRight className="w-3 h-3 text-gray-400" />}
+                            {filters.selectedRoutes.length > 0 && (
+                                <span className="text-[10px] bg-primary/10 text-primary font-bold px-1.5 rounded-full">
+                                    {filters.selectedRoutes.length}
+                                </span>
+                            )}
+                            {expandedSection === 'routes' ? <ChevronDown className="w-3 h-3 text-slate-400" /> : <ChevronRight className="w-3 h-3 text-slate-400" />}
                         </div>
                     </button>
 
                     {expandedSection === 'routes' && (
-                        <div className="p-3 bg-white space-y-2">
+                        <div className="space-y-3 animate-in fade-in slide-in-from-top-1 duration-300">
                             <div className="relative">
-                                <Search className="w-3 h-3 absolute left-2 top-2.5 text-gray-400" />
+                                <Search className="w-3 h-3 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
                                 <input
                                     type="text"
-                                    placeholder="Find route..."
-                                    className="w-full pl-7 pr-2 py-1.5 text-xs bg-gray-50 border border-gray-200 rounded-md focus:outline-none focus:ring-1 focus:ring-blue-500 transition-shadow"
+                                    placeholder="Buscar ruta..."
+                                    className="w-full pl-8 pr-3 py-1.5 text-[11px] bg-slate-100 dark:bg-slate-800 border utilitarian-border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary/20 transition-all font-medium"
                                     value={filters.routeSearch}
                                     onChange={e => updateFilters({ routeSearch: e.target.value })}
                                 />
                             </div>
-                            <div className="max-h-40 overflow-y-auto space-y-0.5">
+                            <div className="max-h-48 overflow-y-auto space-y-1 pr-1 custom-scrollbar">
                                 {visibleRoutes.map(route => (
                                     <label
                                         key={route.route_id}
-                                        className="flex items-center gap-2 px-2 py-1.5 rounded cursor-pointer hover:bg-gray-50 transition-colors"
+                                        className="flex items-center gap-3 px-2 py-2 rounded-lg cursor-pointer hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
                                     >
                                         <input
                                             type="checkbox"
-                                            className="w-3.5 h-3.5 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                                            className="w-3.5 h-3.5 rounded border-2 border-slate-300 dark:border-slate-700 text-primary focus:ring-primary"
                                             checked={filters.selectedRoutes.includes(route.route_id)}
                                             onChange={() => {
                                                 const current = filters.selectedRoutes;
@@ -286,11 +300,13 @@ const FilterPanel: React.FC<FilterPanelProps> = ({ routesStructure, onFilterChan
                                             }}
                                         />
                                         <div
-                                            className="w-2 h-2 rounded-full shrink-0"
+                                            className="w-2 h-2 rounded-sm shrink-0 shadow-sm"
                                             style={{ backgroundColor: `#${route.route_color}` }}
                                         />
-                                        <span className="text-xs font-medium text-gray-700 flex-1">{route.route_short_name}</span>
-                                        <span className="text-[10px] text-gray-400 truncate max-w-[100px]">{route.route_long_name}</span>
+                                        <div className="flex flex-col min-w-0">
+                                            <span className="text-[11px] font-bold text-slate-800 dark:text-slate-200 truncate">{route.route_short_name}</span>
+                                            <span className="text-[9px] text-slate-400 font-medium truncate">{route.route_long_name}</span>
+                                        </div>
                                     </label>
                                 ))}
                             </div>
@@ -299,21 +315,21 @@ const FilterPanel: React.FC<FilterPanelProps> = ({ routesStructure, onFilterChan
                 </div>
 
                 {/* DIRECTION SECTION */}
-                <div className="rounded-lg border border-gray-100 overflow-hidden">
+                <div className="space-y-3">
                     <button
                         onClick={() => toggleSection('directions')}
-                        className="w-full flex items-center justify-between p-3 bg-gray-50 hover:bg-gray-100 transition-colors text-left"
+                        className="w-full flex items-center justify-between text-left group"
                     >
-                        <div className="flex items-center gap-2 text-sm font-medium text-gray-700">
-                            <ArrowRightLeft className="w-4 h-4 text-gray-500" /> Direction
+                        <div className="flex items-center gap-2 text-[10px] font-bold uppercase tracking-widest text-slate-500 group-hover:text-primary transition-colors">
+                            <ArrowRightLeft className="w-3.5 h-3.5" /> Orientación
                         </div>
                         <div className="flex items-center gap-2">
-                            {filters.selectedDirections.length > 0 && <span className="text-xs bg-gray-200 text-gray-700 px-1.5 rounded-full">{filters.selectedDirections.length}</span>}
-                            {expandedSection === 'directions' ? <ChevronDown className="w-3 h-3 text-gray-400" /> : <ChevronRight className="w-3 h-3 text-gray-400" />}
+                            {filters.selectedDirections.length > 0 && <span className="text-[10px] bg-primary/10 text-primary font-bold px-1.5 rounded-full">{filters.selectedDirections.length}</span>}
+                            {expandedSection === 'directions' ? <ChevronDown className="w-3 h-3 text-slate-400" /> : <ChevronRight className="w-3 h-3 text-slate-400" />}
                         </div>
                     </button>
                     {expandedSection === 'directions' && (
-                        <div className="p-3 bg-white flex gap-2">
+                        <div className="flex flex-col gap-2 p-1 animate-in fade-in slide-in-from-top-1 duration-300">
                             {[0, 1].map(dir => (
                                 <button
                                     key={dir}
@@ -326,14 +342,17 @@ const FilterPanel: React.FC<FilterPanelProps> = ({ routesStructure, onFilterChan
                                         });
                                     }}
                                     className={clsx(
-                                        "flex-1 py-2 px-3 rounded-md text-xs font-medium border transition-all duration-200 flex items-center justify-center gap-1",
+                                        "w-full py-2 px-3 rounded-xl text-[10px] font-bold uppercase tracking-widest border transition-all duration-300 flex items-center justify-between group",
                                         filters.selectedDirections.includes(dir)
-                                            ? "bg-blue-50 border-blue-200 text-blue-700 shadow-sm"
-                                            : "bg-white border-gray-100 text-gray-600 hover:border-gray-300 hover:bg-gray-50"
+                                            ? "bg-primary border-primary text-white shadow-lg shadow-primary/20"
+                                            : "bg-white dark:bg-slate-800 border-slate-200 dark:border-slate-700 text-slate-500 hover:border-slate-300 dark:hover:border-slate-600"
                                     )}
                                 >
-                                    <div className={clsx("w-2 h-2 rounded-full", dir === 0 ? "bg-emerald-400" : "bg-orange-400")} />
-                                    {dir === 0 ? 'Outbound (Ida)' : 'Inbound (Vuelta)'}
+                                    <span>{dir === 0 ? 'Trayecto Ida' : 'Trayecto Vuelta'}</span>
+                                    <div className={clsx(
+                                        "w-1.5 h-1.5 rounded-full", 
+                                        filters.selectedDirections.includes(dir) ? "bg-white" : (dir === 0 ? "bg-emerald-400" : "bg-primary")
+                                    )} />
                                 </button>
                             ))}
                         </div>
@@ -341,41 +360,41 @@ const FilterPanel: React.FC<FilterPanelProps> = ({ routesStructure, onFilterChan
                 </div>
 
                 {/* STOPS SECTION */}
-                <div className="rounded-lg border border-gray-100 overflow-hidden">
+                <div className="space-y-3">
                     <button
                         onClick={() => toggleSection('stops')}
-                        className="w-full flex items-center justify-between p-3 bg-gray-50 hover:bg-gray-100 transition-colors text-left"
+                        className="w-full flex items-center justify-between text-left group"
                     >
-                        <div className="flex items-center gap-2 text-sm font-medium text-gray-700">
-                            <MapPin className="w-4 h-4 text-gray-500" /> Stops
+                        <div className="flex items-center gap-2 text-[10px] font-bold uppercase tracking-widest text-slate-500 group-hover:text-primary transition-colors">
+                            <MapPin className="w-3.5 h-3.5" /> Paradas
                         </div>
                         <div className="flex items-center gap-2">
-                            {filters.selectedStops.length > 0 && <span className="text-xs bg-gray-200 text-gray-700 px-1.5 rounded-full">{filters.selectedStops.length}</span>}
-                            {expandedSection === 'stops' ? <ChevronDown className="w-3 h-3 text-gray-400" /> : <ChevronRight className="w-3 h-3 text-gray-400" />}
+                            {filters.selectedStops.length > 0 && <span className="text-[10px] bg-primary/10 text-primary font-bold px-1.5 rounded-full">{filters.selectedStops.length}</span>}
+                            {expandedSection === 'stops' ? <ChevronDown className="w-3 h-3 text-slate-400" /> : <ChevronRight className="w-3 h-3 text-slate-400" />}
                         </div>
                     </button>
 
                     {expandedSection === 'stops' && (
-                        <div className="p-3 bg-white space-y-2">
+                        <div className="space-y-3 animate-in fade-in slide-in-from-top-1 duration-300">
                             <div className="relative">
-                                <Search className="w-3 h-3 absolute left-2 top-2.5 text-gray-400" />
+                                <Search className="w-3 h-3 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
                                 <input
                                     type="text"
-                                    placeholder="Search stops..."
-                                    className="w-full pl-7 pr-2 py-1.5 text-xs bg-gray-50 border border-gray-200 rounded-md focus:outline-none focus:ring-1 focus:ring-blue-500 transition-shadow"
+                                    placeholder="Buscar paradas..."
+                                    className="w-full pl-8 pr-3 py-1.5 text-[11px] bg-slate-100 dark:bg-slate-800 border utilitarian-border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary/20 transition-all font-medium"
                                     value={filters.stopSearch}
                                     onChange={e => updateFilters({ stopSearch: e.target.value })}
                                 />
                             </div>
-                            <div className="max-h-40 overflow-y-auto space-y-0.5">
+                            <div className="max-h-40 overflow-y-auto space-y-1 pr-1 custom-scrollbar">
                                 {visibleStops.slice(0, 50).map(stop => (
                                     <label
                                         key={stop.stop_id}
-                                        className="flex items-center gap-2 px-2 py-1.5 rounded cursor-pointer hover:bg-gray-50 transition-colors"
+                                        className="flex items-center gap-2.5 px-2 py-2 rounded-lg cursor-pointer hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
                                     >
                                         <input
                                             type="checkbox"
-                                            className="w-3.5 h-3.5 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                                            className="w-3.5 h-3.5 rounded border-2 border-slate-300 dark:border-slate-700 text-primary focus:ring-primary transition-all"
                                             checked={filters.selectedStops.includes(stop.stop_id)}
                                             onChange={() => {
                                                 const current = filters.selectedStops;
@@ -386,7 +405,7 @@ const FilterPanel: React.FC<FilterPanelProps> = ({ routesStructure, onFilterChan
                                                 });
                                             }}
                                         />
-                                        <span className="text-xs text-gray-700 truncate">{stop.stop_name}</span>
+                                        <span className="text-[11px] font-semibold text-slate-700 dark:text-slate-300 truncate">{stop.stop_name}</span>
                                     </label>
                                 ))}
                             </div>
@@ -395,41 +414,41 @@ const FilterPanel: React.FC<FilterPanelProps> = ({ routesStructure, onFilterChan
                 </div>
 
                 {/* SEGMENTS SECTION */}
-                <div className="rounded-lg border border-gray-100 overflow-hidden">
+                <div className="space-y-3">
                     <button
                         onClick={() => toggleSection('segments')}
-                        className="w-full flex items-center justify-between p-3 bg-gray-50 hover:bg-gray-100 transition-colors text-left"
+                        className="w-full flex items-center justify-between text-left group"
                     >
-                        <div className="flex items-center gap-2 text-sm font-medium text-gray-700">
-                            <Route className="w-4 h-4 text-gray-500" /> Segments
+                        <div className="flex items-center gap-2 text-[10px] font-bold uppercase tracking-widest text-slate-500 group-hover:text-primary transition-colors">
+                            <Route className="w-3.5 h-3.5" /> Aristas
                         </div>
                         <div className="flex items-center gap-2">
-                            {filters.selectedSegments.length > 0 && <span className="text-xs bg-gray-200 text-gray-700 px-1.5 rounded-full">{filters.selectedSegments.length}</span>}
-                            {expandedSection === 'segments' ? <ChevronDown className="w-3 h-3 text-gray-400" /> : <ChevronRight className="w-3 h-3 text-gray-400" />}
+                            {filters.selectedSegments.length > 0 && <span className="text-[10px] bg-primary/10 text-primary font-bold px-1.5 rounded-full">{filters.selectedSegments.length}</span>}
+                            {expandedSection === 'segments' ? <ChevronDown className="w-3 h-3 text-slate-400" /> : <ChevronRight className="w-3 h-3 text-slate-400" />}
                         </div>
                     </button>
 
                     {expandedSection === 'segments' && (
-                        <div className="p-3 bg-white space-y-2">
+                        <div className="space-y-3 animate-in fade-in slide-in-from-top-1 duration-300">
                             <div className="relative">
-                                <Search className="w-3 h-3 absolute left-2 top-2.5 text-gray-400" />
+                                <Search className="w-3 h-3 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
                                 <input
                                     type="text"
-                                    placeholder="Origin or destination..."
-                                    className="w-full pl-7 pr-2 py-1.5 text-xs bg-gray-50 border border-gray-200 rounded-md focus:outline-none focus:ring-1 focus:ring-blue-500 transition-shadow"
+                                    placeholder="Origen o destino..."
+                                    className="w-full pl-8 pr-3 py-1.5 text-[11px] bg-slate-100 dark:bg-slate-800 border utilitarian-border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary/20 transition-all font-medium"
                                     value={filters.segmentSearch}
                                     onChange={e => updateFilters({ segmentSearch: e.target.value })}
                                 />
                             </div>
-                            <div className="max-h-40 overflow-y-auto space-y-0.5">
+                            <div className="max-h-40 overflow-y-auto space-y-1 pr-1 custom-scrollbar">
                                 {visibleSegments.slice(0, 50).map(seg => (
                                     <label
                                         key={seg.segment_id}
-                                        className="flex items-center gap-2 px-2 py-1.5 rounded cursor-pointer hover:bg-gray-50 transition-colors"
+                                        className="flex items-center gap-2.5 px-2 py-2 rounded-lg cursor-pointer hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
                                     >
                                         <input
                                             type="checkbox"
-                                            className="w-3.5 h-3.5 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                                            className="w-3.5 h-3.5 rounded border-2 border-slate-300 dark:border-slate-700 text-primary focus:ring-primary"
                                             checked={filters.selectedSegments.includes(seg.segment_id)}
                                             onChange={() => {
                                                 const current = filters.selectedSegments;
@@ -440,7 +459,7 @@ const FilterPanel: React.FC<FilterPanelProps> = ({ routesStructure, onFilterChan
                                                 });
                                             }}
                                         />
-                                        <span className="text-xs text-gray-700 truncate">{seg.name}</span>
+                                        <span className="text-[11px] font-semibold text-slate-700 dark:text-slate-300 truncate">{seg.name}</span>
                                     </label>
                                 ))}
                             </div>
@@ -448,6 +467,13 @@ const FilterPanel: React.FC<FilterPanelProps> = ({ routesStructure, onFilterChan
                     )}
                 </div>
 
+            </div>
+            
+            {/* Action Footer (Optional placeholder for future save/export filters) */}
+            <div className="p-4 border-t utilitarian-border bg-slate-50/50 dark:bg-slate-900/30">
+                 <p className="text-[9px] font-bold text-slate-400 uppercase tracking-widest text-center">
+                    Filtrado Espacial Activo
+                 </p>
             </div>
         </div>
     );

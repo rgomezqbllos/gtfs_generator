@@ -1,6 +1,6 @@
 import * as React from 'react';
 import type { Route, Stop, Segment } from '../types';
-import { ArrowLeft, Clock, Ruler, Calendar, Bus, Trash2, Edit2, AlertCircle, Plus } from 'lucide-react';
+import { ArrowLeft, Clock, Ruler, Calendar, Bus, Trash2, Edit2, AlertCircle, Plus, ChevronRight, Save, X, RotateCcw, Activity } from 'lucide-react';
 import { clsx } from 'clsx';
 import Draggable from './UI/Draggable';
 import { useEditor } from '../context/EditorContext';
@@ -11,10 +11,9 @@ import TimeSlotsManager from './TimeSlotsManager';
 interface RouteDetailsPanelProps {
     route: Route;
     onClose: () => void;
-    onBack?: () => void; // Optional if opened directly
+    onBack?: () => void; 
     onOpenTrips?: () => void;
     onOpenCalendar?: () => void;
-    mapBounds?: { _ne: { lng: number, lat: number }, _sw: { lng: number, lat: number } } | null;
 }
 
 interface ProcessedSegment {
@@ -25,7 +24,7 @@ interface ProcessedSegment {
     accumulatedTime: number;
 }
 
-const RouteDetailsPanel: React.FC<RouteDetailsPanelProps> = ({ route, onClose, onBack, onOpenTrips, onOpenCalendar, mapBounds }) => {
+const RouteDetailsPanel: React.FC<RouteDetailsPanelProps> = ({ route, onClose, onBack, onOpenTrips, onOpenCalendar }) => {
     const { startPicking, cancelPicking } = useEditor();
     const [activeTab, setActiveTab] = React.useState<0 | 1>(0);
     const [pathStops, setPathStops] = React.useState<string[]>([]);
@@ -33,14 +32,12 @@ const RouteDetailsPanel: React.FC<RouteDetailsPanelProps> = ({ route, onClose, o
     const [allSegments, setAllSegments] = React.useState<Segment[]>([]);
     const [loading, setLoading] = React.useState(true);
     const [isEditing, setIsEditing] = React.useState(false);
-    const [showTimeSlots, setShowTimeSlots] = React.useState(false); // New State
+    const [showTimeSlots, setShowTimeSlots] = React.useState(false); 
 
-    // Add Segment State
     const [isAdding, setIsAdding] = React.useState<'prepend' | 'append' | null>(null);
 
-    // Time Management State
-    const [targetDuration, setTargetDuration] = React.useState<number | null>(null); // in minutes
-    const [targetSpeed, setTargetSpeed] = React.useState<number | null>(null); // in km/h
+    const [targetDuration, setTargetDuration] = React.useState<number | null>(null); 
+    const [targetSpeed, setTargetSpeed] = React.useState<number | null>(null); 
 
     const fetchData = React.useCallback(async () => {
         setLoading(true);
@@ -120,63 +117,7 @@ const RouteDetailsPanel: React.FC<RouteDetailsPanelProps> = ({ route, onClose, o
         return processed;
     }, [pathStops, allSegments, stops]);
 
-    // Available segments to add based on current context
-    const availableSegments = React.useMemo(() => {
-        if (!isAdding) return [];
 
-        // Filter out empty segments for route creation
-        const revenueSegments = allSegments.filter(s => s.type !== 'empty');
-
-        if (routeSegments.length === 0) {
-            // If empty, prioritize segments within map bounds!
-            let candidates = revenueSegments;
-
-            if (mapBounds) {
-                const { _ne, _sw } = mapBounds;
-                candidates = candidates.filter(seg => {
-                    const start = stops.find(s => s.stop_id === seg.start_node_id);
-                    if (!start) return false;
-
-                    return (
-                        start.stop_lat <= _ne.lat &&
-                        start.stop_lat >= _sw.lat &&
-                        start.stop_lon <= _ne.lng &&
-                        start.stop_lon >= _sw.lng
-                    );
-                });
-            }
-            // If filtering results in 0, fallback to all (or keep 0 to properly "no segments found in view")
-            // Better to show "No segments in view" than all million of them.
-
-            return candidates.map(seg => {
-                const start = stops.find(s => s.stop_id === seg.start_node_id);
-                const end = stops.find(s => s.stop_id === seg.end_node_id);
-                return { ...seg, startName: start?.stop_name, endName: end?.stop_name };
-            });
-        }
-
-        if (isAdding === 'prepend') {
-            const firstStopId = pathStops[0];
-            return revenueSegments
-                .filter(s => s.end_node_id === firstStopId)
-                .map(seg => {
-                    const start = stops.find(s => s.stop_id === seg.start_node_id);
-                    const end = stops.find(s => s.stop_id === seg.end_node_id);
-                    return { ...seg, startName: start?.stop_name, endName: end?.stop_name };
-                });
-        } else {
-            const lastStopId = pathStops[pathStops.length - 1];
-            return revenueSegments
-                .filter(s => s.start_node_id === lastStopId)
-                .map(seg => {
-                    const start = stops.find(s => s.stop_id === seg.start_node_id);
-                    const end = stops.find(s => s.stop_id === seg.end_node_id);
-                    return { ...seg, startName: start?.stop_name, endName: end?.stop_name };
-                });
-        }
-    }, [isAdding, routeSegments, pathStops, allSegments, stops, mapBounds]);
-
-    // Toggle Adding Mode (List vs Map)
     const handleStartAdding = (type: 'prepend' | 'append') => {
         if (isAdding === type) {
             setIsAdding(null);
@@ -186,47 +127,40 @@ const RouteDetailsPanel: React.FC<RouteDetailsPanelProps> = ({ route, onClose, o
 
         setIsAdding(type);
 
-        // Start Map Picking
         startPicking('segment', (segmentId) => {
             const seg = allSegments.find(s => s.segment_id === segmentId);
             if (!seg) return;
 
             if (seg.type === 'empty') {
-                alert("Cannot add empty segments to a route.");
+                alert("No se pueden añadir aristas de servicio vacío a una ruta comercial.");
                 return;
             }
 
-            // Validate Continuity
             let isValid = false;
             if (routeSegments.length === 0) {
                 isValid = true;
             } else if (type === 'prepend') {
-                // Prepend: Segment End must match Path Start
                 const firstStopId = pathStops[0];
                 if (seg.end_node_id === firstStopId) isValid = true;
             } else {
-                // Append: Segment Start must match Path End
                 const lastStopId = pathStops[pathStops.length - 1];
                 if (seg.start_node_id === lastStopId) isValid = true;
             }
 
             if (isValid) {
                 handleSelectSegment(seg);
-                // Picking automatically cancels after selection usually, but we handle logic
             } else {
-                alert("Invalid segment: Does not connect to the route endpoint.");
+                alert("Segmento Inválido: No conecta con el nodo actual de la ruta.");
             }
         });
     };
 
-    // Cleanup picking on unmount or close
     React.useEffect(() => {
         return () => cancelPicking();
     }, []);
 
     const handleSavePath = async (newStopIds: string[], updatedSegments: Segment[] = []) => {
         try {
-            // Save Path
             const res = await fetch(`${API_URL}/routes/${route.route_id}/path`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
@@ -236,9 +170,8 @@ const RouteDetailsPanel: React.FC<RouteDetailsPanelProps> = ({ route, onClose, o
                 })
             });
 
-            if (!res.ok) throw new Error("Failed to update path");
+            if (!res.ok) throw new Error("Error al guardar el trayecto");
 
-            // Save Updated Segments (if any time redistribution happened)
             if (updatedSegments.length > 0) {
                 await Promise.all(updatedSegments.map(seg =>
                     fetch(`${API_URL}/segments/${seg.segment_id}`, {
@@ -248,7 +181,6 @@ const RouteDetailsPanel: React.FC<RouteDetailsPanelProps> = ({ route, onClose, o
                     })
                 ));
 
-                // Update local state to reflect changes
                 setAllSegments(prev => prev.map(s => {
                     const updated = updatedSegments.find(u => u.segment_id === s.segment_id);
                     return updated ? updated : s;
@@ -257,11 +189,11 @@ const RouteDetailsPanel: React.FC<RouteDetailsPanelProps> = ({ route, onClose, o
 
             setPathStops(newStopIds);
             setIsAdding(null);
-            cancelPicking(); // Stop picking after save
+            cancelPicking(); 
 
         } catch (e) {
             console.error(e);
-            alert("Error saving path");
+            alert("Error al sincronizar recorrido");
         }
     }
 
@@ -271,7 +203,6 @@ const RouteDetailsPanel: React.FC<RouteDetailsPanelProps> = ({ route, onClose, o
 
         let accumulatedTime = 0;
         return segments.map((s, index) => {
-            // For the last segment, assign the remaining time to ensure exact total
             if (index === segments.length - 1) {
                 return { ...s, travel_time: Math.max(0, totalTimeSeconds - accumulatedTime) };
             }
@@ -291,7 +222,6 @@ const RouteDetailsPanel: React.FC<RouteDetailsPanelProps> = ({ route, onClose, o
         setTargetDuration(newTimeMinutes);
         const totalTimeSeconds = newTimeMinutes * 60;
 
-        // Calculate implied speed
         const currentRouteSegments = routeSegments.map(rs => rs.segment);
         const totalDist = currentRouteSegments.reduce((sum, s) => sum + (s.distance || 0), 0);
         if (totalDist > 0) {
@@ -300,7 +230,6 @@ const RouteDetailsPanel: React.FC<RouteDetailsPanelProps> = ({ route, onClose, o
         }
 
         const updatedSegments = recalculateSegmentTimes(currentRouteSegments, totalTimeSeconds);
-        // Optimistically update local state for preview
         setAllSegments(prev => prev.map(s => {
             const updated = updatedSegments.find(u => u.segment_id === s.segment_id);
             return updated ? updated : s;
@@ -319,7 +248,6 @@ const RouteDetailsPanel: React.FC<RouteDetailsPanelProps> = ({ route, onClose, o
             setTargetDuration(timeMinutes);
 
             const updatedSegments = recalculateSegmentTimes(currentRouteSegments, timeMinutes * 60);
-            // Optimistically update local state for preview
             setAllSegments(prev => prev.map(s => {
                 const updated = updatedSegments.find(u => u.segment_id === s.segment_id);
                 return updated ? updated : s;
@@ -327,19 +255,13 @@ const RouteDetailsPanel: React.FC<RouteDetailsPanelProps> = ({ route, onClose, o
         }
     };
 
-    // Effect: Enforce target duration when segments change (if set)
-    // We only enforce this if the user has explicitly set a target duration/speed
-    // preventing drift when adding/removing segments.
     React.useEffect(() => {
         if (targetDuration && routeSegments.length > 0) {
             const currentSegments = routeSegments.map(rs => rs.segment);
             const currentTotalTime = currentSegments.reduce((sum, s) => sum + (s.travel_time || 0), 0);
 
-            // Allow for small rounding differences (1 minute)
             if (Math.abs(currentTotalTime - (targetDuration * 60)) > 60) {
                 const updated = recalculateSegmentTimes(currentSegments, targetDuration * 60);
-                // We need to be careful not to create an infinite loop here.
-                // Only update if actual times are different.
                 const hasChanges = updated.some((u, i) => u.travel_time !== currentSegments[i].travel_time);
 
                 if (hasChanges) {
@@ -350,8 +272,7 @@ const RouteDetailsPanel: React.FC<RouteDetailsPanelProps> = ({ route, onClose, o
                 }
             }
         }
-    }, [routeSegments.length, targetDuration]); // Only trigger on length change (add/remove) or target change
-
+    }, [routeSegments.length, targetDuration]); 
 
     const handleRemoveSegment = (index: number) => {
         if (index !== 0 && index !== routeSegments.length - 1) {
@@ -365,19 +286,8 @@ const RouteDetailsPanel: React.FC<RouteDetailsPanelProps> = ({ route, onClose, o
             newStopIds.pop();
         }
 
-        // If we have a target duration, we need to redistribute the SAME total time across FEWER segments?
-        // OR does the user want the time to decrease? 
-        // The requirement says: "si el usuario añade otro segmento por ejemplo, el tiempo ingresado por el usuario se mantendrá"
-        // Implicitly, if they remove one, the time should probably also be maintained if they set a fixed time?
-        // However, usually removing a segment shortens the route. 
-        // Let's assume "Global Time Lock" behavior: If targetDuration is set, we redistribute that time across remaining segments.
-        // If it's NOT set, we just let the time drop.
-
         let segmentsToUpdate: Segment[] = [];
         if (targetDuration) {
-            // We need to calculate what the NEW segments would be
-            // routeSegments is current state *before* removal. 
-            // We need to simulate the removal from allSegments or routeSegments to calculate redistribution.
             const remainingSegments = routeSegments
                 .filter((_, i) => i !== index)
                 .map(r => r.segment);
@@ -421,230 +331,227 @@ const RouteDetailsPanel: React.FC<RouteDetailsPanelProps> = ({ route, onClose, o
     };
 
     return (
-        <Draggable className="absolute top-10 right-10 w-[500px] bg-white dark:bg-gray-900 shadow-2xl rounded-2xl flex flex-col border border-gray-200 dark:border-gray-800 z-40 max-h-[85vh] animate-in slide-in-from-right-10 duration-300">
-            {/* Header */}
-            <div className="drag-handle cursor-move bg-gray-50 dark:bg-gray-800/80 p-6 rounded-t-2xl border-b border-gray-200 dark:border-gray-700">
-                <div className="flex justify-between items-start mb-4">
-                    <h2 className="text-xl font-bold text-gray-900 dark:text-white flex items-center gap-3">
-                        <span className="flex items-center justify-center w-8 h-8 rounded-lg text-white text-xs" style={{ backgroundColor: `#${route.route_color}` }}>
-                            {route.route_short_name}
-                        </span>
-                        Route Management
-                    </h2>
+        <Draggable className="absolute top-10 right-10 w-[520px] glass-panel shadow-[0_40px_80px_-20px_rgba(0,0,0,0.5)] rounded-3xl flex flex-col border border-white/20 dark:border-slate-800 z-40 max-h-[90vh] animate-in slide-in-from-right-10 duration-500 ease-out-expo pointer-events-auto overflow-hidden">
+            {/* Header Area */}
+            <div className="drag-handle cursor-move bg-slate-50/80 dark:bg-slate-900/80 backdrop-blur-md p-8 border-b utilitarian-border">
+                <div className="flex justify-between items-start mb-6">
+                    <div className="flex items-center gap-4">
+                        <div className="relative group">
+                             <div 
+                                className="w-12 h-12 rounded-2xl shadow-lg border-2 border-white dark:border-slate-800 flex items-center justify-center font-display font-black text-lg transition-transform hover:scale-110" 
+                                style={{ backgroundColor: `#${route.route_color}`, color: `#${route.route_text_color}` }}
+                             >
+                                {route.route_short_name}
+                             </div>
+                             <div className="absolute -bottom-1 -right-1 bg-white dark:bg-slate-900 p-1 rounded-full border utilitarian-border">
+                                <Activity size={10} className="text-primary" />
+                             </div>
+                        </div>
+                        <div>
+                            <h2 className="text-2xl font-display font-bold text-slate-900 dark:text-white tracking-tight leading-none mb-1">
+                                Detalle de Ruta
+                            </h2>
+                            <p className="text-[11px] font-bold text-slate-400 uppercase tracking-[0.2em]">Operational Insights</p>
+                        </div>
+                    </div>
+                    
                     <div className="flex gap-2">
                         {onBack && (
-                            <button onClick={onBack} className="p-2 text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 rounded-full hover:bg-white dark:hover:bg-gray-700 transition-colors">
-                                <ArrowLeft size={20} />
+                            <button onClick={onBack} className="p-2.5 text-slate-400 hover:text-primary rounded-xl hover:bg-white dark:hover:bg-slate-800 border-none transition-all">
+                                <ArrowLeft size={18} />
                             </button>
                         )}
-                        <button onClick={onClose} className="p-2 text-gray-400 hover:text-red-500 rounded-full hover:bg-white dark:hover:bg-gray-700 transition-colors">
-                            <span className="text-xl font-bold">×</span>
+                        <button onClick={onClose} className="p-2.5 text-slate-400 hover:text-red-500 rounded-xl hover:bg-white dark:hover:bg-slate-800 transition-all">
+                            <X size={20} strokeWidth={2.5} />
                         </button>
                     </div>
                 </div>
 
-                <div className="grid grid-cols-2 gap-4 text-sm mb-4">
+                <div className="grid grid-cols-2 gap-8 mb-8">
                     <div>
-                        <span className="text-xs font-semibold text-gray-500 uppercase tracking-wider block">Route Name</span>
-                        <div className="font-medium text-gray-900 dark:text-gray-200 truncate" title={route.route_long_name}>
+                        <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest block mb-2 underline decoration-primary/40 underline-offset-4">Servicio Comercial</span>
+                        <div className="font-bold text-slate-900 dark:text-gray-100 text-[15px] leading-tight" title={route.route_long_name}>
                             {route.route_long_name}
                         </div>
                     </div>
                     <div>
-                        <span className="text-xs font-semibold text-gray-500 uppercase tracking-wider block">Agency</span>
-                        <div className="font-medium text-gray-900 dark:text-gray-200">
-                            {route.agency_name || 'N/A'}
+                        <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest block mb-2 underline decoration-primary/40 underline-offset-4">Agencia Operativa</span>
+                        <div className="font-bold text-slate-900 dark:text-gray-100 text-[15px]">
+                            {route.agency_name || 'Sin Asignar'}
                         </div>
                     </div>
                 </div>
 
-                {/* Tabs */}
-                <div className="flex p-1 bg-gray-200 dark:bg-gray-700/50 rounded-lg">
+                {/* Refined Tabs */}
+                <div className="flex p-1.5 bg-slate-100 dark:bg-slate-800/80 rounded-[18px] border utilitarian-border">
                     <button
                         onClick={() => { if (!isEditing) { setActiveTab(0); setIsAdding(null); } }}
                         disabled={isEditing}
                         className={clsx(
-                            "flex-1 py-2 text-sm font-bold rounded-md transition-all",
+                            "flex-1 py-2.5 text-[11px] font-bold uppercase tracking-widest rounded-[12px] transition-all",
                             activeTab === 0
-                                ? "bg-white dark:bg-gray-800 text-blue-600 dark:text-blue-400 shadow-sm"
-                                : "text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-200",
+                                ? "bg-white dark:bg-slate-700 text-primary shadow-sm ring-1 ring-slate-200 dark:ring-slate-600"
+                                : "text-slate-500 hover:text-slate-900 dark:hover:text-slate-200",
                             isEditing && "opacity-50 cursor-not-allowed"
                         )}
                     >
-                        Sentido Ida
+                        Trayecto Ida
                     </button>
                     <button
                         onClick={() => { if (!isEditing) { setActiveTab(1); setIsAdding(null); } }}
                         disabled={isEditing}
                         className={clsx(
-                            "flex-1 py-2 text-sm font-bold rounded-md transition-all",
+                            "flex-1 py-2.5 text-[11px] font-bold uppercase tracking-widest rounded-[12px] transition-all",
                             activeTab === 1
-                                ? "bg-white dark:bg-gray-800 text-blue-600 dark:text-blue-400 shadow-sm"
-                                : "text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-200",
+                                ? "bg-white dark:bg-slate-700 text-primary shadow-sm ring-1 ring-slate-200 dark:ring-slate-600"
+                                : "text-slate-500 hover:text-slate-900 dark:hover:text-slate-200",
                             isEditing && "opacity-50 cursor-not-allowed"
                         )}
                     >
-                        Sentido Vuelta
+                        Trayecto Vuelta
                     </button>
                 </div>
             </div>
 
-            {/* Actions Bar */}
-            <div className="px-6 py-3 bg-white dark:bg-gray-900 border-b border-gray-100 dark:border-gray-800 flex justify-center">
+            {/* Actions Bar - Simplified to avoid card-over-card */}
+            <div className="px-8 py-4 bg-white/30 dark:bg-slate-900/30 border-b utilitarian-border flex gap-4">
                 <button
                     onClick={() => {
                         if (isEditing) {
-                            // Cancel / Discard
-                            if (confirm('Discard unsaved changes?')) {
+                            if (confirm('¿Descartar cambios no sincronizados?')) {
                                 setIsEditing(false);
                                 setIsAdding(null);
-                                fetchData(); // Revert to server state
+                                fetchData();
                             }
                         } else {
-                            // Start Editing
                             setIsEditing(true);
                             setIsAdding(null);
                         }
                     }}
                     className={clsx(
-                        "w-full py-2.5 rounded-xl border-2 border-dashed font-bold text-sm flex items-center justify-center gap-2 transition-all",
+                        "flex-1 py-3 rounded-2xl font-bold text-xs uppercase tracking-widest flex items-center justify-center gap-2 transition-all",
                         isEditing
-                            ? "border-red-300 bg-red-50 text-red-600 dark:bg-red-900/20 dark:text-red-400 dark:border-red-800 hover:bg-red-100 dark:hover:bg-red-900/40"
-                            : "border-gray-300 dark:border-gray-700 text-gray-500 hover:border-blue-400 hover:text-blue-500"
+                            ? "bg-red-50 dark:bg-red-900/20 text-red-600 border border-red-200 dark:border-red-900/40 hover:bg-red-100"
+                            : "bg-primary text-white shadow-lg shadow-primary/20 hover:scale-[1.02] active:scale-95"
                     )}
                 >
-                    {isEditing ? <Trash2 size={16} /> : <Edit2 size={16} />}
-                    {isEditing ? 'Discard Changes' : 'Edit Direction / Add Segment'}
+                    {isEditing ? <RotateCcw size={16} /> : <Edit2 size={16} />}
+                    {isEditing ? 'Cancelar Edición' : 'Editar Traza / Añadir'}
                 </button>
+                
+                {isEditing && (
+                     <button
+                        onClick={() => setIsEditing(false)}
+                        className="px-6 py-3 rounded-2xl bg-emerald-500 text-white shadow-lg shadow-emerald-500/20 font-bold text-xs uppercase tracking-widest flex items-center gap-2 hover:scale-[1.02] active:scale-95 transition-all"
+                    >
+                        <Save size={16} />
+                        Guardar
+                    </button>
+                )}
             </div>
 
             {/* Segments List */}
-            <div className="flex-1 overflow-y-auto px-6 py-4 custom-scrollbar relative">
+            <div className="flex-1 overflow-y-auto px-8 py-6 custom-scrollbar relative bg-white/20">
                 {loading && (
-                    <div className="flex flex-col items-center justify-center py-10 opacity-50">
-                        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mb-2"></div>
-                        <span className="text-xs">Loading path...</span>
+                    <div className="flex flex-col items-center justify-center py-20 animate-pulse text-slate-400">
+                        <div className="w-10 h-10 rounded-full border-4 border-slate-200 dark:border-slate-800 border-t-primary animate-spin mb-4" />
+                        <span className="text-[10px] font-bold uppercase tracking-[0.2em]">Compilando Red Cartográfica...</span>
                     </div>
                 )}
 
-                {/* Prepend Button */}
+                {/* Prepend Area */}
                 {isEditing && !loading && (
-                    <div className="mb-4">
+                    <div className="mb-8">
                         <button
                             onClick={() => handleStartAdding('prepend')}
                             className={clsx(
-                                "w-full py-2 border-2 border-dashed rounded-lg flex items-center justify-center gap-2 text-xs font-bold uppercase transition-colors",
+                                "w-full py-4 border-2 border-dashed rounded-[20px] flex flex-col items-center justify-center gap-1 transition-all",
                                 isAdding === 'prepend'
-                                    ? "border-blue-500 text-blue-600 bg-blue-50 dark:bg-blue-900/20"
-                                    : "border-gray-200 dark:border-gray-700 text-gray-400 hover:text-blue-500 hover:border-blue-400"
+                                    ? "border-primary bg-primary/5 text-primary"
+                                    : "border-slate-200 dark:border-slate-800 text-slate-400 hover:border-primary hover:text-primary hover:bg-primary/5"
                             )}
                         >
-                            <Plus size={14} /> {isAdding === 'prepend' ? 'Select Prepend Segment on Map' : 'Add Segment to Start'}
+                            <Plus size={18} className={isAdding === 'prepend' ? "animate-bounce" : ""} />
+                            <span className="text-[10px] font-bold uppercase tracking-widest">
+                                {isAdding === 'prepend' ? 'Seleccionar en el mapa (Origen)' : 'Anteponer Segmento'}
+                            </span>
                         </button>
-
-                        {isAdding === 'prepend' && (
-                            <div className="mt-2 bg-gray-50 dark:bg-gray-800 p-3 rounded-lg border border-gray-200 dark:border-gray-700 shadow-inner">
-                                <h4 className="text-xs font-bold text-gray-500 mb-2">Select Segment to Prepend</h4>
-                                {availableSegments.length === 0 ? (
-                                    <p className="text-xs text-gray-400 italic">No compatible segments found ending at {routeSegments[0]?.startStop?.stop_name}</p>
-                                ) : (
-                                    <div className="max-h-40 overflow-y-auto space-y-1">
-                                        {availableSegments.map((s: any) => (
-                                            <button
-                                                key={s.segment_id}
-                                                onClick={() => handleSelectSegment(s)}
-                                                className="w-full text-left p-2 text-xs bg-white dark:bg-gray-900 hover:bg-blue-50 dark:hover:bg-blue-900/20 rounded border border-gray-100 dark:border-gray-800 hover:border-blue-200 transition-colors"
-                                            >
-                                                <div className="font-bold">{s.startName} → {s.endName}</div>
-                                                <div className="text-gray-400">{formatDist(s.distance)} • {formatTime(s.travel_time)}</div>
-                                            </button>
-                                        ))}
-                                    </div>
-                                )}
-                            </div>
-                        )}
                     </div>
                 )}
 
                 {!loading && routeSegments.length === 0 && (
-                    <div className="text-center py-12 border-2 border-dashed border-gray-200 dark:border-gray-700 rounded-xl">
-                        <AlertCircle className="mx-auto text-gray-300 mb-2" size={32} />
-                        <p className="text-gray-500 dark:text-gray-400 font-medium">No segments defined</p>
-                        {isEditing ? (
-                            <div className="mt-4">
-                                <p className="text-xs text-gray-400 mb-2">Add the first segment to start the route:</p>
-                                <div className="max-h-60 overflow-y-auto space-y-1 text-left">
-                                    {availableSegments.length === 0 ? (
-                                        <p className="text-xs text-gray-400 italic p-2">No segments found in current map view. Move the map to see segments.</p>
-                                    ) : availableSegments.map((s: any) => (
-                                        <button
-                                            key={s.segment_id}
-                                            onClick={() => handleSelectSegment(s)}
-                                            className="w-full text-left p-2 text-xs bg-white dark:bg-gray-800 hover:bg-blue-50 dark:hover:bg-blue-900/20 rounded border border-gray-200 dark:border-gray-700 hover:border-blue-200 transition-colors"
-                                        >
-                                            <div className="font-bold">{s.startName} → {s.endName}</div>
-                                            <div className="text-gray-400">{formatDist(s.distance)} • {formatTime(s.travel_time)}</div>
-                                        </button>
-                                    ))}
-                                </div>
-                            </div>
-                        ) : (
-                            <p className="text-xs text-gray-400 mt-1">Select "Edit Direction" to add segments.</p>
-                        )}
+                    <div className="flex flex-col items-center justify-center py-20 text-center px-10">
+                        <div className="p-6 bg-slate-100 dark:bg-slate-800 rounded-full mb-6 text-slate-300">
+                             <AlertCircle size={48} strokeWidth={1.5} />
+                        </div>
+                        <h3 className="font-display font-bold text-slate-900 dark:text-white mb-2">Traza no definida</h3>
+                        <p className="text-xs text-slate-500 font-medium leading-relaxed">Inicia la edición para vincular el primer segmento vial a esta ruta comercial.</p>
                     </div>
                 )}
 
-                <div className="space-y-4">
+                <div className="space-y-4 relative">
+                    {/* Visual Connector Line */}
+                    {routeSegments.length > 1 && (
+                        <div className="absolute left-[19px] top-6 bottom-6 w-[2px] bg-gradient-to-b from-primary via-slate-200 to-primary dark:via-slate-800 pointer-events-none opacity-30" />
+                    )}
+
                     {routeSegments.map((item, index) => {
                         const canDelete = index === 0 || index === routeSegments.length - 1;
 
                         return (
-                            <div key={item.segment.segment_id} className="relative pl-6 pb-2 border-l-2 border-gray-200 dark:border-gray-700 last:border-0 group">
-                                <div className="absolute -left-[9px] top-0 w-4 h-4 rounded-full border-4 border-white dark:border-gray-900 bg-blue-600 shadow-sm z-10"></div>
+                            <div key={item.segment.segment_id} className="relative pl-10 group animate-in fade-in slide-in-from-left-4" style={{ animationDelay: `${index * 50}ms` }}>
+                                <div className="absolute left-0 top-[18px] w-10 flex justify-center z-10">
+                                     <div className="w-10 h-10 rounded-xl bg-white dark:bg-slate-800 border-2 border-primary shadow-lg flex items-center justify-center font-mono text-[10px] font-bold text-primary">
+                                        {index + 1}
+                                     </div>
+                                </div>
 
-                                <div className="bg-white dark:bg-gray-800/50 border border-gray-100 dark:border-gray-700 rounded-xl p-4 shadow-sm hover:shadow-md transition-shadow">
-                                    <div className="flex justify-between items-start mb-2">
-                                        <h4 className="font-bold text-gray-800 dark:text-gray-200 text-sm">
-                                            Segment {index + 1}: {item.startStop?.stop_name} to {item.endStop?.stop_name}
-                                        </h4>
+                                <div className="bg-white dark:bg-slate-800/40 border utilitarian-border rounded-2xl p-5 hover:bg-slate-50/50 dark:hover:bg-primary/5 transition-all group/card">
+                                    <div className="flex justify-between items-start mb-4">
+                                        <div className="flex-1">
+                                            <div className="flex items-center gap-2 mb-1">
+                                                <span className="text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-widest">Segmento Vial</span>
+                                                <ChevronRight size={10} className="text-slate-300" />
+                                            </div>
+                                            <h4 className="font-bold text-slate-900 dark:text-slate-200 text-sm leading-tight">
+                                                {item.startStop?.stop_name} <span className="text-slate-300 dark:text-slate-600 font-medium px-1">→</span> {item.endStop?.stop_name}
+                                            </h4>
+                                        </div>
                                         {isEditing && (
-                                            <div className="flex gap-1 ml-2">
+                                            <div className="flex gap-1">
                                                 <button
-                                                    className="p-1.5 text-gray-400 hover:text-blue-600 hover:bg-blue-50 dark:hover:bg-blue-900/20 rounded transition-colors"
-                                                    title="Modify Segment"
-                                                    onClick={() => alert("Modify Segment functionality would open a segment picker here.")}
-                                                >
-                                                    <Edit2 size={14} />
-                                                </button>
-                                                <button
-                                                    onClick={() => canDelete ? handleRemoveSegment(index) : alert("Cannot delete intermediate segments")}
+                                                    onClick={() => canDelete ? handleRemoveSegment(index) : alert("No se pueden eliminar segmentos intermedios para mantener la continuidad.")}
                                                     className={clsx(
-                                                        "p-1.5 rounded transition-colors",
+                                                        "p-2 rounded-lg transition-all",
                                                         canDelete
-                                                            ? "text-gray-400 hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-900/20"
-                                                            : "text-gray-200 dark:text-gray-800 cursor-not-allowed"
+                                                            ? "text-slate-300 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20"
+                                                            : "text-slate-100 dark:text-slate-800 cursor-not-allowed"
                                                     )}
-                                                    title={canDelete ? "Delete Segment" : "Must preserve continuity"}
+                                                    title={canDelete ? "Eliminar" : "Bloqueado: Requerido para continuidad"}
                                                 >
-                                                    <Trash2 size={14} />
+                                                    <Trash2 size={16} />
                                                 </button>
                                             </div>
                                         )}
                                     </div>
 
-                                    <div className="grid grid-cols-2 gap-4 text-xs">
-                                        <div className="flex items-center gap-2 text-gray-600 dark:text-gray-400">
-                                            <Clock size={14} className="text-blue-500" />
+                                    <div className="flex items-center gap-6">
+                                        <div className="flex items-center gap-2">
+                                            <div className="p-1.5 rounded-lg bg-primary/5 text-primary">
+                                                <Clock size={12} strokeWidth={2.5} />
+                                            </div>
                                             <div>
-                                                <span className="block opacity-70 text-[10px] uppercase">Accumulated Time</span>
-                                                <span className="font-mono font-medium">{formatTime(item.accumulatedTime)}</span>
+                                                <span className="block text-[8px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-widest">Acumulado</span>
+                                                <span className="font-mono text-[11px] font-bold text-slate-700 dark:text-slate-300">{formatTime(item.accumulatedTime)}</span>
                                             </div>
                                         </div>
-                                        <div className="flex items-center gap-2 text-gray-600 dark:text-gray-400">
-                                            <Ruler size={14} className="text-indigo-500" />
+                                        <div className="flex items-center gap-2">
+                                            <div className="p-1.5 rounded-lg bg-indigo-500/5 text-indigo-500">
+                                                <Ruler size={12} strokeWidth={2.5} />
+                                            </div>
                                             <div>
-                                                <span className="block opacity-70 text-[10px] uppercase">Accumulated Dist</span>
-                                                <span className="font-mono font-medium">{formatDist(item.accumulatedDist)}</span>
+                                                <span className="block text-[8px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-widest">Recorrido</span>
+                                                <span className="font-mono text-[11px] font-bold text-slate-700 dark:text-slate-300">{formatDist(item.accumulatedDist)}</span>
                                             </div>
                                         </div>
                                     </div>
@@ -654,120 +561,111 @@ const RouteDetailsPanel: React.FC<RouteDetailsPanelProps> = ({ route, onClose, o
                     })}
                 </div>
 
-                {/* Append Button */}
+                {/* Append Area */}
                 {isEditing && !loading && routeSegments.length > 0 && (
-                    <div className="mt-4">
-                        <button
+                    <div className="mt-8">
+                         <button
                             onClick={() => handleStartAdding('append')}
                             className={clsx(
-                                "w-full py-2 border-2 border-dashed rounded-lg flex items-center justify-center gap-2 text-xs font-bold uppercase transition-colors",
+                                "w-full py-4 border-2 border-dashed rounded-[20px] flex flex-col items-center justify-center gap-1 transition-all",
                                 isAdding === 'append'
-                                    ? "border-blue-500 text-blue-600 bg-blue-50 dark:bg-blue-900/20"
-                                    : "border-gray-200 dark:border-gray-700 text-gray-400 hover:text-blue-500 hover:border-blue-400"
+                                    ? "border-primary bg-primary/5 text-primary"
+                                    : "border-slate-200 dark:border-slate-800 text-slate-400 hover:border-primary hover:text-primary hover:bg-primary/5"
                             )}
                         >
-                            <Plus size={14} /> {isAdding === 'append' ? 'Select Append Segment on Map' : 'Add Segment to End'}
+                            <Plus size={18} className={isAdding === 'append' ? "animate-bounce" : ""} />
+                            <span className="text-[10px] font-bold uppercase tracking-widest">
+                                {isAdding === 'append' ? 'Seleccionar en el mapa (Destino)' : 'Anexar al Final'}
+                            </span>
                         </button>
-
-                        {isAdding === 'append' && (
-                            <div className="mt-2 bg-gray-50 dark:bg-gray-800 p-3 rounded-lg border border-gray-200 dark:border-gray-700 shadow-inner">
-                                <h4 className="text-xs font-bold text-gray-500 mb-2">Select Segment to Append</h4>
-                                {availableSegments.length === 0 ? (
-                                    <p className="text-xs text-gray-400 italic">No compatible segments found starting at {routeSegments[routeSegments.length - 1]?.endStop?.stop_name}</p>
-                                ) : (
-                                    <div className="max-h-40 overflow-y-auto space-y-1">
-                                        {availableSegments.map((s: any) => (
-                                            <button
-                                                key={s.segment_id}
-                                                onClick={() => handleSelectSegment(s)}
-                                                className="w-full text-left p-2 text-xs bg-white dark:bg-gray-900 hover:bg-blue-50 dark:hover:bg-blue-900/20 rounded border border-gray-100 dark:border-gray-800 hover:border-blue-200 transition-colors"
-                                            >
-                                                <div className="font-bold">{s.startName} → {s.endName}</div>
-                                                <div className="text-gray-400">{formatDist(s.distance)} • {formatTime(s.travel_time)}</div>
-                                            </button>
-                                        ))}
-                                    </div>
-                                )}
-                            </div>
-                        )}
                     </div>
                 )}
             </div>
 
-            {/* Summary Footer */}
+            {/* Metrics Summary Footer */}
             {routeSegments.length > 0 && (
-                <div className="p-6 bg-gray-50 dark:bg-gray-800/50 border-t border-gray-200 dark:border-gray-700">
-                    <h5 className="text-xs font-bold text-gray-400 uppercase tracking-widest mb-3">Summary</h5>
-                    <div className="flex justify-between items-end">
-                        <div>
-                            <span className="text-xs text-gray-500">Total Distance</span>
-                            <div className="text-lg font-bold text-gray-900 dark:text-white">
-                                {formatDist(routeSegments[routeSegments.length - 1].accumulatedDist)}
-                            </div>
-                        </div>
-                        <div className="text-right">
-                            <span className="text-xs text-gray-500">Total Travel Time</span>
-                            <div className="flex items-center justify-end gap-2">
-                                {isEditing ? (
-                                    <>
-                                        <div className="flex flex-col items-end">
-                                            <div className="flex items-center gap-1">
-                                                <input
-                                                    type="number"
-                                                    min="1"
-                                                    value={targetDuration || Math.round(routeSegments[routeSegments.length - 1].accumulatedTime / 60)}
-                                                    onChange={(e) => handleTimeChange(parseInt(e.target.value) || 0)}
-                                                    className="w-16 px-1 py-0.5 text-right text-sm font-bold border-b border-gray-300 dark:border-gray-600 bg-transparent focus:outline-none focus:border-blue-500"
-                                                />
-                                                <span className="text-xs font-medium text-gray-500">min</span>
+                <div className="p-8 bg-slate-100/50 dark:bg-slate-900/50 backdrop-blur-md border-t utilitarian-border">
+                    <div className="flex items-center justify-between gap-6">
+                        <div className="flex-1">
+                            <span className="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] mb-3 block">Métrica consolidada</span>
+                            <div className="flex items-center gap-8">
+                                <div>
+                                    <div className="text-2xl font-display font-black text-slate-900 dark:text-white leading-none mb-1">
+                                        {formatDist(routeSegments[routeSegments.length - 1].accumulatedDist)}
+                                    </div>
+                                    <span className="text-[9px] font-bold text-slate-400 uppercase tracking-widest">Longitud de Traza</span>
+                                </div>
+                                <div className="text-right flex-1">
+                                    {isEditing ? (
+                                        <div className="flex flex-col items-end gap-2">
+                                            <div className="flex items-center gap-3">
+                                                <div className="relative group">
+                                                    <input
+                                                        type="number"
+                                                        min="1"
+                                                        value={targetDuration || Math.round(routeSegments[routeSegments.length - 1].accumulatedTime / 60)}
+                                                        onChange={(e) => handleTimeChange(parseInt(e.target.value) || 0)}
+                                                        className="w-20 px-3 py-1 text-right text-lg font-black text-primary border-b-2 border-primary/20 bg-transparent focus:outline-none focus:border-primary transition-all rounded-t-lg"
+                                                    />
+                                                    <div className="absolute top-1/2 -right-6 -translate-y-1/2 text-[10px] font-black text-primary">MIN</div>
+                                                </div>
                                             </div>
-                                            <div className="flex items-center gap-1 mt-1">
-                                                <span className="text-[10px] text-gray-400">Avg Speed:</span>
+                                            <div className="flex items-center gap-1 text-[10px] font-bold text-slate-500 uppercase tracking-widest">
+                                                <Activity size={10} className="mr-1" /> Vel: 
                                                 <input
                                                     type="number"
                                                     min="1"
                                                     step="0.1"
                                                     value={targetSpeed || (routeSegments[routeSegments.length - 1].accumulatedDist / 1000 / (routeSegments[routeSegments.length - 1].accumulatedTime / 3600)).toFixed(1)}
                                                     onChange={(e) => handleSpeedChange(parseFloat(e.target.value) || 0)}
-                                                    className="w-12 px-1 py-0 text-right text-xs border-b border-gray-200 dark:border-gray-700 bg-transparent focus:outline-none focus:border-blue-500 text-gray-500"
+                                                    className="w-10 text-center font-black text-primary bg-transparent focus:outline-none border-b border-transparent focus:border-primary"
                                                 />
-                                                <span className="text-[10px] text-gray-400">km/h</span>
+                                                km/h
                                             </div>
                                         </div>
-                                    </>
-                                ) : (
-                                    <div className="text-lg font-bold text-gray-900 dark:text-white">
-                                        {formatTime(routeSegments[routeSegments.length - 1].accumulatedTime)}
-                                    </div>
-                                )}
+                                    ) : (
+                                        <>
+                                            <div className="text-2xl font-display font-black text-primary leading-none mb-1">
+                                                {formatTime(routeSegments[routeSegments.length - 1].accumulatedTime)}
+                                            </div>
+                                            <span className="text-[9px] font-bold text-slate-400 uppercase tracking-widest">Tiempo de Viaje Estimado</span>
+                                        </>
+                                    )}
+                                </div>
                             </div>
                         </div>
                     </div>
                 </div>
             )}
 
-            {/* Action Links */}
-            <div className="p-4 grid grid-cols-2 gap-3 bg-white dark:bg-gray-900 border-t border-gray-100 dark:border-gray-800 rounded-b-2xl">
+            {/* Bottom Global Links */}
+            <div className="p-4 grid grid-cols-3 gap-2 bg-slate-50 dark:bg-slate-900 border-t utilitarian-border">
                 <button
                     onClick={onOpenTrips}
-                    className="flex items-center justify-center gap-2 py-3 rounded-xl border border-gray-200 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-800 text-gray-600 dark:text-gray-300 text-xs font-bold uppercase transition-colors"
+                    className="flex flex-col items-center justify-center gap-2 py-3 bg-white dark:bg-slate-800 rounded-2xl border utilitarian-border hover:border-primary/50 transition-all group"
                 >
-                    <Bus size={16} />
-                    Go to Trips
+                    <div className="shrink-0 p-2 rounded-xl bg-primary/10 text-primary group-hover:bg-primary group-hover:text-white transition-all">
+                        <Bus size={14} strokeWidth={2.5} />
+                    </div>
+                    <span className="text-[9px] font-bold uppercase tracking-widest text-slate-500 group-hover:text-primary transition-all">Viajes</span>
                 </button>
                 <button
                     onClick={() => setShowTimeSlots(true)}
-                    className="flex items-center justify-center gap-2 py-3 rounded-xl border border-gray-200 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-800 text-gray-600 dark:text-gray-300 text-xs font-bold uppercase transition-colors"
+                    className="flex flex-col items-center justify-center gap-2 py-3 bg-white dark:bg-slate-800 rounded-2xl border utilitarian-border hover:border-primary/50 transition-all group"
                 >
-                    <Clock size={16} />
-                    Go to Times
+                    <div className="shrink-0 p-2 rounded-xl bg-primary/10 text-primary group-hover:bg-primary group-hover:text-white transition-all">
+                        <Clock size={14} strokeWidth={2.5} />
+                    </div>
+                    <span className="text-[9px] font-bold uppercase tracking-widest text-slate-500 group-hover:text-primary transition-all">Horarios</span>
                 </button>
                 <button
                     onClick={onOpenCalendar}
-                    className="flex items-center justify-center gap-2 py-3 rounded-xl border border-gray-200 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-800 text-gray-600 dark:text-gray-300 text-xs font-bold uppercase transition-colors col-span-2"
+                    className="flex flex-col items-center justify-center gap-2 py-3 bg-white dark:bg-slate-800 rounded-2xl border utilitarian-border hover:border-primary/50 transition-all group"
                 >
-                    <Calendar size={16} />
-                    Go to Calendar
+                    <div className="shrink-0 p-2 rounded-xl bg-primary/10 text-primary group-hover:bg-primary group-hover:text-white transition-all">
+                        <Calendar size={14} strokeWidth={2.5} />
+                    </div>
+                    <span className="text-[9px] font-bold uppercase tracking-widest text-slate-500 group-hover:text-primary transition-all">Calendario</span>
                 </button>
             </div>
 
@@ -776,37 +674,6 @@ const RouteDetailsPanel: React.FC<RouteDetailsPanelProps> = ({ route, onClose, o
                     route={route}
                     onClose={() => setShowTimeSlots(false)}
                 />
-            )}
-
-            {isEditing && (
-                <div className="absolute bottom-4 left-4 right-4 animate-in slide-in-from-bottom-2 fade-in">
-                    <button
-                        onClick={async () => {
-                            // If we have pending segment updates (from time redistribution), we need to save them.
-                            // The easiest way is to trigger a "self-save" of the current segments.
-
-                            const currentSegments = routeSegments.map(r => r.segment);
-                            // We verify if any segment needs updating by checking against original state if we had it,
-                            // but simpler is to just save all current segments if targetDuration is set.
-                            if (targetDuration) {
-                                await Promise.all(currentSegments.map(seg =>
-                                    fetch(`${API_URL}/segments/${seg.segment_id}`, {
-                                        method: 'PUT',
-                                        headers: { 'Content-Type': 'application/json' },
-                                        body: JSON.stringify({ travel_time: seg.travel_time })
-                                    })
-                                ));
-                            }
-
-                            setIsEditing(false);
-                            setTargetDuration(null);
-                            setTargetSpeed(null);
-                        }}
-                        className="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 rounded-xl shadow-lg shadow-blue-500/30 transition-all"
-                    >
-                        Save Changes
-                    </button>
-                </div>
             )}
         </Draggable>
     );

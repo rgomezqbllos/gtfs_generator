@@ -1,15 +1,14 @@
 import * as React from 'react';
-import { X, Upload, FileArchive, CheckCircle2, AlertCircle, Loader2, ChevronRight, ChevronDown, Check, Calendar } from 'lucide-react';
+import { X, Upload, FileArchive, CheckCircle2, AlertCircle, Loader2, ChevronRight, ChevronDown, Check, Calendar, Activity, Database, LayoutGrid, Info } from 'lucide-react';
 import { clsx } from 'clsx';
+import { API_URL } from '../config';
+import { useAuth } from '../context/AuthContext';
 
 interface ImportModalProps {
     isOpen: boolean;
     onClose: () => void;
 }
 
-import { API_URL } from '../config';
-
-// Interfaces
 interface RouteMetadata {
     route_id: string;
     short_name: string;
@@ -30,33 +29,28 @@ interface AgencyMetadata {
 }
 
 const ImportModal: React.FC<ImportModalProps> = ({ isOpen, onClose }) => {
-    // Wizard Steps: upload -> select -> processing -> result
+    const { activeProject } = useAuth();
     const [step, setStep] = React.useState<'upload' | 'select' | 'processing' | 'result'>('upload');
 
-    // File State
     const [file, setFile] = React.useState<File | null>(null);
     const [isDragOver, setIsDragOver] = React.useState(false);
     const [tempFileId, setTempFileId] = React.useState<string | null>(null);
 
-    // Data State
     const [services, setServices] = React.useState<ServiceMetadata[]>([]);
     const [agencies, setAgencies] = React.useState<AgencyMetadata[]>([]);
     const [routeTypes, setRouteTypes] = React.useState<string[]>([]);
 
-    // Filter State
     const [selectedAgencyIds, setSelectedAgencyIds] = React.useState<Set<string>>(new Set());
     const [selectedRouteTypes, setSelectedRouteTypes] = React.useState<Set<string>>(new Set());
 
-    const [selectedPairs, setSelectedPairs] = React.useState<Set<string>>(new Set()); // "serviceId|routeId"
+    const [selectedPairs, setSelectedPairs] = React.useState<Set<string>>(new Set());
     const [expandedServices, setExpandedServices] = React.useState<Set<string>>(new Set());
 
-    // Status State
     const [progress, setProgress] = React.useState(0);
     const [message, setMessage] = React.useState('');
     const [result, setResult] = React.useState<any>(null);
     const [error, setError] = React.useState<string | null>(null);
 
-    // Reset state when modal opens
     React.useEffect(() => {
         if (isOpen) {
             setStep('upload');
@@ -75,14 +69,13 @@ const ImportModal: React.FC<ImportModalProps> = ({ isOpen, onClose }) => {
         }
     }, [isOpen]);
 
-    // --- File Handling ---
     const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
         if (e.target.files && e.target.files[0]) validateAndSetFile(e.target.files[0]);
     };
 
     const validateAndSetFile = (f: File) => {
         if (!f.name.endsWith('.zip')) {
-            setError('Invalid file type. Please upload a .zip file.');
+            setError('Formato inválido. Se requiere archivo .zip estándar.');
             return;
         }
         setFile(f);
@@ -97,12 +90,11 @@ const ImportModal: React.FC<ImportModalProps> = ({ isOpen, onClose }) => {
         }
     };
 
-    // --- Step 1: Scan ---
     const handleScan = async () => {
         if (!file) return;
         setStep('processing');
         setProgress(0);
-        setMessage('Uploading and Scanning GTFS file...');
+        setMessage('Analizando estructura del suministro GTFS...');
         setError(null);
 
         const formData = new FormData();
@@ -110,23 +102,18 @@ const ImportModal: React.FC<ImportModalProps> = ({ isOpen, onClose }) => {
 
         try {
             const res = await fetch(`${API_URL}/gtfs/scan`, { method: 'POST', body: formData });
-            if (!res.ok) throw new Error('Scan failed');
+            if (!res.ok) throw new Error('Exploración fallida');
 
             const data = await res.json();
-            console.log('Scan result:', data);
             setTempFileId(data.tempFileId);
 
-            // Handle new metadata structure
-            // Fallback for old API response (array) vs new object
             let loadedServices: ServiceMetadata[] = [];
             let loadedAgencies: AgencyMetadata[] = [];
             let loadedTypes: string[] = [];
 
             if (Array.isArray(data.metadata)) {
-                console.log('Metadata is array (Old Format)');
                 loadedServices = data.metadata;
             } else {
-                console.log('Metadata is object (New Format)', data.metadata);
                 loadedServices = data.metadata.services;
                 loadedAgencies = data.metadata.agencies || [];
                 loadedTypes = data.metadata.routeTypes || [];
@@ -136,79 +123,51 @@ const ImportModal: React.FC<ImportModalProps> = ({ isOpen, onClose }) => {
             setAgencies(loadedAgencies);
             setRouteTypes(loadedTypes);
 
-            // Select all filters by default
             setSelectedAgencyIds(new Set(loadedAgencies.map(a => a.id)));
             setSelectedRouteTypes(new Set(loadedTypes));
 
-            // Pre-select all pairs
             const allPairs = new Set<string>();
             loadedServices.forEach((s) => {
                 s.routes.forEach(r => allPairs.add(`${s.service_id}|${r.route_id}`));
             });
             setSelectedPairs(allPairs);
-
-            setExpandedServices(new Set(loadedServices.slice(0, 1).map((s) => s.service_id))); // Expand first
+            setExpandedServices(new Set(loadedServices.slice(0, 1).map((s) => s.service_id)));
 
             setStep('select');
         } catch (err: any) {
-            setError(err.message || 'Scan failed');
+            setError(err.message || 'Exploración fallida');
             setStep('upload');
         }
     };
 
-    // --- Filtering Logic ---
     const getFilteredServices = () => {
         return services.map(service => {
-            // Filter routes within service
             const filteredRoutes = service.routes.filter(r => {
-                // Check Agency Filter
-                // Note: If no agencies returned (old API), allow all
                 if (agencies.length > 0 && !selectedAgencyIds.has(r.agency_id)) return false;
-
-                // Check Mode Filter
                 if (routeTypes.length > 0 && !selectedRouteTypes.has(String(r.route_type))) return false;
-
                 return true;
             });
-
             if (filteredRoutes.length === 0) return null;
-
-            return {
-                ...service,
-                routes: filteredRoutes
-            };
+            return { ...service, routes: filteredRoutes };
         }).filter(Boolean) as ServiceMetadata[];
     };
 
     const filteredServices = getFilteredServices();
 
-    // --- Step 2: Selection Helpers ---
     const toggleService = (serviceId: string, routes: RouteMetadata[]) => {
         const newSelectedPairs = new Set(selectedPairs);
-
-        // Check if all routes in this service are currently selected
         const serviceKeys = routes.map(r => `${serviceId}|${r.route_id}`);
         const allSelected = serviceKeys.every(k => newSelectedPairs.has(k));
-
-        if (allSelected) {
-            // Deselect all
-            serviceKeys.forEach(k => newSelectedPairs.delete(k));
-        } else {
-            // Select all
-            serviceKeys.forEach(k => newSelectedPairs.add(k));
-        }
+        if (allSelected) serviceKeys.forEach(k => newSelectedPairs.delete(k));
+        else serviceKeys.forEach(k => newSelectedPairs.add(k));
         setSelectedPairs(newSelectedPairs);
     };
 
     const toggleRoute = (routeId: string, serviceId: string) => {
         const key = `${serviceId}|${routeId}`;
         const newSelectedPairs = new Set(selectedPairs);
-
-        if (newSelectedPairs.has(key)) {
-            newSelectedPairs.delete(key);
-        } else {
-            newSelectedPairs.add(key);
-        }
+        if (newSelectedPairs.has(key)) newSelectedPairs.delete(key);
+        else newSelectedPairs.add(key);
         setSelectedPairs(newSelectedPairs);
     };
 
@@ -219,50 +178,30 @@ const ImportModal: React.FC<ImportModalProps> = ({ isOpen, onClose }) => {
         setExpandedServices(newExpanded);
     };
 
-    const toggleFilterAgency = (id: string) => {
-        const next = new Set(selectedAgencyIds);
-        if (next.has(id)) next.delete(id);
-        else next.add(id);
-        setSelectedAgencyIds(next);
-    };
-
-    const toggleFilterType = (type: string) => {
-        const next = new Set(selectedRouteTypes);
-        if (next.has(type)) next.delete(type);
-        else next.add(type);
-        setSelectedRouteTypes(next);
-    };
-
     const getRouteTypeName = (type: string | number) => {
-        if (type === undefined || type === null) return 'Unknown Type';
+        if (type === undefined || type === null) return 'Protocolo Desconocido';
         const typeStr = String(type);
         const map: Record<string, string> = {
-            '0': 'Tram/Light Rail (0)',
-            '1': 'Subway (1)',
-            '2': 'Rail (2)',
-            '3': 'Bus (3)',
-            '4': 'Ferry (4)',
-            '5': 'Cable Tram (5)',
-            '6': 'Aerial Lift (6)',
-            '7': 'Funicular (7)',
-            '11': 'Trolleybus (11)',
-            '12': 'Monorail (12)'
+            '0': 'Tranvía / LRT',
+            '1': 'Metro / Subte',
+            '2': 'Ferrocarril',
+            '3': 'Autobus / Mixto',
+            '4': 'Ferry',
+            '5': 'Teleférico',
+            '11': 'Trolebús',
+            '12': 'Monorail'
         };
-        return map[typeStr] || `Type ${typeStr}`;
+        return map[typeStr] || `Modo ${typeStr}`;
     };
 
-    // --- Step 3: Execute Import ---
     const handleExecuteImport = async () => {
         if (!tempFileId) return;
         setStep('processing');
         setProgress(0);
-        setMessage('Starting Import...');
+        setMessage('Iniciando sincronización de red...');
 
         try {
-            // Derive lists for backward compatibility / logging
             const selectedPairsArray = Array.from(selectedPairs);
-
-            // Unique services/routes just for legacy logging if needed, but backend uses pairs now.
             const uniqueServices = new Set(selectedPairsArray.map(p => p.split('|')[0]));
             const uniqueRoutes = new Set(selectedPairsArray.map(p => p.split('|')[1]));
 
@@ -277,13 +216,13 @@ const ImportModal: React.FC<ImportModalProps> = ({ isOpen, onClose }) => {
                 })
             });
 
-            if (!res.ok) throw new Error('Import failed');
+            if (!res.ok) throw new Error('Sincronización fallida');
             const { taskId } = await res.json();
             pollStatus(taskId);
 
         } catch (err: any) {
-            setError(err.message || 'Import failed');
-            setStep('result'); // Or error state
+            setError(err.message || 'Sincronización fallida');
+            setStep('result');
         }
     };
 
@@ -291,23 +230,30 @@ const ImportModal: React.FC<ImportModalProps> = ({ isOpen, onClose }) => {
         const interval = setInterval(async () => {
             try {
                 const res = await fetch(`${API_URL}/gtfs/import/status/${taskId}`);
-                if (!res.ok) return;
-
+                if (!res.ok) {
+                    if (res.status === 404) {
+                        clearInterval(interval);
+                        setError('La tarea de importación no se encuentra. Es posible que el servidor se haya reiniciado.');
+                        setStep('result');
+                    }
+                    return;
+                }
                 const data = await res.json();
                 setProgress(data.progress);
                 setMessage(data.message);
-
                 if (data.status === 'completed') {
                     clearInterval(interval);
                     setStep('result');
                     setResult(data.details);
                 } else if (data.status === 'error') {
                     clearInterval(interval);
-                    setError(data.message);
+                    setError(data.message || 'Sincronización fallida');
                     setStep('result');
                 }
             } catch (err) {
-                console.error("Polling error", err);
+                console.error("Error de sondeo", err);
+                // Don't clear interval on transient network error, but maybe after some retries?
+                // For now, let it retry.
             }
         }, 1000);
     };
@@ -315,335 +261,362 @@ const ImportModal: React.FC<ImportModalProps> = ({ isOpen, onClose }) => {
     if (!isOpen) return null;
 
     return (
-        <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm animate-in fade-in duration-200">
-            <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-xl w-full max-w-3xl flex flex-col max-h-[90vh] animate-in zoom-in-95 duration-200 border border-gray-200 dark:border-gray-700">
+        <div className="fixed inset-0 z-[100] flex items-center justify-center p-8 bg-slate-950/60 backdrop-blur-sm animate-in fade-in duration-300">
+            <div className="bg-white dark:bg-slate-900 rounded-[40px] shadow-[0_0_100px_rgba(0,0,0,0.4)] w-full max-w-5xl flex flex-col h-[85vh] animate-in zoom-in-95 duration-300 border utilitarian-border overflow-hidden">
 
-                {/* Header */}
-                <div className="px-6 py-4 border-b border-gray-100 dark:border-gray-700 flex justify-between items-center bg-gray-50/50 dark:bg-gray-800/50 rounded-t-2xl">
-                    <div>
-                        <h2 className="text-xl font-bold text-gray-900 dark:text-white flex items-center gap-2">
-                            <Upload size={24} className="text-[#1337ec]" />
-                            Import GTFS
-                        </h2>
-                        {step === 'select' && <p className="text-sm text-gray-500 mt-1">Select the services and routes you want to import.</p>}
-                        {step === 'upload' && <p className="text-sm text-gray-500 mt-1">Upload a GTFS .zip file to scan content.</p>}
+                {/* Tactical Header */}
+                <div className="px-10 py-8 border-b utilitarian-border bg-slate-50 dark:bg-slate-800/50 flex justify-between items-center">
+                    <div className="flex items-center gap-3">
+                        <div className="w-10 h-10 rounded-xl bg-indigo-500/20 flex items-center justify-center text-indigo-400">
+                            <FileArchive className="w-5 h-5" />
+                        </div>
+                        <div>
+                            <h2 className="text-xl font-bold text-white leading-tight">Importar Suministro GTFS</h2>
+                            <p className="text-sm text-slate-400">
+                                Cargando datos en: <span className="text-indigo-400 font-medium">{activeProject?.name || 'Proyecto Actual'}</span>
+                            </p>
+                        </div>
                     </div>
-                    <button onClick={onClose} className="p-2 hover:bg-gray-200 dark:hover:bg-gray-700 rounded-lg transition-colors text-gray-500">
-                        <X size={20} />
+                    <button
+                        onClick={onClose}
+                        className="p-2.5 hover:bg-white dark:hover:bg-slate-700 rounded-xl transition-all text-slate-400 hover:text-slate-900 dark:hover:text-white border utilitarian-border"
+                    >
+                        <X size={20} strokeWidth={2.5} />
                     </button>
                 </div>
 
-                {/* Body */}
-                <div className="flex-1 overflow-y-auto p-6">
+                {/* Analytical Body */}
+                <div className="flex-1 overflow-y-auto p-10 custom-scrollbar bg-slate-50/30 dark:bg-slate-900/10">
 
-                    {/* Step 1: Upload */}
+                    {/* Step 1: Tactical Zone */}
                     {step === 'upload' && (
                         <div
                             onDragOver={(e) => { e.preventDefault(); setIsDragOver(true); }}
                             onDragLeave={() => setIsDragOver(false)}
                             onDrop={handleDrop}
                             className={clsx(
-                                "border-2 border-dashed rounded-xl p-10 flex flex-col items-center justify-center text-center transition-all cursor-pointer min-h-[300px]",
-                                isDragOver ? "border-blue-500 bg-blue-50 dark:bg-blue-900/20" : "border-gray-300 dark:border-gray-600 hover:border-blue-400 hover:bg-gray-50 dark:hover:bg-gray-800/50"
+                                "border-2 border-dashed rounded-[32px] p-16 flex flex-col items-center justify-center text-center transition-all cursor-pointer min-h-[400px] border-slate-200 dark:border-slate-800",
+                                isDragOver ? "border-primary bg-primary/5 scale-[0.99]" : "bg-white dark:bg-slate-800/50 hover:border-primary/50 hover:bg-white dark:hover:bg-slate-800"
                             )}
                         >
-                            <input type="file" accept=".zip" className="hidden" id="file-upload" onChange={handleFileChange} />
-                            <label htmlFor="file-upload" className="flex flex-col items-center cursor-pointer w-full h-full">
+                            <input type="file" accept=".zip" className="hidden" id="file-import" onChange={handleFileChange} />
+                            <label htmlFor="file-import" className="flex flex-col items-center cursor-pointer w-full h-full">
                                 {file ? (
-                                    <>
-                                        <div className="w-16 h-16 rounded-full bg-blue-100 dark:bg-blue-900/40 text-blue-600 flex items-center justify-center mb-4"><FileArchive size={32} /></div>
-                                        <p className="text-lg font-bold text-gray-900 dark:text-gray-100">{file.name}</p>
-                                        <p className="text-sm text-gray-500 mt-1">{(file.size / 1024 / 1024).toFixed(2)} MB</p>
-                                        <p className="text-xs text-blue-500 font-medium mt-4">Click to change file</p>
-                                    </>
+                                    <div className="animate-in zoom-in-95 duration-500">
+                                        <div className="w-24 h-24 rounded-[28px] bg-primary text-white flex items-center justify-center shadow-2xl shadow-primary/20 mx-auto mb-6">
+                                            <FileArchive size={40} strokeWidth={2.5} />
+                                        </div>
+                                        <p className="text-xl font-display font-black text-slate-900 dark:text-white uppercase tracking-tight leading-none mb-2">{file.name}</p>
+                                        <p className="text-[10px] font-black font-mono text-primary uppercase tracking-[0.2em]">{(file.size / 1024 / 1024).toFixed(2)} MB • Listo para análisis</p>
+                                        <button className="mt-8 px-6 py-2 rounded-xl border utilitarian-border text-[9px] font-black uppercase tracking-widest text-slate-400 hover:text-primary transition-all">Cambiar Suministro</button>
+                                    </div>
                                 ) : (
                                     <>
-                                        <div className="w-16 h-16 rounded-full bg-gray-100 dark:bg-gray-800 text-gray-400 flex items-center justify-center mb-4"><Upload size={32} /></div>
-                                        <p className="text-lg font-bold text-gray-900 dark:text-gray-100">Click to upload or drag & drop</p>
-                                        <p className="text-sm text-gray-500 mt-1">GTFS .zip file (Max 50MB)</p>
+                                        <div className="w-24 h-24 rounded-[32px] bg-slate-50 dark:bg-slate-900 border utilitarian-border flex items-center justify-center text-slate-300 transition-transform hover:-translate-y-2 duration-500 mb-8 shadow-sm">
+                                            <Upload size={40} strokeWidth={2} />
+                                        </div>
+                                        <p className="text-lg font-display font-black text-slate-900 dark:text-white uppercase tracking-tight mb-2">Vincular Archivo GTFS</p>
+                                        <p className="text-[10px] font-bold text-slate-400 uppercase tracking-[0.2em] max-w-xs leading-relaxed">Arrastre el paquete .zip de infraestructura o haga clic para procesar.</p>
                                     </>
                                 )}
                             </label>
-                            {error && <p className="text-red-500 text-sm mt-4 font-medium">{error}</p>}
+                            {error && <div className="mt-8 p-4 bg-red-500/5 border border-red-500/20 rounded-2xl flex items-center gap-3 animate-in shake duration-500">
+                                <AlertCircle size={16} className="text-red-500" />
+                                <span className="text-[10px] font-black text-red-500 uppercase tracking-widest">{error}</span>
+                            </div>}
                         </div>
                     )}
 
-                    {/* Step 2: Select */}
+                    {/* Step 2: Selection Board */}
                     {step === 'select' && (
-                        <div className="space-y-4">
-
-                            {/* Filters */}
-                            {(agencies.length > 0 || routeTypes.length > 0) && (
-                                <div className="bg-white dark:bg-gray-800 p-4 rounded-xl border border-gray-200 dark:border-gray-700 shadow-sm space-y-4">
-                                    <div className="flex items-center gap-2 mb-2">
-                                        <div className="p-1.5 bg-blue-100 dark:bg-blue-900/30 text-blue-600 rounded-md">
-                                            <Upload size={16} />
+                        <div className="space-y-8 animate-in fade-in slide-in-from-bottom-6 duration-700">
+                            
+                            {/* Analytics-based Filters */}
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                                {/* Agencies Tactical Filter */}
+                                <div className="bg-white dark:bg-slate-800 p-6 rounded-[28px] border utilitarian-border shadow-sm">
+                                    <div className="flex items-center justify-between mb-4 px-1">
+                                         <p className="text-[10px] font-black text-slate-500 uppercase tracking-[0.2em] flex items-center gap-2">
+                                            <Database size={14} className="text-primary" /> Operadoras Detectadas
+                                        </p>
+                                        <div className="flex gap-4">
+                                            <button onClick={() => setSelectedAgencyIds(new Set(agencies.map(a => a.id)))} className="text-[9px] font-black uppercase text-primary hover:underline">Totalizar</button>
+                                            <button onClick={() => setSelectedAgencyIds(new Set())} className="text-[9px] font-black uppercase text-slate-400 hover:text-slate-600">Omitir</button>
                                         </div>
-                                        <h3 className="text-sm font-bold text-gray-900 dark:text-gray-100">Filter Data</h3>
                                     </div>
-
-                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                                        {/* Agencies Filter */}
-                                        {agencies.length > 0 && (
-                                            <div className="space-y-2">
-                                                <div className="flex justify-between items-center">
-                                                    <p className="text-xs font-bold text-gray-500 uppercase tracking-wider">Agencies</p>
-                                                    <div className="flex gap-2">
-                                                        <button
-                                                            onClick={() => setSelectedAgencyIds(new Set(agencies.map(a => a.id)))}
-                                                            className="text-[10px] font-medium text-blue-600 hover:text-blue-700 bg-blue-50 dark:bg-blue-900/20 px-2 py-0.5 rounded transition-colors"
-                                                        >
-                                                            All
-                                                        </button>
-                                                        <button
-                                                            onClick={() => setSelectedAgencyIds(new Set())}
-                                                            className="text-[10px] font-medium text-gray-500 hover:text-gray-700 bg-gray-100 dark:bg-gray-800 px-2 py-0.5 rounded transition-colors"
-                                                        >
-                                                            None
-                                                        </button>
-                                                    </div>
+                                    <div className="max-h-36 overflow-y-auto space-y-1 pr-2 custom-scrollbar">
+                                        {agencies.map(a => (
+                                            <button 
+                                                key={a.id} 
+                                                onClick={() => {
+                                                    const next = new Set(selectedAgencyIds);
+                                                    if (next.has(a.id)) next.delete(a.id); else next.add(a.id);
+                                                    setSelectedAgencyIds(next);
+                                                }}
+                                                className={clsx(
+                                                    "w-full flex items-center gap-3 p-3 rounded-xl transition-all group",
+                                                    selectedAgencyIds.has(a.id) ? "bg-primary/5 text-primary" : "text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-900"
+                                                )}
+                                            >
+                                                <div className={clsx(
+                                                    "w-4 h-4 rounded-md border-2 flex items-center justify-center transition-all",
+                                                    selectedAgencyIds.has(a.id) ? "bg-primary border-primary text-white" : "border-slate-200 dark:border-slate-700"
+                                                )}>
+                                                    {selectedAgencyIds.has(a.id) && <Check size={10} strokeWidth={4} />}
                                                 </div>
-                                                <div className="max-h-32 overflow-y-auto space-y-1 pr-2 custom-scrollbar border border-gray-100 dark:border-gray-700 rounded-lg p-2 bg-gray-50/50 dark:bg-gray-800/50">
-                                                    {agencies.map(a => (
-                                                        <div key={a.id} className="flex items-start gap-2 hover:bg-gray-100 dark:hover:bg-gray-700/50 p-1 rounded cursor-pointer" onClick={() => toggleFilterAgency(a.id)}>
-                                                            <div className={clsx(
-                                                                "mt-0.5 w-4 h-4 rounded border flex items-center justify-center transition-colors flex-shrink-0",
-                                                                selectedAgencyIds.has(a.id)
-                                                                    ? "bg-blue-600 border-blue-600"
-                                                                    : "bg-white dark:bg-gray-800 border-gray-300 dark:border-gray-600"
-                                                            )}>
-                                                                {selectedAgencyIds.has(a.id) && <Check size={12} className="text-white" />}
-                                                            </div>
-                                                            <span className={clsx("text-xs break-all", selectedAgencyIds.has(a.id) ? "text-gray-900 dark:text-gray-200 font-medium" : "text-gray-500")}>
-                                                                {a.name}
-                                                            </span>
-                                                        </div>
-                                                    ))}
-                                                </div>
-                                            </div>
-                                        )}
-
-                                        {/* Route Types Filter */}
-                                        {routeTypes.length > 0 && (
-                                            <div className="space-y-2">
-                                                <div className="flex justify-between items-center">
-                                                    <p className="text-xs font-bold text-gray-500 uppercase tracking-wider">Transport Modes</p>
-                                                    <div className="flex gap-2">
-                                                        <button
-                                                            onClick={() => setSelectedRouteTypes(new Set(routeTypes))}
-                                                            className="text-[10px] font-medium text-blue-600 hover:text-blue-700 bg-blue-50 dark:bg-blue-900/20 px-2 py-0.5 rounded transition-colors"
-                                                        >
-                                                            All
-                                                        </button>
-                                                        <button
-                                                            onClick={() => setSelectedRouteTypes(new Set())}
-                                                            className="text-[10px] font-medium text-gray-500 hover:text-gray-700 bg-gray-100 dark:bg-gray-800 px-2 py-0.5 rounded transition-colors"
-                                                        >
-                                                            None
-                                                        </button>
-                                                    </div>
-                                                </div>
-                                                <div className="max-h-32 overflow-y-auto space-y-1 pr-2 custom-scrollbar border border-gray-100 dark:border-gray-700 rounded-lg p-2 bg-gray-50/50 dark:bg-gray-800/50">
-                                                    {routeTypes.map(t => (
-                                                        <div key={t} className="flex items-center gap-2 hover:bg-gray-100 dark:hover:bg-gray-700/50 p-1 rounded cursor-pointer" onClick={() => toggleFilterType(t)}>
-                                                            <div className={clsx(
-                                                                "w-4 h-4 rounded border flex items-center justify-center transition-colors flex-shrink-0",
-                                                                selectedRouteTypes.has(t)
-                                                                    ? "bg-purple-600 border-purple-600"
-                                                                    : "bg-white dark:bg-gray-800 border-gray-300 dark:border-gray-600"
-                                                            )}>
-                                                                {selectedRouteTypes.has(t) && <Check size={12} className="text-white" />}
-                                                            </div>
-                                                            <span className={clsx("text-xs", selectedRouteTypes.has(t) ? "text-gray-900 dark:text-gray-200 font-medium" : "text-gray-500")}>
-                                                                {getRouteTypeName(String(t))}
-                                                            </span>
-                                                        </div>
-                                                    ))}
-                                                </div>
-                                            </div>
-                                        )}
+                                                <span className="text-[11px] font-black uppercase tracking-tight text-left truncate">{a.name}</span>
+                                            </button>
+                                        ))}
                                     </div>
                                 </div>
-                            )}
 
-                            <div className="flex justify-between items-center mb-2">
-                                <span className="text-sm font-medium text-gray-500">
-                                    {Array.from(selectedPairs).filter(_p => {
-                                        // Only count visible ones ?? Or keep total?
-                                        // Currently calculating based on total selection
-                                        return true;
-                                    }).length} items selected
-                                </span>
-                                <div className="flex gap-2">
-                                    <button
+                                {/* Modes Tactical Filter */}
+                                <div className="bg-white dark:bg-slate-800 p-6 rounded-[28px] border utilitarian-border shadow-sm">
+                                    <div className="flex items-center justify-between mb-4 px-1">
+                                         <p className="text-[10px] font-black text-slate-500 uppercase tracking-[0.2em] flex items-center gap-2">
+                                            <Activity size={14} className="text-primary" /> Modos Operativos
+                                        </p>
+                                        <div className="flex gap-4">
+                                            <button onClick={() => setSelectedRouteTypes(new Set(routeTypes))} className="text-[9px] font-black uppercase text-primary hover:underline">Totalizar</button>
+                                            <button onClick={() => setSelectedRouteTypes(new Set())} className="text-[9px] font-black uppercase text-slate-400 hover:text-slate-600">Omitir</button>
+                                        </div>
+                                    </div>
+                                    <div className="max-h-36 overflow-y-auto space-y-1 pr-2 custom-scrollbar">
+                                        {routeTypes.map(t => (
+                                            <button 
+                                                key={t} 
+                                                onClick={() => {
+                                                    const next = new Set(selectedRouteTypes);
+                                                    if (next.has(t)) next.delete(t); else next.add(t);
+                                                    setSelectedRouteTypes(next);
+                                                }}
+                                                className={clsx(
+                                                    "w-full flex items-center gap-3 p-3 rounded-xl transition-all group",
+                                                    selectedRouteTypes.has(t) ? "bg-primary/5 text-primary" : "text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-900"
+                                                )}
+                                            >
+                                                <div className={clsx(
+                                                    "w-4 h-4 rounded-md border-2 flex items-center justify-center transition-all",
+                                                    selectedRouteTypes.has(t) ? "bg-primary border-primary text-white" : "border-slate-200 dark:border-slate-700"
+                                                )}>
+                                                    {selectedRouteTypes.has(t) && <Check size={10} strokeWidth={4} />}
+                                                </div>
+                                                <span className="text-[11px] font-black uppercase tracking-tight text-left truncate">{getRouteTypeName(t)}</span>
+                                            </button>
+                                        ))}
+                                    </div>
+                                </div>
+                            </div>
+
+                            {/* Inventory Board */}
+                            <div className="space-y-4">
+                                <div className="flex items-center justify-between px-2">
+                                    <div className="flex items-center gap-4">
+                                        <div className="text-[11px] font-black text-slate-900 dark:text-white uppercase tracking-widest flex items-center gap-2">
+                                            <LayoutGrid size={16} className="text-primary" /> Inventario de Suministro
+                                        </div>
+                                        <span className="px-2 py-0.5 bg-slate-900 text-white dark:bg-white dark:text-slate-900 text-[9px] font-black rounded-full uppercase tabular-nums tracking-widest">
+                                            {selectedPairs.size} Seleccionados
+                                        </span>
+                                    </div>
+                                    <button 
                                         onClick={() => {
                                             const allPairs = new Set<string>();
-                                            // Only select visible (filtered)
                                             filteredServices.forEach(s => s.routes.forEach(r => allPairs.add(`${s.service_id}|${r.route_id}`)));
                                             setSelectedPairs(allPairs);
                                         }}
-                                        className="text-xs text-blue-600 hover:underline"
+                                        className="text-[10px] font-black uppercase tracking-[0.2em] text-primary hover:underline hover:scale-105 transition-all"
                                     >
-                                        Select All Visible
-                                    </button>
-                                    <button
-                                        onClick={() => setSelectedPairs(new Set())}
-                                        className="text-xs text-gray-500 hover:underline"
-                                    >
-                                        Deselect All
+                                        Selección Total
                                     </button>
                                 </div>
-                            </div>
 
-                            <div className="border border-gray-200 dark:border-gray-700 rounded-xl overflow-hidden">
-                                {filteredServices.length === 0 && (
-                                    <div className="p-8 text-center text-gray-500">
-                                        No routes match the selected filters.
-                                    </div>
-                                )}
-                                {filteredServices.map(service => {
-                                    const isExpanded = expandedServices.has(service.service_id);
-
-                                    // Check selection state for this service
-                                    const serviceKeys = service.routes.map(r => `${service.service_id}|${r.route_id}`);
-                                    const selectedCount = serviceKeys.filter(k => selectedPairs.has(k)).length;
-                                    const totalCount = service.routes.length;
-                                    const isSelected = selectedCount === totalCount && totalCount > 0;
-                                    const isPartial = selectedCount > 0 && selectedCount < totalCount;
-
-                                    return (
-                                        <div key={service.service_id} className="border-b border-gray-200 dark:border-gray-700 last:border-0">
-                                            {/* Service Header */}
-                                            <div className="flex items-center bg-gray-50 dark:bg-gray-800/50 p-3 hover:bg-gray-100 dark:hover:bg-gray-700/50 transition-colors">
-                                                <button onClick={() => toggleExpand(service.service_id)} className="p-1 mr-2 text-gray-500 hover:text-gray-700">
-                                                    {isExpanded ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
-                                                </button>
-                                                <div
-                                                    className="relative flex items-center justify-center w-5 h-5 mr-3 cursor-pointer border rounded bg-white dark:bg-gray-700 border-gray-300 dark:border-gray-600"
-                                                    onClick={() => toggleService(service.service_id, service.routes)}
-                                                >
-                                                    {(isSelected || isPartial) && (
-                                                        <div className={clsx("w-3 h-3 rounded-sm", isSelected ? "bg-blue-600" : "bg-blue-400")} />
-                                                    )}
-                                                </div>
-                                                <div className="flex-1 flex items-center gap-2 cursor-pointer" onClick={() => toggleExpand(service.service_id)}>
-                                                    <Calendar size={16} className="text-gray-400" />
-                                                    <span className="font-mono font-medium text-sm text-gray-700 dark:text-gray-200">{service.service_id}</span>
-                                                    <span className="text-xs text-gray-400">({selectedCount}/{totalCount} routes)</span>
-                                                </div>
-                                            </div>
-
-                                            {/* Routes List */}
-                                            {isExpanded && (
-                                                <div className="bg-white dark:bg-gray-800 p-2 pl-12 space-y-1">
-                                                    {service.routes.map(route => {
-                                                        const key = `${service.service_id}|${route.route_id}`;
-                                                        const isRouteSelected = selectedPairs.has(key);
-                                                        return (
-                                                            <div key={route.route_id} className="flex items-center gap-3 p-2 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-700/30 transition-colors">
-                                                                <div
-                                                                    className={clsx(
-                                                                        "w-5 h-5 border rounded flex items-center justify-center cursor-pointer transition-colors",
-                                                                        isRouteSelected ? "bg-blue-600 border-blue-600" : "border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700"
-                                                                    )}
-                                                                    onClick={() => toggleRoute(route.route_id, service.service_id)}
-                                                                >
-                                                                    {isRouteSelected && <Check size={14} className="text-white" />}
-                                                                </div>
-                                                                <div className="flex-1">
-                                                                    <div className="flex items-center gap-2">
-                                                                        <span className="font-bold text-sm text-gray-800 dark:text-gray-200 bg-gray-100 dark:bg-gray-700 px-1.5 rounded">{route.short_name || route.route_id}</span>
-                                                                        <span className="text-sm text-gray-600 dark:text-gray-400 truncate max-w-[300px]">{route.long_name}</span>
-                                                                    </div>
-                                                                    <div className="flex gap-2 mt-1">
-                                                                        {route.agency_name && (
-                                                                            <span className="text-[10px] text-gray-500 bg-gray-100 dark:bg-gray-700 px-1 rounded">{route.agency_name}</span>
-                                                                        )}
-                                                                        <span className="text-[10px] text-gray-500 bg-gray-100 dark:bg-gray-700 px-1 rounded">{getRouteTypeName(String(route.route_type))}</span>
-                                                                    </div>
-                                                                </div>
-                                                            </div>
-                                                        );
-                                                    })}
-                                                </div>
-                                            )}
+                                <div className="border utilitarian-border rounded-[32px] overflow-hidden bg-white dark:bg-slate-800 shadow-sm transition-all duration-500">
+                                    {filteredServices.length === 0 ? (
+                                        <div className="p-20 text-center flex flex-col items-center gap-4">
+                                             <div className="p-4 bg-slate-50 dark:bg-slate-900 rounded-full text-slate-200">
+                                                <Activity size={40} />
+                                             </div>
+                                             <p className="text-[11px] font-black text-slate-400 uppercase tracking-widest leading-relaxed max-w-xs">No hay entidades que coincidan con los filtros tácticos aplicados.</p>
                                         </div>
-                                    );
-                                })}
+                                    ) : filteredServices.map(service => {
+                                        const isExpanded = expandedServices.has(service.service_id);
+                                        const serviceKeys = service.routes.map(r => `${service.service_id}|${r.route_id}`);
+                                        const selectedCount = serviceKeys.filter(k => selectedPairs.has(k)).length;
+                                        const totalCount = service.routes.length;
+                                        const isSelected = selectedCount === totalCount && totalCount > 0;
+                                        const isPartial = selectedCount > 0 && selectedCount < totalCount;
+
+                                        return (
+                                            <div key={service.service_id} className="border-b utilitarian-border last:border-0">
+                                                <div className={clsx(
+                                                    "flex items-center p-6 transition-all group",
+                                                    isExpanded ? "bg-slate-50 dark:bg-slate-800/80" : "hover:bg-slate-50 dark:hover:bg-slate-800/40"
+                                                )}>
+                                                    <button onClick={() => toggleExpand(service.service_id)} className="p-2 mr-4 text-slate-300 hover:text-slate-900 dark:hover:text-white transition-all transform group-hover:scale-110">
+                                                        {isExpanded ? <ChevronDown size={20} strokeWidth={2.5} /> : <ChevronRight size={20} strokeWidth={2.5} />}
+                                                    </button>
+                                                    <button 
+                                                        onClick={() => toggleService(service.service_id, service.routes)}
+                                                        className={clsx(
+                                                            "w-6 h-6 rounded-lg border-2 flex items-center justify-center mr-6 transition-all",
+                                                            isSelected ? "bg-primary border-primary text-white" : isPartial ? "bg-primary/20 border-primary/40 text-primary" : "border-slate-200 dark:border-slate-700"
+                                                        )}
+                                                    >
+                                                        {(isSelected || isPartial) && <Check size={14} strokeWidth={4} />}
+                                                    </button>
+                                                    <div className="flex-1 flex flex-col cursor-pointer" onClick={() => toggleExpand(service.service_id)}>
+                                                        <div className="flex items-center gap-3">
+                                                            <Calendar size={14} className="text-primary/60" />
+                                                            <span className="text-[12px] font-black font-mono text-slate-900 dark:text-white uppercase tracking-tight leading-none">{service.service_id}</span>
+                                                        </div>
+                                                        <span className="text-[9px] font-bold text-slate-400 uppercase tracking-widest mt-2">{selectedCount} de {totalCount} trazados seleccionados</span>
+                                                    </div>
+                                                </div>
+
+                                                {isExpanded && (
+                                                    <div className="bg-white dark:bg-slate-900/50 p-4 pl-24 space-y-2 animate-in slide-in-from-top-2 duration-300">
+                                                        {service.routes.map(route => {
+                                                            const key = `${service.service_id}|${route.route_id}`;
+                                                            const isRouteSelected = selectedPairs.has(key);
+                                                            return (
+                                                                <button 
+                                                                    key={route.route_id} 
+                                                                    onClick={() => toggleRoute(route.route_id, service.service_id)}
+                                                                    className={clsx(
+                                                                        "w-full flex items-center gap-4 p-4 rounded-2xl border transition-all text-left group",
+                                                                        isRouteSelected ? "bg-primary/5 border-primary/20 shadow-sm" : "border-transparent hover:bg-slate-50 dark:hover:bg-slate-800"
+                                                                    )}
+                                                                >
+                                                                    <div className={clsx(
+                                                                        "w-5 h-5 rounded-lg border-2 flex items-center justify-center transition-all",
+                                                                        isRouteSelected ? "bg-primary border-primary text-white" : "border-slate-200 dark:border-slate-700 group-hover:border-primary"
+                                                                    )}>
+                                                                        {isRouteSelected && <Check size={12} strokeWidth={4} />}
+                                                                    </div>
+                                                                    <div className="flex-1 overflow-hidden">
+                                                                        <div className="flex items-center gap-3 mb-1.5">
+                                                                            <span className="px-2 py-0.5 bg-slate-900 text-white dark:bg-slate-700 text-[10px] font-black rounded-lg font-mono tracking-tight uppercase">{route.short_name || route.route_id}</span>
+                                                                            <span className="text-[11px] font-black text-slate-800 dark:text-white uppercase tracking-tight truncate flex-1">{route.long_name}</span>
+                                                                        </div>
+                                                                        <div className="flex items-center gap-4">
+                                                                            <span className="text-[9px] font-bold text-slate-400 uppercase tracking-widest flex items-center gap-1.5"><Database size={10} /> {route.agency_name}</span>
+                                                                            <span className="text-[9px] font-bold text-slate-400 uppercase tracking-widest flex items-center gap-1.5"><Activity size={10} /> {getRouteTypeName(route.route_type)}</span>
+                                                                        </div>
+                                                                    </div>
+                                                                </button>
+                                                            );
+                                                        })}
+                                                    </div>
+                                                )}
+                                            </div>
+                                        );
+                                    })}
+                                </div>
                             </div>
                         </div>
                     )}
 
-                    {/* Step 3: Processing */}
+                    {/* Step 3: Deployment Status */}
                     {step === 'processing' && (
-                        <div className="space-y-4 py-12 flex flex-col items-center">
-                            <Loader2 size={48} className="text-blue-600 animate-spin mb-4" />
-                            <h3 className="text-lg font-medium text-gray-900 dark:text-white">{message}</h3>
-                            <div className="w-full max-w-md h-3 bg-gray-100 dark:bg-gray-700 rounded-full overflow-hidden mt-2">
-                                <div className="h-full bg-blue-600 transition-all duration-300 ease-out" style={{ width: `${progress}%` }} />
+                        <div className="h-full flex flex-col items-center justify-center py-20 animate-in fade-in duration-1000">
+                            <div className="relative mb-8">
+                                <div className="absolute inset-0 bg-primary/20 blur-3xl animate-pulse rounded-full" />
+                                <div className="w-32 h-32 rounded-[40px] bg-slate-900 dark:bg-white text-white dark:text-slate-900 flex items-center justify-center relative shadow-2xl">
+                                    <Loader2 size={48} strokeWidth={2.5} className="animate-spin" />
+                                </div>
                             </div>
-                            <p className="text-sm text-gray-500">{progress}%</p>
+                            <h3 className="text-xl font-display font-black text-slate-900 dark:text-white uppercase tracking-tight mb-4">{message}</h3>
+                            <div className="w-96 bg-slate-100 dark:bg-slate-800 p-1.5 rounded-full border utilitarian-border overflow-hidden mb-4">
+                                <div className="h-3 bg-primary rounded-full transition-all duration-700 ease-out-expo shadow-[0_0_15px_rgba(37,99,235,0.4)]" style={{ width: `${progress}%` }} />
+                            </div>
+                            <span className="text-[10px] font-black font-mono text-primary uppercase tracking-[0.2em]">{progress}% COMPLETADO</span>
                         </div>
                     )}
 
-                    {/* Step 4: Result */}
+                    {/* Step 4: Final Report */}
                     {step === 'result' && (
-                        <div className="space-y-6">
+                        <div className="h-full flex flex-col max-w-4xl mx-auto p-2 animate-in zoom-in-95 slide-in-from-bottom-12 duration-700 ease-out-expo">
                             {error ? (
-                                <div className="flex flex-col items-center text-center p-6 bg-red-50 dark:bg-red-900/10 rounded-xl border border-red-100 dark:border-red-900/30">
-                                    <AlertCircle size={32} className="text-red-500 mb-3" />
-                                    <h3 className="text-lg font-bold text-red-800 dark:text-red-200">Import Failed</h3>
-                                    <p className="text-sm text-red-600 dark:text-red-400 mt-1">{error}</p>
+                                <div className="flex-1 flex flex-col items-center justify-center text-center">
+                                    <div className="w-24 h-24 rounded-[32px] bg-red-500 text-white flex items-center justify-center mb-8 shadow-2xl shadow-red-500/20">
+                                        <AlertCircle size={48} strokeWidth={2.5} />
+                                    </div>
+                                    <h3 className="text-2xl font-display font-black text-slate-900 dark:text-white uppercase tracking-tight mb-4">Integridad de Suministro Fallida</h3>
+                                    <p className="text-[11px] font-bold text-red-500 uppercase tracking-widest leading-relaxed bg-red-500/5 p-6 rounded-[24px] border border-red-500/10 italic">"{error}"</p>
                                 </div>
                             ) : (
-                                <>
-                                    <div className="flex flex-col items-center text-center p-6 bg-green-50 dark:bg-green-900/10 rounded-xl border border-green-100 dark:border-green-900/30">
-                                        <CheckCircle2 size={32} className="text-green-600 mb-3" />
-                                        <h3 className="text-lg font-bold text-green-800 dark:text-green-200">Import Successful!</h3>
+                                <div className="flex flex-col h-full space-y-8 py-4">
+                                    {/* Success Header */}
+                                    <div className="flex items-center gap-6 bg-emerald-500/5 dark:bg-emerald-500/10 border border-emerald-500/20 p-8 rounded-[40px]">
+                                        <div className="w-16 h-16 rounded-2xl bg-emerald-500 text-white flex items-center justify-center shadow-lg shadow-emerald-500/20 shrink-0">
+                                            <CheckCircle2 size={32} strokeWidth={2.5} />
+                                        </div>
+                                        <div>
+                                            <h3 className="text-2xl font-display font-black text-slate-900 dark:text-white uppercase tracking-tight leading-none mb-2">Sincronización Completada</h3>
+                                            <p className="text-[10px] font-bold text-slate-500 dark:text-emerald-400/60 uppercase tracking-[0.2em] leading-none">La red de transporte ha sido actualizada con éxito.</p>
+                                        </div>
                                     </div>
+
+                                    {/* Main KPIs Section */}
                                     {result && (
-                                        <div className="grid grid-cols-3 gap-2">
-                                            <div className="p-4 rounded-lg bg-gray-50 dark:bg-gray-800 border border-gray-100 dark:border-gray-700">
-                                                <p className="text-xs text-gray-500 uppercase font-bold tracking-wider">Imported</p>
-                                                <p className="text-2xl font-bold text-gray-900 dark:text-white mt-1">{result.importedRoutesCount}</p>
-                                            </div>
-                                            <div className="p-4 rounded-lg bg-gray-50 dark:bg-gray-800 border border-gray-100 dark:border-gray-700">
-                                                <p className="text-xs text-gray-500 uppercase font-bold tracking-wider">Skipped</p>
-                                                <p className="text-2xl font-bold text-gray-900 dark:text-white mt-1">{result.skippedRoutesCount}</p>
-                                            </div>
-                                            <div className="p-4 rounded-lg bg-gray-50 dark:bg-gray-800 border border-gray-100 dark:border-gray-700">
-                                                <p className="text-xs text-gray-500 uppercase font-bold tracking-wider">Invalid</p>
-                                                <p className="text-2xl font-bold text-gray-900 dark:text-white mt-1">{result.invalidRoutesCount}</p>
-                                            </div>
+                                        <div className="grid grid-cols-3 gap-6">
+                                            {[
+                                                { label: 'Sincronizados', val: result.importedRoutesCount, color: 'text-emerald-500', bg: 'bg-emerald-500/5', border: 'border-emerald-500/10' },
+                                                { label: 'Omitidos', val: result.skippedRoutesCount, color: 'text-slate-400', bg: 'bg-slate-500/5', border: 'border-slate-500/10' },
+                                                { label: 'Inválidos', val: result.invalidRoutesCount, color: 'text-red-400', bg: 'bg-red-500/5', border: 'border-red-500/10' }
+                                            ].map((stat, i) => (
+                                                <div key={i} className={clsx("p-10 rounded-[40px] border utilitarian-border text-center shadow-xl transition-all hover:scale-[1.02]", stat.bg, stat.border)}>
+                                                    <p className="text-[11px] font-black text-slate-400 uppercase tracking-[0.25em] mb-4 leading-none">{stat.label}</p>
+                                                    <p className={clsx("text-6xl font-display font-black leading-none tracking-tighter", stat.color)}>{stat.val || 0}</p>
+                                                </div>
+                                            ))}
                                         </div>
                                     )}
-                                    {/* Skipped Routes List */}
+
+                                    {/* Detailed Logs Section (Scrollable) */}
                                     {result?.skippedRoutes?.length > 0 && (
-                                        <div className="bg-orange-50 dark:bg-orange-900/10 rounded-lg p-4 border border-orange-100 dark:border-orange-900/30 max-h-32 overflow-y-auto">
-                                            <p className="text-xs font-bold text-orange-800 mb-2">Skipped (Duplicate):</p>
-                                            <p className="text-xs text-orange-700">{result.skippedRoutes.join(', ')}</p>
+                                        <div className="flex-1 flex flex-col min-h-0 min-w-0">
+                                            <div className="flex items-center justify-between mb-4 px-4 text-slate-400">
+                                                <div className="text-[10px] font-black uppercase tracking-[0.2em] flex items-center gap-2">
+                                                    <Info size={14} /> Trazados Pre-existentes (Omitidos)
+                                                </div>
+                                                <div className="text-[10px] font-mono font-bold">{result.skippedRoutes.length} ITEMS</div>
+                                            </div>
+                                            <div className="flex-1 overflow-y-auto p-8 bg-slate-100/50 dark:bg-slate-800/20 rounded-[40px] border border-dashed border-slate-200 dark:border-slate-800 custom-scrollbar">
+                                                <div className="flex flex-wrap gap-2">
+                                                    {result.skippedRoutes.map((id: string, i: number) => (
+                                                        <span key={i} className="px-3 py-1.5 bg-white dark:bg-slate-900/80 text-[10px] font-black font-mono text-slate-500 dark:text-slate-400 rounded-xl border utilitarian-border shadow-sm">
+                                                            {id}
+                                                        </span>
+                                                    ))}
+                                                </div>
+                                            </div>
                                         </div>
                                     )}
-                                </>
+                                </div>
                             )}
                         </div>
                     )}
                 </div>
 
-                {/* Footer */}
-                <div className="px-6 py-4 border-t border-gray-100 dark:border-gray-700 bg-white dark:bg-gray-800 rounded-b-2xl flex justify-end gap-3">
-                    <button onClick={onClose} className="px-4 py-2 text-gray-600 dark:text-gray-300 font-medium hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg transition-colors text-sm">
-                        {step === 'result' ? 'Close' : 'Cancel'}
+                {/* Tactical Footer Overlay */}
+                <div className="px-10 py-10 border-t utilitarian-border bg-white dark:bg-slate-800/10 flex justify-end gap-6">
+                    <button 
+                        onClick={onClose} 
+                        className="px-8 py-5 text-[11px] font-black uppercase tracking-widest text-slate-500 hover:text-red-500 transition-colors"
+                    >
+                        {step === 'result' ? 'Finalizar Reporte' : 'Abortar Operación'}
                     </button>
 
                     {step === 'upload' && (
                         <button
                             onClick={handleScan}
                             disabled={!file}
-                            className="px-6 py-2 bg-[#1337ec] hover:bg-blue-700 text-white font-bold rounded-lg shadow-lg disabled:opacity-50 flex items-center gap-2 transition-all text-sm"
+                            className="px-12 py-5 bg-primary hover:bg-[#1e4cd8] text-white text-[11px] font-black uppercase tracking-[0.25em] rounded-[24px] shadow-2xl shadow-primary/30 disabled:opacity-30 disabled:cursor-not-allowed flex items-center gap-4 transition-all hover:scale-[1.02] active:scale-95 group"
                         >
-                            <Upload size={18} />
-                            Scan File
+                            <Activity size={18} strokeWidth={2.5} className="group-hover:rotate-180 transition-transform duration-500" />
+                            Analizar Suministro
                         </button>
                     )}
 
@@ -651,20 +624,20 @@ const ImportModal: React.FC<ImportModalProps> = ({ isOpen, onClose }) => {
                         <button
                             onClick={handleExecuteImport}
                             disabled={selectedPairs.size === 0}
-                            className="px-6 py-2 bg-[#1337ec] hover:bg-blue-700 text-white font-bold rounded-lg shadow-lg disabled:opacity-50 flex items-center gap-2 transition-all text-sm"
+                            className="px-12 py-5 bg-primary hover:bg-[#1e4cd8] text-white text-[11px] font-black uppercase tracking-[0.25em] rounded-[24px] shadow-2xl shadow-primary/30 disabled:opacity-30 disabled:cursor-not-allowed flex items-center gap-4 transition-all hover:scale-[1.02] active:scale-95 group"
                         >
-                            <Upload size={18} />
-                            Import {selectedPairs.size} Items
+                            <ProtocoloImportIcon size={18} />
+                            Ejecutar Vinculación ({selectedPairs.size})
                         </button>
                     )}
 
                     {step === 'result' && !error && (
                         <button
                             onClick={() => { onClose(); window.location.reload(); }}
-                            className="px-6 py-2 bg-[#1337ec] hover:bg-blue-700 text-white font-bold rounded-lg shadow-lg flex items-center gap-2 transition-all text-sm"
+                            className="px-12 py-5 bg-emerald-500 hover:bg-emerald-600 text-white text-[11px] font-black uppercase tracking-[0.25em] rounded-[24px] shadow-2xl shadow-emerald-500/30 flex items-center gap-4 transition-all hover:scale-[1.02] active:scale-95"
                         >
-                            <CheckCircle2 size={18} />
-                            Done & Reload
+                            <CheckCircle2 size={18} strokeWidth={2.5} />
+                            Reiniciar Entorno
                         </button>
                     )}
                 </div>
@@ -672,5 +645,12 @@ const ImportModal: React.FC<ImportModalProps> = ({ isOpen, onClose }) => {
         </div>
     );
 };
+
+const ProtocoloImportIcon = ({ size }: { size: number }) => (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+        <path d="M12 3v19" />
+        <path d="M5 10l7 7 7-7" />
+    </svg>
+);
 
 export default ImportModal;

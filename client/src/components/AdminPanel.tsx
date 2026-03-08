@@ -1,429 +1,597 @@
-import React, { useEffect, useState } from 'react';
-import { useAuth } from '../context/AuthContext';
-import { API_URL } from '../config';
-import { LogOut } from 'lucide-react';
-import ConfirmModal from './ConfirmModal';
+import React, { useEffect, useState } from "react";
+import { useAuth } from "../context/AuthContext";
+import { API_URL } from "../config";
+import {
+  Shield,
+  Users,
+  Database,
+  Plus,
+  Trash2,
+  MapPin,
+  Globe,
+  CheckCircle2,
+} from "lucide-react";
+import { clsx } from "clsx";
+import ConfirmModal from "./ConfirmModal";
 
-// We fetch Geofabrik regions dynamically now instead of a hardcoded list
+import { MapHub } from "./MapHub";
 
 export const AdminPanel: React.FC = () => {
-    const { token, isSuperAdmin, isTenantAdmin, myProjects, logout } = useAuth();
-    const [activeTab, setActiveTab] = useState<'projects' | 'users'>('users');
-    const [projects, setProjects] = useState<any[]>([]);
-    const [users, setUsers] = useState<any[]>([]);
-    const [projectToDelete, setProjectToDelete] = useState<string | null>(null);
+  const { token } = useAuth();
+  const [activeTab, setActiveTab] = useState<"projects" | "users" | "maps">(
+    "projects",
+  );
+  const [projects, setProjects] = useState<any[]>([]);
+  const [users, setUsers] = useState<any[]>([]);
+  const [maps, setMaps] = useState<any[]>([]);
+  const [projectToDelete, setProjectToDelete] = useState<string | null>(null);
 
-    // New project form
-    const [newProjectName, setNewProjectName] = useState('');
-    const [newProjectDesc, setNewProjectDesc] = useState('');
-    const [newProjectRegion, setNewProjectRegion] = useState('');
-    const [customRegionUrl, setCustomRegionUrl] = useState('');
-    const [geofabrikRegions, setGeofabrikRegions] = useState<any[]>([]);
+  // New project form
+  const [newProjectName, setNewProjectName] = useState("");
+  const [newProjectDesc, setNewProjectDesc] = useState("");
+  const [newProjectRegion, setNewProjectRegion] = useState("");
 
-    // New user form
-    const [newUserName, setNewUserName] = useState('');
-    const [newUserEmail, setNewUserEmail] = useState('');
-    const [newUserPassword, setNewUserPassword] = useState('');
+  // New user form
+  const [newUserName, setNewUserName] = useState("");
+  const [newUserEmail, setNewUserEmail] = useState("");
+  const [newUserPassword, setNewUserPassword] = useState("");
+  const [assigningUser, setAssigningUser] = useState<any | null>(null);
 
-    const fetchProjects = async () => {
-        try {
-            const res = await fetch(`${API_URL}/admin/projects`, {
-                headers: { 'Authorization': `Bearer ${token}` }
-            });
-            const data = await res.json();
-            setProjects(Array.isArray(data) ? data : []);
-        } catch (e) {
-            console.error(e);
-        }
-    };
-
-    const fetchUsers = async () => {
-        try {
-            const res = await fetch(`${API_URL}/admin/users`, {
-                headers: { 'Authorization': `Bearer ${token}` }
-            });
-            const data = await res.json();
-            setUsers(Array.isArray(data) ? data : []);
-        } catch (e) {
-            console.error(e);
-        }
-    };
-
-    useEffect(() => {
-        if (token) {
-            fetchProjects();
-            fetchUsers();
-        }
-    }, [token]);
-
-    useEffect(() => {
-        if (!token) return;
-        fetch(`${API_URL}/admin/geofabrik`, {
-            headers: { 'Authorization': `Bearer ${token}` }
-        })
-            .then(res => res.json())
-            .then(data => {
-                if (data && data.features) {
-                    const regions = data.features.map((f: any) => ({
-                        id: f.properties.id,
-                        name: f.properties.name,
-                        url: f.properties.urls.pbf,
-                        lat: f.geometry && f.geometry.coordinates[0]?.[0]?.[1],
-                        lon: f.geometry && f.geometry.coordinates[0]?.[0]?.[0]
-                    })).sort((a: any, b: any) => a.name.localeCompare(b.name));
-                    setGeofabrikRegions(regions);
-                }
-            })
-            .catch(console.error);
-    }, []);
-
-    const handleCreateProject = async () => {
-        if (!newProjectName) return;
-        
-        let regionData = geofabrikRegions.find(r => r.id === newProjectRegion);
-        let finalUrl = customRegionUrl || regionData?.url || undefined;
-        let finalId = newProjectRegion || (customRegionUrl ? newProjectName.toLowerCase().replace(/[^a-z0-9]/g, '-') : undefined);
-        
-        try {
-            const res = await fetch(`${API_URL}/admin/projects`, {
-                method: 'POST',
-                headers: {
-                    'Authorization': `Bearer ${token}`,
-                    'Content-Type': 'application/json'
-                },
-                body: JSON.stringify({ 
-                    name: newProjectName, 
-                    description: newProjectDesc,
-                    region_id: finalId,
-                    region_url: finalUrl,
-                    map_center_lat: regionData?.lat,
-                    map_center_lon: regionData?.lon
-                })
-            });
-            
-            if (res.ok) {
-                setNewProjectName('');
-                setNewProjectDesc('');
-                setNewProjectRegion('');
-                setCustomRegionUrl('');
-                fetchProjects();
-                alert(`¡Proyecto creado exitosamente! OSRM se está configurando en segundo plano para ${finalId || 'la región'}.`);
-            } else {
-                const data = await res.json();
-                alert(data.error || 'Error al crear proyecto');
-            }
-        } catch (e: any) {
-            console.error(e);
-            alert('Error de conexión al crear proyecto: ' + e.message);
-        }
-    };
-
-    const handleDeleteProject = (id: string) => {
-        setProjectToDelete(id);
-    };
-
-    const confirmDeleteProject = async () => {
-        if (!projectToDelete) return;
-        try {
-            await fetch(`${API_URL}/admin/projects/${projectToDelete}`, {
-                method: 'DELETE',
-                headers: { 'Authorization': `Bearer ${token}` }
-            });
-            fetchProjects();
-        } catch (e) {
-            console.error(e);
-        } finally {
-            setProjectToDelete(null);
-        }
-    };
-
-    const handleAssignUser = async (userId: string, projectId: string) => {
-        await fetch(`${API_URL}/admin/user-projects`, {
-            method: 'POST',
-            headers: {
-                'Authorization': `Bearer ${token}`,
-                'Content-Type': 'application/json'
-            },
-            body: JSON.stringify({ user_id: userId, project_id: projectId, role: 'editor' })
-        });
-        fetchUsers();
-    };
-
-    const handleUnassignUser = async (userId: string, projectId: string) => {
-        await fetch(`${API_URL}/admin/user-projects/${userId}/${projectId}`, {
-            method: 'DELETE',
-            headers: { 'Authorization': `Bearer ${token}` }
-        });
-        fetchUsers();
-    };
-
-    const handleCreateUser = async () => {
-        if (!newUserName || !newUserEmail || !newUserPassword) return;
-        try {
-            const res = await fetch(`${API_URL}/admin/users`, {
-                method: 'POST',
-                headers: {
-                    'Authorization': `Bearer ${token}`,
-                    'Content-Type': 'application/json'
-                },
-                body: JSON.stringify({
-                    username: newUserName,
-                    email: newUserEmail,
-                    password: newUserPassword
-                })
-            });
-            if (res.ok) {
-                setNewUserName('');
-                setNewUserEmail('');
-                setNewUserPassword('');
-                fetchUsers();
-                alert('¡Usuario creado en el sistema y listo para ser asignado!');
-            } else {
-                const data = await res.json();
-                alert(data.error || 'Failed to create user');
-            }
-        } catch (e) {
-            console.error(e);
-            alert('Error connecting to server');
-        }
-    };
-
-    const handleDeleteUser = async (id: string, username: string) => {
-        if (username === 'admin') {
-            alert('Cannot delete the builtin admin account');
-            return;
-        }
-        if (!confirm(`¿Eliminar al usuario ${username} permanentemente de Keycloak y de la base de datos?`)) return;
-        try {
-            const res = await fetch(`${API_URL}/admin/users/${id}`, {
-                method: 'DELETE',
-                headers: { 'Authorization': `Bearer ${token}` }
-            });
-            if (res.ok) {
-                fetchUsers();
-            } else {
-                const data = await res.json();
-                alert(data.error || 'Failed to delete user');
-            }
-        } catch (e) {
-            console.error(e);
-        }
-    };
-
-    // Only allow Admin or TenantAdmin role
-    if (!isSuperAdmin && !isTenantAdmin) {
-        return <div className="p-8 text-white">Acceso denegado. Requiere rol de administrador.</div>;
+  const fetchProjects = async () => {
+    try {
+      const res = await fetch(`${API_URL}/admin/projects`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      const data = await res.json();
+      setProjects(Array.isArray(data) ? data : []);
+    } catch (e) {
+      console.error(e);
     }
+  };
 
-    // A TenantAdmin only manages projects they actually have admin rights to
-    const adminActionableProjects = isSuperAdmin ? projects : myProjects.filter(p => p.user_role === 'admin');
+  const fetchMaps = async () => {
+    try {
+      const res = await fetch(`${API_URL}/admin/maps`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      const data = await res.json();
+      setMaps(Array.isArray(data) ? data : []);
+    } catch (e) {
+      console.error(e);
+    }
+  };
 
-    return (
-        <div className="flex-1 p-8 overflow-y-auto bg-[#0f111a] text-white">
-            <div className="flex justify-between items-center mb-6">
-                <h1 className="text-3xl font-bold">🛠️ Panel de Administración {isSuperAdmin ? '(SuperAdmin)' : '(TenantAdmin)'}</h1>
-                <button
-                    onClick={logout}
-                    className="flex items-center gap-2 bg-red-600/10 text-red-500 border border-red-500/20 px-4 py-2 rounded-lg font-medium hover:bg-red-500 hover:text-white transition-all shadow-lg shadow-red-500/10"
-                    title="Cerrar Sesión"
-                >
-                    <LogOut size={20} />
-                    <span>Cerrar Sesión</span>
-                </button>
+  const fetchUsers = async () => {
+    try {
+      const res = await fetch(`${API_URL}/admin/users`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      const data = await res.json();
+      setUsers(Array.isArray(data) ? data : []);
+    } catch (e) {
+      console.error(e);
+    }
+  };
+
+  useEffect(() => {
+    if (token) {
+      fetchProjects();
+      fetchUsers();
+      fetchMaps();
+    }
+  }, [token]);
+
+  const handleCreateProject = async () => {
+    if (!newProjectName || !newProjectRegion) return;
+
+    try {
+      const res = await fetch(`${API_URL}/admin/projects`, {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${token}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          name: newProjectName,
+          description: newProjectDesc,
+          map_instance_id: newProjectRegion,
+        }),
+      });
+      if (res.ok) {
+        setNewProjectName("");
+        setNewProjectDesc("");
+        fetchProjects();
+      }
+    } catch (e) {
+      console.error(e);
+    }
+  };
+
+  const handleDeleteProject = async (id: string) => {
+    try {
+      const res = await fetch(`${API_URL}/admin/projects/${id}`, {
+        method: "DELETE",
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (res.ok) {
+        fetchProjects();
+        setProjectToDelete(null);
+      }
+    } catch (e) {
+      console.error(e);
+    }
+  };
+
+  const handleCreateUser = async () => {
+    if (!newUserName || !newUserEmail || !newUserPassword) return;
+    try {
+      const res = await fetch(`${API_URL}/admin/users`, {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${token}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          username: newUserName,
+          email: newUserEmail,
+          password: newUserPassword,
+        }),
+      });
+      if (res.ok) {
+        setNewUserName("");
+        setNewUserEmail("");
+        setNewUserPassword("");
+        fetchUsers();
+      }
+    } catch (e) {
+      console.error(e);
+    }
+  };
+
+  const handleAssignProject = async (userId: string, projectId: string) => {
+    try {
+      const res = await fetch(`${API_URL}/admin/user-projects`, {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${token}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          user_id: userId,
+          project_id: projectId,
+          role: "editor",
+        }),
+      });
+      if (res.ok) {
+        fetchUsers();
+      }
+    } catch (e) {
+      console.error(e);
+    }
+  };
+
+  const handleRemoveProject = async (userId: string, projectId: string) => {
+    try {
+      const res = await fetch(
+        `${API_URL}/admin/user-projects/${userId}/${projectId}`,
+        {
+          method: "DELETE",
+          headers: { Authorization: `Bearer ${token}` },
+        },
+      );
+      if (res.ok) {
+        fetchUsers();
+      }
+    } catch (e) {
+      console.error(e);
+    }
+  };
+
+  return (
+    <div className="absolute inset-0 z-50 bg-background-light dark:bg-background-dark flex flex-col animate-in fade-in duration-700 ease-out-expo">
+      {/* Header Section */}
+      <div className="border-b utilitarian-border px-8 py-12 bg-white/50 dark:bg-slate-900/50 backdrop-blur-sm">
+        <div className="max-w-7xl mx-auto flex flex-col md:flex-row justify-between items-start md:items-end gap-6">
+          <div>
+            <div className="flex items-center gap-3 mb-2">
+              <div className="p-2.5 rounded-xl bg-primary text-white shadow-lg shadow-primary/20">
+                <Shield size={24} strokeWidth={2.5} />
+              </div>
+              <h1 className="text-4xl font-display font-bold text-slate-900 dark:text-white tracking-tight">
+                Centro de Control
+              </h1>
             </div>
-
-            <div className="flex border-b border-[#2d3248] mb-8">
-                <button
-                    onClick={() => setActiveTab('users')}
-                    className={`px-6 py-3 font-semibold ${activeTab === 'users' ? 'text-blue-400 border-b-2 border-blue-400' : 'text-gray-400 hover:text-gray-200'}`}
-                >
-                    👥 Catálogo de Usuarios
-                </button>
-                <button
-                    onClick={() => setActiveTab('projects')}
-                    className={`px-6 py-3 font-semibold ${activeTab === 'projects' ? 'text-blue-400 border-b-2 border-blue-400' : 'text-gray-400 hover:text-gray-200'}`}
-                >
-                    🏢 Catálogo de Proyectos
-                </button>
-            </div>
-
-            {activeTab === 'projects' && (
-                <section className="mb-12 bg-[#1a1d2d] p-6 rounded-lg border border-[#2d3248] animate-fade-in">
-                    <h2 className="text-2xl font-semibold mb-4 text-[#bfbfff]">Gestión de Proyectos</h2>
-
-                    {isSuperAdmin && (
-                        <div className="flex gap-4 mb-6">
-                            <input
-                                type="text"
-                                placeholder="Nombre de la red..."
-                                value={newProjectName}
-                                onChange={e => setNewProjectName(e.target.value)}
-                                className="p-2 rounded bg-[#0f111a] border border-[#2d3248] text-white flex-1 focus:outline-none focus:border-blue-500 transition-colors"
-                            />
-                            <input
-                                type="text"
-                                placeholder="Descripción"
-                                value={newProjectDesc}
-                                onChange={e => setNewProjectDesc(e.target.value)}
-                                className="p-2 rounded bg-[#0f111a] border border-[#2d3248] text-white flex-1 focus:outline-none focus:border-blue-500 transition-colors"
-                            />
-                            <div className="flex flex-col gap-2 flex-1">
-                                <select
-                                    value={newProjectRegion}
-                                    onChange={e => {
-                                        setNewProjectRegion(e.target.value);
-                                        if (e.target.value) setCustomRegionUrl('');
-                                    }}
-                                    className="p-2 rounded bg-[#0f111a] border border-[#2d3248] text-white focus:outline-none focus:border-blue-500 transition-colors"
-                                    title="Busca y elige entre las 500+ regiones de Geofabrik"
-                                >
-                                    <option value="">🗺️ Seleccionar Región Mapas (Geofabrik)</option>
-                                    {geofabrikRegions.map(r => (
-                                        <option key={r.id} value={r.id}>{r.name} ({r.id})</option>
-                                    ))}
-                                </select>
-                                <input
-                                    type="text"
-                                    placeholder="O ingresa un URL Custom .osm.pbf (ej. BBBike)"
-                                    value={customRegionUrl}
-                                    onChange={e => {
-                                        setCustomRegionUrl(e.target.value);
-                                        if (e.target.value) setNewProjectRegion('');
-                                    }}
-                                    className="p-2 rounded bg-[#0f111a] border border-[#2d3248] text-white focus:outline-none focus:border-blue-500 transition-colors text-sm"
-                                />
-                            </div>
-                            <button onClick={handleCreateProject} className="bg-blue-600 px-6 py-2 rounded text-white font-medium hover:bg-blue-500 shadow-lg shadow-blue-500/20 active:scale-95 transition-all">
-                                Crear Proyecto
-                            </button>
-                        </div>
-                    )}
-
-                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                        {projects.map(p => (
-                            <div key={p.id} className="p-5 rounded-xl bg-gradient-to-br from-[#272b40] to-[#1f2335] shadow-lg border border-[#3f465c] hover:border-blue-500/50 transition-colors group">
-                                <h3 className="text-xl font-bold text-[#bfbfff]">{p.name}</h3>
-                                <p className="text-sm text-gray-400 mb-4">{p.description || 'Sin descripción'}</p>
-                                {isSuperAdmin && (
-                                    <button onClick={() => handleDeleteProject(p.id)} className="text-red-400 hover:text-red-300 text-sm font-medium opacity-0 group-hover:opacity-100 transition-opacity">
-                                        Eliminar Proyecto
-                                    </button>
-                                )}
-                            </div>
-                        ))}
-                    </div>
-                </section>
-            )}
-
-            {activeTab === 'users' && (
-                <section className="bg-[#1a1d2d] p-0 rounded-lg border border-[#2d3248] overflow-hidden animate-fade-in shadow-xl">
-                    <div className="p-6 bg-[#212638] border-b border-[#2d3248]">
-                        <h2 className="text-2xl font-semibold mb-4 text-[#bfbfff]">Directorio de Usuarios</h2>
-
-                        {isSuperAdmin && (
-                            <div className="flex gap-4 mb-6">
-                                <input
-                                    type="text"
-                                    placeholder="Username"
-                                    value={newUserName}
-                                    onChange={e => setNewUserName(e.target.value)}
-                                    className="p-2 rounded bg-[#0f111a] border border-[#2d3248] text-white flex-1 focus:outline-none focus:border-emerald-500 transition-colors"
-                                />
-                                <input
-                                    type="email"
-                                    placeholder="Email"
-                                    value={newUserEmail}
-                                    onChange={e => setNewUserEmail(e.target.value)}
-                                    className="p-2 rounded bg-[#0f111a] border border-[#2d3248] text-white flex-1"
-                                />
-                                <input
-                                    type="password"
-                                    placeholder="Contraseña Temporal"
-                                    value={newUserPassword}
-                                    onChange={e => setNewUserPassword(e.target.value)}
-                                    className="p-2 rounded bg-[#0f111a] border border-[#2d3248] text-white flex-1 focus:outline-none focus:border-emerald-500 transition-colors"
-                                />
-                                <button onClick={handleCreateUser} className="bg-emerald-600 px-6 py-2 rounded text-white font-medium hover:bg-emerald-500 shadow-lg shadow-emerald-500/20 active:scale-95 transition-all">
-                                    Crear Usuario
-                                </button>
-                            </div>
-                        )}
-                    </div>
-
-                    <div className="p-6 bg-[#1a1d2d]">
-                        <table className="w-full text-left">
-                            <thead>
-                                <tr className="border-b border-[#2d3248] text-gray-400">
-                                    <th className="py-3 px-4 font-normal">Usuario</th>
-                                    <th className="py-3 px-4 font-normal">Email</th>
-                                    <th className="py-3 px-4 font-normal">Proyectos Asignados</th>
-                                    <th className="py-3 px-4 font-normal text-right">Acciones</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                {users.map(u => (
-                                    <tr key={u.id} className="border-b border-[#2d3248] last:border-0 hover:bg-[#272b40]/50 transition-colors">
-                                        <td className="py-4 px-4 font-medium">{u.username}</td>
-                                        <td className="py-4 px-4 text-gray-400">{u.email}</td>
-                                        <td className="py-4 px-4">
-                                            <div className="flex flex-wrap gap-2 mb-2">
-                                                {u.projects?.map((up: any) => (
-                                                    <span key={up.id} className="flex items-center gap-1 bg-blue-900/50 text-blue-200 text-xs px-2 py-1 rounded-full border border-blue-800">
-                                                        {up.name}
-                                                        <button onClick={() => handleUnassignUser(u.id, up.id)} className="hover:text-red-400 ml-1">×</button>
-                                                    </span>
-                                                ))}
-                                            </div>
-                                            <select
-                                                className="text-xs bg-[#0f111a] border border-[#2d3248] rounded p-1 text-gray-300 hover:border-blue-400 transition-colors focus:outline-none"
-                                                onChange={(e) => {
-                                                    if (e.target.value) {
-                                                        handleAssignUser(u.id, e.target.value);
-                                                        e.target.value = '';
-                                                    }
-                                                }}
-                                                defaultValue=""
-                                            >
-                                                <option value="" disabled>+ Asignar a...</option>
-                                                {adminActionableProjects.filter(p => !u.projects?.some((up: any) => up.id === p.id)).map(p => (
-                                                    <option key={p.id} value={p.id}>{p.name}</option>
-                                                ))}
-                                            </select>
-                                        </td>
-                                        <td className="py-4 px-4 text-right">
-                                            {isSuperAdmin && (
-                                                <button
-                                                    onClick={() => handleDeleteUser(u.id, u.username)}
-                                                    className="text-red-400 hover:text-red-300 text-sm font-medium"
-                                                    disabled={u.username === 'admin'}
-                                                    title={u.username === 'admin' ? "Cannot delete builtin admin" : "Eliminar usuario permanentemente"}
-                                                >
-                                                    Eliminar
-                                                </button>
-                                            )}
-                                        </td>
-                                    </tr>
-                                ))}
-                                {users.length === 0 && (
-                                    <tr>
-                                        <td colSpan={4} className="py-8 text-center text-gray-500">Ningún usuario sincronizado. Los usuarios deben loguearse al menos una vez para aparecer aquí.</td>
-                                    </tr>
-                                )}
-                            </tbody>
-                        </table>
-                    </div>
-                </section>
-            )}
-
-            <ConfirmModal
-                isOpen={!!projectToDelete}
-                title="Eliminar Proyecto"
-                message="¿Estás seguro de que deseas eliminar este proyecto y todos sus datos relacionados? Esta acción no se puede deshacer."
-                isDestructive={true}
-                confirmText="Sí, Eliminar"
-                onConfirm={confirmDeleteProject}
-                onCancel={() => setProjectToDelete(null)}
-            />
+            <p className="text-slate-500 dark:text-slate-400 font-medium max-w-xl text-balance">
+              Administración global de infraestructura cartográfica y acceso de
+              usuarios Enterprise.
+            </p>
+          </div>
         </div>
-    );
+
+        {/* Navigation Tabs */}
+        <div className="max-w-7xl mx-auto mt-12 flex gap-1 bg-slate-100 dark:bg-slate-800/50 p-1 rounded-xl w-fit">
+          <button
+            onClick={() => setActiveTab("users")}
+            className={clsx(
+              "flex items-center gap-2 px-6 py-2 rounded-lg text-xs font-bold uppercase tracking-widest transition-all",
+              activeTab === "users"
+                ? "bg-white dark:bg-slate-700 text-primary shadow-sm"
+                : "text-slate-500 hover:text-slate-900 dark:hover:text-white",
+            )}
+          >
+            <Users size={16} />
+            Usuarios
+          </button>
+          <button
+            onClick={() => setActiveTab("projects")}
+            className={clsx(
+              "flex items-center gap-2 px-6 py-2 rounded-lg text-xs font-bold uppercase tracking-widest transition-all",
+              activeTab === "projects"
+                ? "bg-white dark:bg-slate-700 text-primary shadow-sm"
+                : "text-slate-500 hover:text-slate-900 dark:hover:text-white",
+            )}
+          >
+            <Database size={16} />
+            Proyectos
+          </button>
+          <button
+            onClick={() => setActiveTab("maps")}
+            className={clsx(
+              "flex items-center gap-2 px-6 py-2 rounded-lg text-xs font-bold uppercase tracking-widest transition-all",
+              activeTab === "maps"
+                ? "bg-white dark:bg-slate-700 text-primary shadow-sm"
+                : "text-slate-500 hover:text-slate-900 dark:hover:text-white",
+            )}
+          >
+            <Globe size={16} />
+            Map Hub
+          </button>
+        </div>
+      </div>
+
+      {/* Scrollable Content */}
+      <div className="flex-1 overflow-auto custom-scrollbar p-8">
+        <div className="max-w-7xl mx-auto pb-20">
+          {activeTab === "projects" && (
+            <div className="grid grid-cols-1 lg:grid-cols-3 gap-10 animate-in fade-in slide-in-from-bottom-4 duration-500">
+              {/* Create Project Form */}
+              <div className="lg:col-span-1">
+                <div className="glass-panel p-8 rounded-2xl border border-white/20 dark:border-slate-800">
+                  <h2 className="text-xl font-display font-bold text-slate-900 dark:text-white mb-6">
+                    Nuevo Proyecto
+                  </h2>
+                  <div className="space-y-4">
+                    <div className="space-y-1.5">
+                      <label className="text-[10px] font-bold uppercase tracking-widest text-slate-500">
+                        Nombre del Proyecto
+                      </label>
+                      <input
+                        type="text"
+                        placeholder="Ej: Montevideo Central"
+                        value={newProjectName}
+                        onChange={(e) => setNewProjectName(e.target.value)}
+                        className="w-full px-4 py-2.5 bg-slate-50 dark:bg-slate-900 border utilitarian-border rounded-xl text-sm outline-none focus:ring-2 focus:ring-primary/20"
+                      />
+                    </div>
+                    <div className="space-y-1.5">
+                      <label className="text-[10px] font-bold uppercase tracking-widest text-slate-500">
+                        Descripción
+                      </label>
+                      <textarea
+                        placeholder="Alcance y región operativa..."
+                        value={newProjectDesc}
+                        onChange={(e) => setNewProjectDesc(e.target.value)}
+                        className="w-full px-4 py-2.5 bg-slate-50 dark:bg-slate-900 border utilitarian-border rounded-xl text-sm outline-none focus:ring-2 focus:ring-primary/20 h-24 resize-none"
+                      />
+                    </div>
+                    <div className="space-y-1.5">
+                      <label className="text-[10px] font-bold uppercase tracking-widest text-slate-500">
+                        Seleccionar Mapa (Hub)
+                      </label>
+                      <select
+                        className="w-full px-4 py-2.5 bg-slate-50 dark:bg-slate-900 border utilitarian-border rounded-xl text-sm outline-none focus:ring-2 focus:ring-primary/20 appearance-none"
+                        value={newProjectRegion}
+                        onChange={(e) => setNewProjectRegion(e.target.value)}
+                      >
+                        <option value="">-- Seleccionar Mapa --</option>
+                        {maps
+                          .filter((m) => m.status === "ready")
+                          .map((m) => (
+                            <option key={m.id} value={m.id}>
+                              {m.name}
+                            </option>
+                          ))}
+                      </select>
+                      <p className="text-[10px] text-slate-500 mt-1 italic">
+                        Solo se muestran mapas con estado "Ready".
+                      </p>
+                    </div>
+
+                    <button
+                      onClick={handleCreateProject}
+                      className="w-full mt-4 flex items-center justify-center gap-2 px-6 py-3 bg-primary text-white rounded-xl hover:scale-[1.02] active:scale-95 transition-all font-bold text-xs uppercase tracking-widest shadow-xl shadow-primary/20"
+                    >
+                      <Plus size={16} strokeWidth={3} />
+                      Inicializar Proyecto
+                    </button>
+                  </div>
+                </div>
+              </div>
+
+              {/* Project List */}
+              <div className="lg:col-span-2 space-y-4">
+                <h2 className="text-xl font-display font-bold text-slate-900 dark:text-white mb-6">
+                  Sistemas Activos
+                </h2>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  {projects.map((p, idx) => (
+                    <div
+                      key={p.id}
+                      style={{ animationDelay: `${idx * 50}ms` }}
+                      className="group relative bg-white dark:bg-slate-800/40 border utilitarian-border p-6 rounded-2xl hover:border-primary/50 transition-all animate-in fade-in slide-in-from-right-4"
+                    >
+                      <div className="flex items-start justify-between mb-4">
+                        <div className="p-2 rounded-lg bg-primary/10 text-primary">
+                          <Globe size={20} />
+                        </div>
+                        <button
+                          onClick={() => setProjectToDelete(p.id)}
+                          className="p-2 text-slate-300 hover:text-red-500 transition-colors"
+                        >
+                          <Trash2 size={16} />
+                        </button>
+                      </div>
+                      <h3 className="font-display font-bold text-lg text-slate-900 dark:text-white mb-1">
+                        {p.name}
+                      </h3>
+                      <p className="text-xs text-slate-500 font-medium mb-4 line-clamp-2">
+                        {p.description || "Sin descripción técnica"}
+                      </p>
+
+                      <div className="flex flex-col gap-2 mt-auto">
+                        <div className="flex items-center gap-2 text-[10px] font-bold uppercase tracking-widest text-slate-400">
+                          <MapPin size={10} />
+                          {p.map_name || "Sin mapa asociado"}
+                        </div>
+                        <div
+                          className={clsx(
+                            "flex items-center gap-2 text-[10px] font-bold uppercase tracking-widest",
+                            p.routing_engine_url
+                              ? "text-emerald-500"
+                              : "text-amber-500",
+                          )}
+                        >
+                          <CheckCircle2 size={10} />
+                          {p.routing_engine_url
+                            ? `Motor listo${p.map_base_port ? ` :${p.map_base_port}` : ""}`
+                            : p.map_status
+                              ? `Mapa ${String(p.map_status).toUpperCase()}`
+                              : "Sin motor routing"}
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
+          )}
+
+          {activeTab === "users" && (
+            <div className="grid grid-cols-1 lg:grid-cols-3 gap-10 animate-in fade-in slide-in-from-bottom-4 duration-500">
+              {/* Create User Form */}
+              <div className="lg:col-span-1">
+                <div className="glass-panel p-8 rounded-2xl border border-white/20 dark:border-slate-800">
+                  <h2 className="text-xl font-display font-bold text-slate-900 dark:text-white mb-6">
+                    Dar de Alta Usuario
+                  </h2>
+                  <div className="space-y-4">
+                    <div className="space-y-1.5">
+                      <label className="text-[10px] font-bold uppercase tracking-widest text-slate-500">
+                        Username
+                      </label>
+                      <input
+                        type="text"
+                        value={newUserName}
+                        onChange={(e) => setNewUserName(e.target.value)}
+                        className="w-full px-4 py-2.5 bg-slate-50 dark:bg-slate-900 border utilitarian-border rounded-xl text-sm outline-none focus:ring-2 focus:ring-primary/20"
+                      />
+                    </div>
+                    <div className="space-y-1.5">
+                      <label className="text-[10px] font-bold uppercase tracking-widest text-slate-500">
+                        Email corporativo
+                      </label>
+                      <input
+                        type="email"
+                        value={newUserEmail}
+                        onChange={(e) => setNewUserEmail(e.target.value)}
+                        className="w-full px-4 py-2.5 bg-slate-50 dark:bg-slate-900 border utilitarian-border rounded-xl text-sm outline-none focus:ring-2 focus:ring-primary/20"
+                      />
+                    </div>
+                    <div className="space-y-1.5">
+                      <label className="text-[10px] font-bold uppercase tracking-widest text-slate-500">
+                        Password temporal
+                      </label>
+                      <input
+                        type="password"
+                        value={newUserPassword}
+                        onChange={(e) => setNewUserPassword(e.target.value)}
+                        className="w-full px-4 py-2.5 bg-slate-50 dark:bg-slate-900 border utilitarian-border rounded-xl text-sm outline-none focus:ring-2 focus:ring-primary/20"
+                      />
+                    </div>
+                    <button
+                      onClick={handleCreateUser}
+                      className="w-full mt-4 flex items-center justify-center gap-2 px-6 py-3 bg-primary text-white rounded-xl hover:scale-[1.02] active:scale-95 transition-all font-bold text-xs uppercase tracking-widest shadow-xl shadow-primary/20"
+                    >
+                      <Plus size={16} strokeWidth={3} />
+                      Registrar Operador
+                    </button>
+                  </div>
+                </div>
+              </div>
+
+              {/* User List */}
+              <div className="lg:col-span-2">
+                <h2 className="text-xl font-display font-bold text-slate-900 dark:text-white mb-6">
+                  Staff de Operaciones
+                </h2>
+                <div className="border utilitarian-border rounded-2xl overflow-hidden bg-white dark:bg-slate-900/30">
+                  <table className="w-full text-left border-collapse">
+                    <thead>
+                      <tr className="bg-slate-50/50 dark:bg-slate-800/40 text-[10px] font-bold uppercase tracking-[0.2em] text-slate-500 dark:text-slate-400 border-b utilitarian-border">
+                        <th className="px-6 py-4">Identidad</th>
+                        <th className="px-6 py-4">Proyectos Asignados</th>
+                        <th className="px-6 py-4 text-right">Rol de Sistema</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y utilitarian-border">
+                      {users.map((u, idx) => (
+                        <tr
+                          key={u.id}
+                          style={{ animationDelay: `${idx * 40}ms` }}
+                          className="hover:bg-slate-50/50 dark:hover:bg-white/5 transition-all animate-in fade-in slide-in-from-left-4"
+                        >
+                          <td className="px-6 py-4">
+                            <div className="flex items-center gap-3">
+                              <div className="w-10 h-10 rounded-lg bg-surface-dark border utilitarian-border flex items-center justify-center text-primary font-bold text-xs">
+                                {u.username.substring(0, 2).toUpperCase()}
+                              </div>
+                              <div>
+                                <div className="font-bold text-slate-900 dark:text-white text-sm">
+                                  {u.username}
+                                </div>
+                                <div className="text-[11px] text-slate-500 font-medium">
+                                  {u.email}
+                                </div>
+                              </div>
+                            </div>
+                          </td>
+                          <td className="px-6 py-4">
+                            <div className="flex flex-wrap gap-2 items-center">
+                              {(u.projects || []).map((p: any) => (
+                                <div
+                                  key={p.id}
+                                  className="group/badge flex items-center gap-2 px-2 py-1 bg-primary/10 text-primary border border-primary/20 rounded-lg text-[10px] font-bold uppercase tracking-tight"
+                                >
+                                  {p.name}
+                                  <button
+                                    onClick={() =>
+                                      handleRemoveProject(u.id, p.id)
+                                    }
+                                    className="hover:text-red-500 transition-colors opacity-0 group-hover/badge:opacity-100"
+                                  >
+                                    <Trash2 size={10} />
+                                  </button>
+                                </div>
+                              ))}
+
+                              <div className="relative">
+                                <button
+                                  onClick={() => setAssigningUser(u)}
+                                  className="p-1.5 rounded-lg bg-slate-100 dark:bg-slate-800 text-slate-400 hover:text-primary transition-all border border-transparent hover:border-primary/20 hover:scale-110 active:scale-95"
+                                >
+                                  <Plus size={14} strokeWidth={3} />
+                                </button>
+                              </div>
+                            </div>
+                          </td>
+                          <td className="px-6 py-4 text-right">
+                            <span className="px-3 py-1 bg-slate-100 dark:bg-slate-800 text-[10px] font-bold uppercase tracking-widest text-slate-500 rounded-full border utilitarian-border">
+                              {u.role || "Operador"}
+                            </span>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {activeTab === "maps" && <MapHub />}
+        </div>
+      </div>
+
+      <ConfirmModal
+        isOpen={!!projectToDelete}
+        title="Eliminar Proyecto"
+        message="¿Estás completamente seguro de eliminar este proyecto? Se perderán todos los datos vinculados de paradas, rutas y segmentos cartográficos. Esta operación es irreversible."
+        onConfirm={() =>
+          projectToDelete && handleDeleteProject(projectToDelete)
+        }
+        onCancel={() => setProjectToDelete(null)}
+        isDestructive={true}
+      />
+
+      {/* Project Assigner Modal Override */}
+      {assigningUser && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
+          <div
+            className="absolute inset-0 bg-slate-950/40 backdrop-blur-md animate-in fade-in duration-300"
+            onClick={() => setAssigningUser(null)}
+          />
+          <div className="relative w-full max-w-sm bg-white dark:bg-slate-900 rounded-[32px] shadow-[0_0_50px_rgba(0,0,0,0.3)] border utilitarian-border overflow-hidden animate-in zoom-in-95 duration-300">
+            <div className="p-8 border-b utilitarian-border bg-slate-50 dark:bg-slate-800/50">
+              <h3 className="text-base font-display font-black text-slate-900 dark:text-white uppercase tracking-tight mb-1">
+                Asignar Proyectos
+              </h3>
+              <p className="text-[10px] font-bold text-slate-500 uppercase tracking-widest mt-1">
+                Usuario: {assigningUser.username}
+              </p>
+            </div>
+
+            <div className="p-6 max-h-[60vh] overflow-y-auto custom-scrollbar">
+              <div className="space-y-2">
+                {projects.filter(
+                  (proj) =>
+                    !(assigningUser.projects || []).some(
+                      (up: any) => up.id === proj.id,
+                    ),
+                ).length === 0 ? (
+                  <div className="py-12 text-center text-slate-400 uppercase tracking-widest text-[10px] font-black">
+                    No hay proyectos disponibles
+                  </div>
+                ) : (
+                  projects
+                    .filter(
+                      (proj) =>
+                        !(assigningUser.projects || []).some(
+                          (up: any) => up.id === proj.id,
+                        ),
+                    )
+                    .map((proj) => (
+                      <button
+                        key={proj.id}
+                        onClick={() => {
+                          handleAssignProject(assigningUser.id, proj.id);
+                          setAssigningUser(null);
+                        }}
+                        className="w-full flex items-center justify-between p-4 rounded-2xl bg-slate-50 dark:bg-slate-800/50 border utilitarian-border hover:border-primary hover:bg-white dark:hover:bg-slate-800 transition-all group"
+                      >
+                        <span className="text-[11px] font-black text-slate-900 dark:text-white uppercase tracking-tight">
+                          {proj.name}
+                        </span>
+                        <Plus
+                          size={14}
+                          className="text-slate-300 group-hover:text-primary transition-colors"
+                        />
+                      </button>
+                    ))
+                )}
+              </div>
+            </div>
+
+            <div className="p-6 pt-0">
+              <button
+                onClick={() => setAssigningUser(null)}
+                className="w-full py-4 rounded-2xl font-black uppercase tracking-widest text-[11px] text-slate-400 hover:text-slate-600 dark:hover:text-white transition-colors"
+              >
+                Cancelar
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
 };

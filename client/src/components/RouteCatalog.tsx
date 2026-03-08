@@ -1,6 +1,6 @@
 import * as React from 'react';
 import type { Route } from '../types';
-import { Trash2, Map as MapIcon, Edit2, Search, ArrowUpDown, Plus, FileText } from 'lucide-react';
+import { Trash2, Map as MapIcon, Edit2, Search, ArrowUpDown, Plus, FileText, Route as RouteIcon, Activity, Database, Clock, Layers, ChevronRight, Loader2 } from 'lucide-react';
 
 import ConfirmModal from './ConfirmModal';
 import RouteCreationModal from './RouteCreationModal';
@@ -11,15 +11,15 @@ import { API_URL } from '../config';
 
 interface RouteCatalogProps {
     onOpenMap: () => void;
-    onSelectRoute: (route: Route) => void; // Opens Details
+    onSelectRoute: (route: Route) => void; 
     onDataUpdate?: () => void;
 }
 
 interface RouteMetrics {
     [routeId: string]: {
-        dist0: number; // meters
+        dist0: number; 
         dist1: number;
-        time0: number; // seconds
+        time0: number; 
         time1: number;
     }
 }
@@ -51,7 +51,6 @@ const RouteCatalog: React.FC<RouteCatalogProps> = ({ onOpenMap, onSelectRoute, o
             const data = await res.json();
             if (Array.isArray(data)) {
                 setRoutes(data);
-                // Fetch metrics for all routes
                 data.forEach(route => fetchRouteMetrics(route.route_id));
             }
         } catch (err) {
@@ -63,7 +62,6 @@ const RouteCatalog: React.FC<RouteCatalogProps> = ({ onOpenMap, onSelectRoute, o
 
     const fetchRouteMetrics = async (routeId: string) => {
         try {
-            // Fetch both directions
             const [res0, res1, segmentsRes] = await Promise.all([
                 fetch(`${API_URL}/routes/${routeId}/path?direction_id=0`),
                 fetch(`${API_URL}/routes/${routeId}/path?direction_id=1`),
@@ -148,223 +146,247 @@ const RouteCatalog: React.FC<RouteCatalogProps> = ({ onOpenMap, onSelectRoute, o
     );
 
     return (
-        <div className="absolute inset-0 z-50 bg-gray-50 dark:bg-gray-900 flex flex-col animate-in fade-in duration-300">
-            {/* Header / Actions */}
-            <div className="bg-white dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700 px-8 py-6 shadow-sm">
-                <div className="max-w-7xl mx-auto flex flex-col gap-6">
-                    <div className="flex justify-between items-start">
-                        <div>
-                            <h1 className="text-2xl font-bold text-gray-900 dark:text-white">Route Catalog</h1>
-                            <p className="text-gray-500 dark:text-gray-400 mt-1">Manage network routes, agencies, and performance metrics.</p>
+        <div className="absolute inset-0 z-[60] bg-white dark:bg-slate-950 flex flex-col p-8 lg:p-12 animate-in fade-in duration-700 ease-out-expo">
+            
+            {/* High-End Tactical Header */}
+            <div className="flex flex-col xl:flex-row items-start justify-between mb-12 gap-8">
+                <div className="flex items-center gap-6">
+                    <div className="p-5 bg-primary text-white rounded-3xl shadow-2xl shadow-primary/20 scale-110">
+                        <RouteIcon size={32} strokeWidth={2.5} />
+                    </div>
+                    <div>
+                         <div className="flex items-center gap-3 mb-2">
+                             <h2 className="text-3xl font-display font-black text-slate-900 dark:text-white uppercase tracking-tight leading-none">
+                                Catálogo de Rutas
+                            </h2>
+                            <div className="flex items-center gap-1.5 px-3 py-1 bg-primary/10 text-primary rounded-full border border-primary/20">
+                                <div className="w-1.5 h-1.5 bg-primary rounded-full animate-pulse" />
+                                <span className="text-[9px] font-black uppercase tracking-widest">Sincronizado</span>
+                            </div>
                         </div>
-                        <div className="flex gap-3">
-                            <button
-                                onClick={() => setIsExportTimesOpen(true)}
-                                className="flex items-center gap-2 px-4 py-2 bg-green-50 dark:bg-green-900/20 text-green-700 dark:text-green-300 border border-green-200 dark:border-green-800 rounded-lg hover:bg-green-100 dark:hover:bg-green-900/40 transition-colors font-medium shadow-sm"
-                            >
-                                <FileText size={18} />
-                                Export Travel Times
-                            </button>
-                            <button
-                                onClick={onOpenMap}
-                                className="flex items-center gap-2 px-4 py-2 bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-600 transition-colors font-medium shadow-sm"
-                            >
-                                <MapIcon size={18} />
-                                Map View
-                            </button>
-                            <button
-                                onClick={handleCreate}
-                                className="flex items-center gap-2 px-4 py-2 bg-[#1337ec] text-white rounded-lg hover:bg-blue-700 transition-colors font-bold shadow-lg shadow-blue-500/20"
-                            >
-                                <Plus size={18} />
-                                Add New Route
-                            </button>
-                        </div>
+                        <p className="text-[11px] font-bold text-slate-500 uppercase tracking-widest max-w-2xl leading-relaxed">
+                            Gestión operativa del inventario de red. Administre la topología de trazados, 
+                            el rendimiento métrico por sentido y el despacho de servicios asociados.
+                        </p>
+                    </div>
+                </div>
+                
+                <div className="flex flex-wrap items-center gap-4">
+                    <div className="flex gap-4 p-1.5 bg-slate-100 dark:bg-slate-800/50 rounded-2xl border utilitarian-border mr-2">
+                         <div className="px-4 py-2 text-center">
+                            <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-1 leading-none">Rutas Activas</p>
+                            <p className="text-lg font-display font-black text-slate-900 dark:text-white leading-none">{routes.length}</p>
+                         </div>
+                         <div className="w-px h-8 bg-slate-200 dark:bg-slate-700 my-auto" />
+                         <div className="px-4 py-2 text-center">
+                            <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-1 leading-none">Suministro</p>
+                            <p className="text-lg font-display font-black text-emerald-500 leading-none">OK</p>
+                         </div>
                     </div>
 
-                    {/* Search & Filter Bar */}
-                    <div className="relative">
-                        <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={20} />
-                        <input
-                            type="text"
-                            placeholder="Search routes by name or code..."
-                            className="w-full max-w-md pl-10 pr-4 py-3 bg-gray-100 dark:bg-gray-900/50 border-none rounded-xl text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500/20 outline-none transition-all placeholder:text-gray-400"
-                            value={searchTerm}
-                            onChange={e => setSearchTerm(e.target.value)}
-                        />
-                    </div>
+                    <button
+                        onClick={() => setIsExportTimesOpen(true)}
+                        className="flex items-center gap-2.5 px-6 py-4 bg-white dark:bg-slate-800 text-slate-600 dark:text-slate-300 rounded-[20px] hover:text-primary transition-all font-black text-[10px] uppercase tracking-widest border utilitarian-border shadow-sm active:scale-95"
+                    >
+                        <FileText size={16} strokeWidth={2.5} />
+                        Exportar Tiempos
+                    </button>
+                    <button
+                        onClick={onOpenMap}
+                        className="flex items-center gap-2.5 px-6 py-4 bg-white dark:bg-slate-800 text-slate-600 dark:text-slate-300 rounded-[20px] hover:text-primary transition-all font-black text-[10px] uppercase tracking-widest border utilitarian-border shadow-sm active:scale-95"
+                    >
+                        <MapIcon size={16} strokeWidth={2.5} />
+                        Visualizar Red
+                    </button>
+                    <button
+                        onClick={handleCreate}
+                        className="flex items-center gap-3 px-8 py-4 bg-primary text-white rounded-[20px] hover:scale-105 active:scale-95 transition-all font-black text-[11px] uppercase tracking-[0.2em] shadow-2xl shadow-primary/30 group"
+                    >
+                        <Plus size={18} strokeWidth={3} className="group-hover:rotate-90 transition-transform" />
+                        Nueva Ruta
+                    </button>
                 </div>
             </div>
 
-            {/* Table Content */}
-            <div className="flex-1 overflow-auto px-8 py-8">
-                <div className="max-w-7xl mx-auto">
-                    <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-sm border border-gray-200 dark:border-gray-700 overflow-hidden">
-                        <table className="w-full text-left border-collapse">
-                            <thead>
-                                <tr className="bg-gray-50/50 dark:bg-gray-900/50 text-xs uppercase tracking-wider text-gray-500 dark:text-gray-400 font-semibold border-b border-gray-200 dark:border-gray-700">
-                                    <th className="px-6 py-4 w-24">Code</th>
-                                    <th className="px-6 py-4 w-32">Color</th>
-                                    <th className="px-6 py-4">Route Name</th>
-                                    <th className="px-6 py-4 w-48">Agency</th>
-                                    <th className="px-6 py-4 text-center w-40">Dist (km)<br /><span className="text-[10px] normal-case opacity-70">(Out / Return)</span></th>
-                                    <th className="px-6 py-4 text-center w-40">Time<br /><span className="text-[10px] normal-case opacity-70">(Out / Return)</span></th>
-                                    <th className="px-6 py-4 w-48 text-right">Actions</th>
+            {/* Tactical Search & Tools Bar */}
+            <div className="mb-8 flex flex-col md:flex-row gap-6">
+                <div className="relative group flex-1 max-w-xl">
+                    <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-300 group-focus-within:text-primary transition-colors" size={20} />
+                    <input
+                        type="text"
+                        placeholder="BUSCAR TRAZADO POR CÓDIGO O DENOMINACIÓN..."
+                        className="w-full pl-14 pr-6 py-4 bg-slate-50 dark:bg-slate-800/30 border-2 border-transparent focus:border-primary/20 rounded-[20px] text-[12px] font-black uppercase tracking-tight placeholder:text-slate-400 focus:bg-white dark:focus:bg-slate-800 outline-none transition-all shadow-sm"
+                        value={searchTerm}
+                        onChange={e => setSearchTerm(e.target.value)}
+                    />
+                </div>
+            </div>
+
+            {/* Main Application Catalog Table */}
+            <div className="flex-1 min-h-0 bg-white dark:bg-slate-900 border utilitarian-border rounded-[32px] overflow-hidden shadow-sm flex flex-col">
+                <div className="overflow-x-auto flex-1 custom-scrollbar">
+                    <table className="w-full text-left border-collapse min-w-[1000px]">
+                        <thead>
+                            <tr className="bg-slate-50/50 dark:bg-slate-800/20 text-[10px] font-black uppercase tracking-[0.25em] text-slate-400 border-b utilitarian-border">
+                                <th className="px-8 py-6 w-28">Código</th>
+                                <th className="px-8 py-6 w-24 text-center">Color</th>
+                                <th className="px-8 py-6">Identificación y Trazado</th>
+                                <th className="px-8 py-6 w-56">Operadora</th>
+                                <th className="px-8 py-6 text-center w-64 border-l border-r utilitarian-border">Métrica Operativa (Km/Tiempo)</th>
+                                <th className="px-8 py-6 w-44 text-right">Protocolos</th>
+                            </tr>
+                        </thead>
+                        <tbody className="divide-y utilitarian-border">
+                            {loading ? (
+                                <tr>
+                                    <td colSpan={6} className="px-8 py-32 text-center">
+                                        <div className="flex flex-col items-center gap-6">
+                                             <Loader2 size={40} className="text-primary animate-spin" />
+                                             <span className="text-[10px] font-black uppercase tracking-[0.3em] text-slate-400 animate-pulse">Sincronizando Catálogo...</span>
+                                        </div>
+                                    </td>
                                 </tr>
-                            </thead>
-                            <tbody className="divide-y divide-gray-100 dark:divide-gray-700/50">
-                                {loading && (
-                                    <tr>
-                                        <td colSpan={7} className="px-6 py-12 text-center text-gray-400 animate-pulse">
-                                            Loading routes data...
+                            ) : filteredRoutes.length === 0 ? (
+                                <tr>
+                                    <td colSpan={6} className="px-8 py-40 text-center">
+                                        <div className="flex flex-col items-center gap-6 text-slate-200 dark:text-slate-800">
+                                            <Layers size={80} strokeWidth={1} />
+                                            <p className="text-[11px] font-black uppercase tracking-[0.3em] text-slate-400">Sin rutas registradas en el entorno</p>
+                                        </div>
+                                    </td>
+                                </tr>
+                            ) : filteredRoutes.map((route, idx) => {
+                                const m = metrics[route.route_id] || { dist0: 0, dist1: 0, time0: 0, time1: 0 };
+                                return (
+                                    <tr key={route.route_id} 
+                                        style={{ animationDelay: `${idx * 40}ms` }}
+                                        className="hover:bg-primary/5 dark:hover:bg-primary/5 transition-colors group/row animate-in fade-in slide-in-from-left-4 duration-500"
+                                    >
+                                        {/* Code */}
+                                        <td className="px-8 py-7" onClick={() => handleEdit(route)}>
+                                            <div className="flex flex-col cursor-pointer">
+                                                <span className="font-mono text-[14px] font-black text-primary tracking-tighter leading-none">
+                                                    {route.route_short_name}
+                                                </span>
+                                                <span className="text-[9px] font-mono font-bold text-slate-300 mt-2 opacity-0 group-hover/row:opacity-100 transition-opacity uppercase">
+                                                    ID: {route.route_id.substring(0, 8)}
+                                                </span>
+                                            </div>
                                         </td>
-                                    </tr>
-                                )}
 
-                                {!loading && filteredRoutes.map(route => {
-                                    const m = metrics[route.route_id] || { dist0: 0, dist1: 0, time0: 0, time1: 0 };
+                                        {/* Color Signature */}
+                                        <td className="px-8 py-7">
+                                            <div className="flex justify-center">
+                                                <div 
+                                                    className="w-10 h-10 rounded-[14px] shadow-lg border-2 border-white dark:border-slate-800 ring-1 ring-slate-200 dark:ring-slate-700 cursor-pointer transform hover:rotate-12 transition-transform"
+                                                    style={{ backgroundColor: `#${route.route_color}` }}
+                                                    onClick={() => handleEdit(route)}
+                                                />
+                                            </div>
+                                        </td>
 
-                                    return (
-                                        <tr key={route.route_id} className="hover:bg-gray-50 dark:hover:bg-gray-700/30 transition-colors group">
-                                            {/* Code */}
-                                            <td className="px-6 py-4">
-                                                <div
-                                                    className="group/code cursor-pointer flex items-center gap-2"
+                                        {/* Identification */}
+                                        <td className="px-8 py-7">
+                                            <div className="flex flex-col gap-2">
+                                                <button
+                                                    onClick={() => onSelectRoute(route)}
+                                                    className="text-left font-display font-black text-[16px] text-slate-900 dark:text-white hover:text-primary transition-colors leading-tight uppercase tracking-tight flex items-center gap-2 group/btn"
+                                                >
+                                                    {route.route_long_name}
+                                                    <ChevronRight size={14} className="opacity-0 -translate-x-2 group-hover/btn:opacity-100 group-hover/btn:translate-x-0 transition-all text-primary" />
+                                                </button>
+                                                <div className="flex items-center gap-2 text-[10px] text-slate-400 font-bold uppercase tracking-widest">
+                                                    <Activity size={10} /> {route.route_desc || 'Sin descripción técnica consolidada'}
+                                                </div>
+                                            </div>
+                                        </td>
+
+                                        {/* Agency Entity */}
+                                        <td className="px-8 py-7">
+                                            <div className="flex items-center gap-2">
+                                                <Database size={12} className="text-slate-300" />
+                                                <span className="text-[11px] font-black text-slate-600 dark:text-slate-300 uppercase tracking-widest truncate max-w-[180px]">
+                                                    {route.agency_name || <span className="text-slate-200 dark:text-slate-800 font-black italic">PENDIENTE</span>}
+                                                </span>
+                                            </div>
+                                        </td>
+
+                                        {/* Comparative Metrics */}
+                                        <td className="px-8 py-7 border-l border-r utilitarian-border bg-slate-50/20 dark:bg-slate-800/10">
+                                            <div className="flex flex-col gap-4">
+                                                <div className="flex items-center justify-between gap-6">
+                                                    <div className="flex flex-col items-center">
+                                                        <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-1">Sentido 0</span>
+                                                        <div className="flex items-center gap-2">
+                                                            <span className="font-mono text-[12px] font-black text-slate-900 dark:text-white">{formatDist(m.dist0)}</span>
+                                                            <span className="text-[9px] font-bold text-slate-400">KM</span>
+                                                        </div>
+                                                        <div className="flex items-center gap-1.5 mt-1.5 px-2 py-0.5 bg-primary/5 rounded-md">
+                                                            <Clock size={10} className="text-primary" />
+                                                            <span className="font-mono text-[11px] font-black text-primary">{formatTime(m.time0)}</span>
+                                                        </div>
+                                                    </div>
+                                                    <div className="w-px h-10 bg-slate-200 dark:bg-slate-700" />
+                                                    <div className="flex flex-col items-center">
+                                                        <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-1">Sentido 1</span>
+                                                        <div className="flex items-center gap-2">
+                                                            <span className="font-mono text-[12px] font-black text-slate-900 dark:text-white">{formatDist(m.dist1)}</span>
+                                                            <span className="text-[9px] font-bold text-slate-400">KM</span>
+                                                        </div>
+                                                        <div className="flex items-center gap-1.5 mt-1.5 px-2 py-0.5 bg-slate-900 text-white dark:bg-slate-700 rounded-md shadow-sm">
+                                                            <Clock size={10} className="text-white/60" />
+                                                            <span className="font-mono text-[11px] font-black">{formatTime(m.time1)}</span>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </td>
+
+                                        {/* Actions Protocol */}
+                                        <td className="px-8 py-7 text-right">
+                                            <div className="flex items-center justify-end gap-2 opacity-0 group-hover/row:opacity-100 transition-all translate-x-4 group-hover/row:translate-x-0">
+                                                <button
+                                                    className="p-3 text-slate-400 hover:text-primary hover:bg-primary/5 rounded-xl transition-all active:scale-90"
+                                                    title="Gestionar Despacho (Expediciones)"
+                                                    onClick={() => setTripsRoute(route)}
+                                                >
+                                                    <ArrowUpDown size={18} strokeWidth={2.5} />
+                                                </button>
+                                                <button
+                                                    className="p-3 text-slate-400 hover:text-indigo-500 hover:bg-indigo-500/5 rounded-xl transition-all active:scale-90"
+                                                    title="Editar Topología"
                                                     onClick={() => handleEdit(route)}
                                                 >
-                                                    <span className="font-mono font-bold text-gray-900 dark:text-white bg-gray-100 dark:bg-gray-700 px-2 py-1 rounded text-sm group-hover/code:bg-blue-50 dark:group-hover/code:bg-blue-900/20 transition-colors">
-                                                        {route.route_short_name}
-                                                    </span>
-                                                    <Edit2 size={12} className="opacity-0 group-hover/code:opacity-100 text-gray-400" />
-                                                </div>
-                                            </td>
-
-                                            {/* Color */}
-                                            <td className="px-6 py-4">
-                                                <div className="flex items-center gap-3">
-                                                    <div className="relative w-8 h-8 rounded-full shadow-sm border border-black/5 overflow-hidden group/color cursor-pointer transition-transform hover:scale-110"
-                                                        onClick={() => handleEdit(route)}
-                                                    >
-                                                        <div
-                                                            className="absolute inset-0"
-                                                            style={{
-                                                                backgroundColor: `#${route.route_color}`,
-                                                                color: `#${route.route_text_color}`
-                                                            }}
-                                                        >
-                                                            <div className="flex items-center justify-center w-full h-full text-[10px] font-bold opacity-0 group-hover/color:opacity-100 transition-opacity">
-                                                                TXT
-                                                            </div>
-                                                        </div>
-                                                    </div>
-                                                    <div className="flex flex-col">
-                                                        <span className="text-[10px] font-mono text-gray-500 uppercase">#{route.route_color}</span>
-                                                        <span className="text-[10px] font-mono text-gray-400 uppercase">#{route.route_text_color}</span>
-                                                    </div>
-                                                </div>
-                                            </td>
-
-                                            {/* Name */}
-                                            <td className="px-6 py-4">
-                                                <div className="flex items-center justify-between group/name gap-4">
-                                                    <button
-                                                        onClick={() => onSelectRoute(route)}
-                                                        className="text-left hover:text-blue-600 dark:hover:text-blue-400 transition-colors group/link flex-1"
-                                                    >
-                                                        <div className="font-semibold text-gray-900 dark:text-gray-100 text-base mb-0.5 group-hover/link:underline decoration-2 underline-offset-2 truncate">
-                                                            {route.route_long_name}
-                                                        </div>
-                                                        <div className="text-xs text-gray-500">
-                                                            {route.route_desc || 'Bus Route'}
-                                                        </div>
-                                                    </button>
-                                                    <button
-                                                        className="opacity-0 group-hover/name:opacity-100 p-1 text-gray-400 hover:text-blue-600 transition-colors"
-                                                        onClick={(e) => {
-                                                            e.stopPropagation();
-                                                            handleEdit(route);
-                                                        }}
-                                                    >
-                                                        <Edit2 size={14} />
-                                                    </button>
-                                                </div>
-                                            </td>
-
-                                            {/* Agency */}
-                                            <td className="px-6 py-4">
-                                                <div className="text-sm text-gray-600 dark:text-gray-300">
-                                                    {route.agency_name || <span className="text-gray-400 italic">No Agency</span>}
-                                                </div>
-                                            </td>
-
-                                            {/* Dist Metrics */}
-                                            <td className="px-6 py-4 text-center">
-                                                <span className="inline-flex items-center gap-1 font-mono text-sm bg-gray-100 dark:bg-gray-700/50 px-2 py-1 rounded">
-                                                    <span className="text-gray-900 dark:text-white font-bold">{formatDist(m.dist0)}</span>
-                                                    <span className="text-gray-400">/</span>
-                                                    <span className="text-gray-600 dark:text-gray-300">{formatDist(m.dist1)}</span>
-                                                </span>
-                                            </td>
-
-                                            {/* Time Metrics */}
-                                            <td className="px-6 py-4 text-center">
-                                                <span className="inline-flex items-center gap-1 font-mono text-sm bg-blue-50 dark:bg-blue-900/10 px-2 py-1 rounded text-blue-700 dark:text-blue-300">
-                                                    <span className="font-bold">{formatTime(m.time0)}</span>
-                                                    <span className="opacity-50">/</span>
-                                                    <span>{formatTime(m.time1)}</span>
-                                                </span>
-                                            </td>
-
-                                            {/* Actions */}
-                                            <td className="px-6 py-4 text-right">
-                                                <div className="flex items-center justify-end gap-2">
-                                                    <button
-                                                        className="p-2 text-gray-400 hover:text-indigo-600 hover:bg-indigo-50 dark:hover:bg-indigo-900/20 rounded-lg transition-colors"
-                                                        title="Trips"
-                                                        onClick={() => setTripsRoute(route)}
-                                                    >
-                                                        <ArrowUpDown size={18} />
-                                                    </button>
-                                                    <div className="w-px h-6 bg-gray-200 dark:bg-gray-700 mx-1" />
-                                                    <button
-                                                        onClick={() => {
-                                                            setRouteToDelete(route.route_id);
-                                                            setConfirmOpen(true);
-                                                        }}
-                                                        className="p-2 text-gray-400 hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-lg transition-colors"
-                                                        title="Delete Route"
-                                                    >
-                                                        <Trash2 size={18} />
-                                                    </button>
-                                                </div>
-                                            </td>
-                                        </tr>
-                                    );
-                                })}
-
-                                {!loading && filteredRoutes.length === 0 && (
-                                    <tr>
-                                        <td colSpan={7} className="px-6 py-16 text-center text-gray-400">
-                                            <div className="flex flex-col items-center gap-3">
-                                                <Search size={48} className="text-gray-200 dark:text-gray-700" />
-                                                <p>No routes found matching your search.</p>
+                                                    <Edit2 size={18} strokeWidth={2.5} />
+                                                </button>
+                                                <button
+                                                    onClick={() => {
+                                                        setRouteToDelete(route.route_id);
+                                                        setConfirmOpen(true);
+                                                    }}
+                                                    className="p-3 text-slate-400 hover:text-red-500 hover:bg-red-500/5 rounded-xl transition-all active:scale-90"
+                                                    title="Destruir Registro"
+                                                >
+                                                    <Trash2 size={18} strokeWidth={2.5} />
+                                                </button>
                                             </div>
                                         </td>
                                     </tr>
-                                )}
-                            </tbody>
-                        </table>
-                    </div>
+                                );
+                            })}
+                        </tbody>
+                    </table>
                 </div>
             </div>
 
+            {/* Modal Components Stack */}
             <ConfirmModal
                 isOpen={confirmOpen}
-                title="Delete Route?"
-                message="Are you sure you want to delete this route? This action cannot be undone."
+                title="Protocolo de Destrucción"
+                message="¿Solicita la eliminación definitiva de la ruta y todos sus servicios operativos asociados? Esta acción eludirá los mecanismos de recuperación."
                 onConfirm={handleDelete}
                 onCancel={() => setConfirmOpen(false)}
-                isError={false}
+                isDestructive={true}
             />
 
             <RouteCreationModal
@@ -388,6 +410,21 @@ const RouteCatalog: React.FC<RouteCatalogProps> = ({ onOpenMap, onSelectRoute, o
                     onClose={() => setTripsRoute(null)}
                 />
             )}
+
+            {/* System Status Footer Decoration */}
+            <div className="mt-8 flex items-center justify-between px-4 opacity-50 pointer-events-none">
+                 <div className="flex items-center gap-8">
+                    <div className="flex items-center gap-2">
+                        <Database size={12} />
+                        <span className="text-[9px] font-black uppercase tracking-widest">Protocolo: GTFS 2.0.1</span>
+                    </div>
+                    <div className="flex items-center gap-2">
+                        <Activity size={12} />
+                        <span className="text-[9px] font-black uppercase tracking-widest">Latencia DB: 12ms</span>
+                    </div>
+                 </div>
+                 <div className="text-[9px] font-black uppercase tracking-widest">© 2026 GTFS PRO EXTREME EDITION</div>
+            </div>
         </div>
     );
 };

@@ -78,6 +78,13 @@ export const authenticate = async (request: FastifyRequest, reply: FastifyReply)
         }
 
         const projectId = Array.isArray(projectIdHeader) ? projectIdHeader[0] : projectIdHeader;
+        request.projectId = projectId;
+
+        // SuperAdmins always have access to all projects
+        if (request.isSuperAdmin) {
+            request.isAdmin = true;
+            return;
+        }
 
         // Validate that this user has access to this project
         const accessCheck = db.prepare('SELECT role FROM user_projects WHERE user_id = ? AND project_id = ?').get(userId, projectId) as { role: string } | undefined;
@@ -86,7 +93,6 @@ export const authenticate = async (request: FastifyRequest, reply: FastifyReply)
             return reply.code(403).send({ error: 'User does not have access to this project' });
         }
 
-        request.projectId = projectId;
         request.isAdmin = accessCheck.role === 'admin';
 
     } catch (err: any) {

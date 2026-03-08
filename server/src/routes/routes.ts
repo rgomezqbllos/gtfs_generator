@@ -3,6 +3,7 @@ import db from '../db';
 import { randomUUID } from 'crypto';
 import { fetchRoute } from '../services/routing';
 import { mapToOsrmProfile, normalizeRoutingProfile, RoutingProfile } from '../constants/routingProfiles';
+import { resolveProjectRouting } from '../services/ProjectRoutingService';
 
 interface RouteBody {
     route_short_name: string;
@@ -436,6 +437,9 @@ export default async function routesRoutes(fastify: FastifyInstance) {
     fastify.post('/routes/:id/path', async (request, reply) => {
         const { id } = request.params as { id: string };
         const { direction_id, ordered_stop_ids, routing_profile } = request.body as PathBody;
+        if (!request.projectId) {
+            return reply.code(400).send({ error: 'Project context is required' });
+        }
 
         if (direction_id !== 0 && direction_id !== 1) {
             return reply.code(400).send({ error: 'direction_id must be 0 or 1' });
@@ -445,6 +449,13 @@ export default async function routesRoutes(fastify: FastifyInstance) {
         }
         const normalizedPathProfile = normalizeRoutingProfile(routing_profile);
         const osrmProfileForPath = mapToOsrmProfile(normalizedPathProfile);
+        const routing = await resolveProjectRouting(request.projectId);
+
+        if (routing.mapAssigned && !routing.routingUrl) {
+            return reply.code(409).send({
+                error: routing.error || 'El proyecto tiene un mapa asignado, pero su motor OSRM no está listo.'
+            });
+        }
 
         // 1. Create/Update Trip
         const service_id = 'c_1'; // Default service for now
@@ -527,11 +538,10 @@ export default async function routesRoutes(fastify: FastifyInstance) {
 
                 try {
                     if (fromNode && toNode) {
-                        const project = db.prepare('SELECT routing_engine_url FROM projects WHERE id = ?').get(request.projectId) as any;
                         const routeData = await fetchRoute(
                             [fromNode.stop_lon, fromNode.stop_lat],
                             [toNode.stop_lon, toNode.stop_lat],
-                            project?.routing_engine_url,
+                            routing.routingUrl || undefined,
                             osrmProfileForPath
                         );
                         if (routeData) {

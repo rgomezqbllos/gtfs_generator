@@ -4,6 +4,61 @@ import { Plus, ArrowRight, Clock, Ruler, GripHorizontal, Download, Wand2, X } fr
 import type { Segment, Stop } from '../types';
 import { clsx } from 'clsx';
 import { API_URL } from '../config';
+import { AlertCircle, Loader2, Info } from 'lucide-react';
+
+interface ModalProps {
+    isOpen: boolean;
+    onClose: () => void;
+    title: string;
+    description: string;
+    children: React.ReactNode;
+    confirmLabel?: string;
+    onConfirm?: () => void;
+    isDestructive?: boolean;
+    isLoading?: boolean;
+}
+
+const Modal: React.FC<ModalProps> = ({ 
+    isOpen, onClose, title, description, children, confirmLabel, onConfirm, isDestructive, isLoading 
+}) => {
+    if (!isOpen) return null;
+    return (
+        <div className="fixed inset-0 bg-slate-950/60 backdrop-blur-sm flex items-center justify-center z-[9999] animate-in fade-in duration-300">
+            <div className="bg-white dark:bg-slate-900 rounded-[32px] shadow-[0_0_50px_rgba(0,0,0,0.3)] w-full max-w-md border utilitarian-border overflow-hidden animate-in zoom-in-95 duration-300">
+                <div className="p-8 border-b utilitarian-border bg-slate-50 dark:bg-slate-800/50">
+                    <h3 className="text-base font-display font-black text-slate-900 dark:text-white uppercase tracking-tight mb-1 flex items-center gap-3">
+                         {isDestructive ? <AlertCircle className="text-red-500" size={20} /> : <Info className="text-primary" size={20} />}
+                         {title}
+                    </h3>
+                    <p className="text-[10px] font-bold text-slate-500 uppercase tracking-widest mt-1">{description}</p>
+                </div>
+                <div className="p-8">{children}</div>
+                <div className="p-8 pt-0 flex flex-col gap-3">
+                    {onConfirm && (
+                        <button
+                            onClick={onConfirm}
+                            disabled={isLoading}
+                            className={clsx(
+                                "w-full py-4 rounded-2xl font-black uppercase tracking-widest text-[11px] shadow-xl transition-all flex items-center justify-center gap-3",
+                                isDestructive ? "bg-red-500 hover:bg-red-600 text-white shadow-red-500/20" : "bg-primary hover:bg-blue-700 text-white shadow-primary/20"
+                            )}
+                        >
+                            {isLoading ? <Loader2 className="animate-spin" size={16} /> : null}
+                            {confirmLabel || "Confirmar"}
+                        </button>
+                    )}
+                    <button
+                        onClick={onClose}
+                        disabled={isLoading}
+                        className="w-full py-4 rounded-2xl font-black uppercase tracking-widest text-[11px] text-slate-400 hover:text-slate-600 dark:hover:text-white transition-colors"
+                    >
+                        Cancelar
+                    </button>
+                </div>
+            </div>
+        </div>
+    );
+};
 
 interface EmptySegmentsManagerProps {
     onClose: () => void;
@@ -17,6 +72,9 @@ const EmptySegmentsManager: React.FC<EmptySegmentsManagerProps> = ({ onClose, se
     const { mode, setMode, selectElement } = useEditor();
     const [isAdding, setIsAdding] = React.useState(false);
     const [isGenerating, setIsGenerating] = React.useState(false);
+    const [showConfirm, setShowConfirm] = React.useState(false);
+    const [result, setResult] = React.useState<{ created: number, failed: number } | null>(null);
+    const [progress, setProgress] = React.useState(0);
 
     React.useEffect(() => {
         if (mode === 'idle' && isAdding) {
@@ -36,9 +94,12 @@ const EmptySegmentsManager: React.FC<EmptySegmentsManagerProps> = ({ onClose, se
     const getStopName = (id: string) => stops.find(s => s.stop_id === id)?.stop_name || id;
 
     const handleAutoConnect = async () => {
-        if (!confirm("This will automatically create empty segments (deadheads) connecting:\n1. Route terminals (A->B, B->A)\n2. Route terminals to associated Parkings (if any)\n\nContinue?")) return;
-
+        setShowConfirm(false);
         setIsGenerating(true);
+        setProgress(0);
+        let createdCount = 0;
+        let failedCount = 0;
+
         try {
             const newSegments: { start: string, end: string }[] = [];
 
@@ -58,16 +119,12 @@ const EmptySegmentsManager: React.FC<EmptySegmentsManagerProps> = ({ onClose, se
                         }
 
                         // Parking Connections
-                        // Connect Start/End to/from each parking
                         parkings.forEach((parkingId: string) => {
                             if (parkingId !== firstStopId) {
-                                // Start <-> Parking
                                 newSegments.push({ start: firstStopId, end: parkingId });
                                 newSegments.push({ start: parkingId, end: firstStopId });
                             }
-
                             if (parkingId !== lastStopId && firstStopId !== lastStopId) {
-                                // End <-> Parking
                                 newSegments.push({ start: lastStopId, end: parkingId });
                                 newSegments.push({ start: parkingId, end: lastStopId });
                             }
@@ -76,19 +133,10 @@ const EmptySegmentsManager: React.FC<EmptySegmentsManagerProps> = ({ onClose, se
                 });
             });
 
-            // 2. Filter out existing segments (empty OR revenue)
+            // 2. Filter existing
+            const existingSig = new Set(segments.map(s => `${s.start_node_id}-${s.end_node_id}`));
             const uniqueSegments = new Set<string>();
             const segmentsToCreate: { start: string, end: string }[] = [];
-
-            // Existing signatures (we verify against IDs)
-            // Note: We only have access to 'segments' prop which usually contains ALL segments if passed correctly 
-            // or filtered. In MapEditor, we passed `segments.filter(s => s.type === 'empty')`.
-            // So we might duplicate if a REVENUE segment exists.
-            // Ideally we should check against ALL segments, but to be safe and simple, 
-            // duplicates of revenue segments as empty segments might be acceptable (different purpose).
-            // However, to avoid spam, let's at least check against known empty segments.
-
-            const existingSig = new Set(segments.map(s => `${s.start_node_id}-${s.end_node_id}`));
 
             newSegments.forEach(pair => {
                 const sig = `${pair.start}-${pair.end}`;
@@ -99,15 +147,13 @@ const EmptySegmentsManager: React.FC<EmptySegmentsManagerProps> = ({ onClose, se
             });
 
             if (segmentsToCreate.length === 0) {
-                alert(`No new connections needed. Debug: newSegments=${newSegments.length}, unique=${uniqueSegments.size}, existing=${existingSig.size}, totalRoutes=${routesStructure.length}`);
+                setResult({ created: 0, failed: 0 });
                 return;
             }
 
-            // 3. Create them
-            let createdCount = 0;
-            let failedCount = 0;
-
-            for (const pair of segmentsToCreate) {
+            // 3. Create them in sequence
+            for (let i = 0; i < segmentsToCreate.length; i++) {
+                const pair = segmentsToCreate[i];
                 try {
                     const res = await fetch(`${API_URL}/segments`, {
                         method: 'POST',
@@ -119,28 +165,20 @@ const EmptySegmentsManager: React.FC<EmptySegmentsManagerProps> = ({ onClose, se
                         })
                     });
 
-                    if (res.ok) {
-                        createdCount++;
-                    } else {
-                        failedCount++;
-                        console.error(`Failed to create segment ${pair.start} -> ${pair.end}`, await res.text());
-                    }
+                    if (res.ok) createdCount++;
+                    else failedCount++;
                 } catch (e) {
                     failedCount++;
-                    console.error(`Network error creating segment ${pair.start} -> ${pair.end}`, e);
                 }
+                setProgress(Math.round(((i + 1) / segmentsToCreate.length) * 100));
             }
 
             onRefresh();
-            if (failedCount > 0) {
-                alert(`Created ${createdCount} empty segments, but ${failedCount} failed. Check console for details.`);
-            } else {
-                alert(`Successfully created ${createdCount} empty segments.`);
-            }
+            setResult({ created: createdCount, failed: failedCount });
 
         } catch (err) {
             console.error(err);
-            alert("Failed to generate segments due to an unexpected error.");
+            setResult({ created: createdCount, failed: failedCount + 1 });
         } finally {
             setIsGenerating(false);
         }
@@ -214,19 +252,23 @@ const EmptySegmentsManager: React.FC<EmptySegmentsManagerProps> = ({ onClose, se
                 </div>
             </div>
 
-            {/* Actions */}
             <div className="p-4 border-b border-gray-100 dark:border-gray-800 bg-white dark:bg-gray-900 flex flex-col gap-3">
                 <button
-                    onClick={handleAutoConnect}
+                    onClick={() => setShowConfirm(true)}
                     disabled={isGenerating}
-                    className="w-full flex items-center justify-center gap-2 py-2 px-4 rounded-xl font-semibold transition-all shadow-sm bg-purple-600 text-white hover:bg-purple-700 disabled:opacity-50"
+                    className="w-full flex items-center justify-center gap-2 py-3 px-4 rounded-xl font-black uppercase tracking-widest text-[11px] transition-all shadow-md bg-purple-600 text-white hover:bg-purple-700 disabled:opacity-50 relative overflow-hidden group"
                 >
                     {isGenerating ? (
-                        <>Generating...</>
+                        <div className="flex flex-col items-center gap-1">
+                            <span className="flex items-center gap-2 animate-pulse">
+                                <Loader2 size={14} className="animate-spin" /> Procesando Suministro
+                            </span>
+                            <div className="absolute bottom-0 left-0 h-1 bg-white/30 transition-all duration-300" style={{ width: `${progress}%` }} />
+                        </div>
                     ) : (
                         <>
-                            <Wand2 size={18} />
-                            Auto Connect Routes
+                            <Wand2 size={16} strokeWidth={2.5} className="group-hover:rotate-12 transition-transform" />
+                            Auto-Connect Red
                         </>
                     )}
                 </button>
@@ -298,6 +340,60 @@ const EmptySegmentsManager: React.FC<EmptySegmentsManagerProps> = ({ onClose, se
                     ))
                 )}
             </div>
+
+            {/* Modals */}
+            <Modal
+                isOpen={showConfirm}
+                onClose={() => setShowConfirm(false)}
+                title="Generar Conexiones"
+                description="Protocolo de Vinculación Automática"
+                onConfirm={handleAutoConnect}
+                confirmLabel="Ejecutar Proceso"
+            >
+                <div className="space-y-4">
+                    <p className="text-[11px] font-bold text-slate-600 dark:text-slate-400 uppercase tracking-tight leading-relaxed">
+                        Este proceso generará automáticamente vectores de red (deadheads) para los siguientes casos:
+                    </p>
+                    <ul className="space-y-2">
+                        {[
+                            "Terminales de cabecera ida/vuelta",
+                            "Vinculación a Patios/Parqueaderos asignados",
+                            "Circuitos de retorno operativo"
+                        ].map((item, i) => (
+                            <li key={i} className="flex items-center gap-3 text-[10px] font-black text-slate-900 dark:text-white uppercase tracking-widest bg-slate-50 dark:bg-slate-800/50 p-3 rounded-xl border utilitarian-border">
+                                <div className="w-1.5 h-1.5 rounded-full bg-primary shadow-lg shadow-primary/40" />
+                                {item}
+                            </li>
+                        ))}
+                    </ul>
+                </div>
+            </Modal>
+
+            <Modal
+                isOpen={result !== null}
+                onClose={() => setResult(null)}
+                title="Suministro Finalizado"
+                description="Reporte de Integridad de Red"
+                onConfirm={() => setResult(null)}
+                confirmLabel="Cerrar Reporte"
+            >
+                <div className="grid grid-cols-2 gap-4">
+                    <div className="p-6 bg-emerald-500/5 border border-emerald-500/10 rounded-3xl text-center">
+                        <p className="text-[9px] font-black text-emerald-600 uppercase tracking-widest mb-1">Creados</p>
+                        <p className="text-3xl font-display font-black text-emerald-500 leading-none">{result?.created || 0}</p>
+                    </div>
+                    <div className="p-6 bg-red-500/5 border border-red-500/10 rounded-3xl text-center">
+                        <p className="text-[9px] font-black text-red-600 uppercase tracking-widest mb-1">Fallidos</p>
+                        <p className="text-3xl font-display font-black text-red-500 leading-none">{result?.failed || 0}</p>
+                    </div>
+                </div>
+                {result?.created === 0 && result?.failed === 0 && (
+                    <div className="mt-4 p-4 bg-slate-100 dark:bg-slate-800/50 rounded-2xl text-center flex items-center gap-3">
+                        <Info size={16} className="text-slate-400" />
+                        <p className="text-[10px] font-black text-slate-500 uppercase tracking-tight">No se detectaron nuevas conexiones necesarias.</p>
+                    </div>
+                )}
+            </Modal>
         </div>
     );
 };

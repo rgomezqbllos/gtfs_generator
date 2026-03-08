@@ -32,7 +32,7 @@ export default async function mapsRoutes(fastify: FastifyInstance) {
         if (!region && !customUrl) return reply.code(400).send({ error: 'Region or Custom URL is required' });
 
         try {
-            const result = await osrmService.downloadMap(region, customUrl, customName, true);
+            const result = await osrmService.downloadMap(region, true);
             return result;
         } catch (error) {
             console.error(error);

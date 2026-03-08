@@ -6,7 +6,7 @@ export interface Stop {
     stop_name: string;
     stop_lat: number;
     stop_lon: number;
-    node_type?: 'regular' | 'parking' | 'depot';
+    node_type?: 'regular' | 'parking' | 'depot' | 'commercial' | 'operative' | 'checkpoint';
 }
 
 export interface Segment {
