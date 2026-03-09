@@ -25,8 +25,8 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({ onClose, currentViewState
     const [isResetting, setIsResetting] = useState(false);
 
     const { setActivePanel } = useEditor();
-    const { user } = useAuth();
-    const isAdmin = user?.roles?.includes('admin');
+    const { myProjects, activeProject, setActiveProject, isSuperAdmin } = useAuth();
+    const isAdmin = isSuperAdmin;
 
     // General Settings State
     const [cityName, setCityName] = useState(defaultLocation.cityName);
@@ -60,18 +60,23 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({ onClose, currentViewState
     };
 
     const handleResetDatabase = async () => {
+        if (!activeProject) {
+            alert('Selecciona primero un proyecto activo para purgar sus datos.');
+            return;
+        }
+
         setIsResetting(true);
         try {
-            const res = await fetch(`${API_URL}/admin/reset`, {
+            const res = await fetch(`${API_URL}/projects/reset`, {
                 method: 'POST'
             });
 
             if (res.ok) {
-                alert('La base de datos ha sido reestablecida. La aplicación se reiniciará.');
+                alert(`Se purgaron los datos del proyecto "${activeProject.name}". La sesión se recargará.`);
                 window.location.reload();
             } else {
                 const data = await res.json();
-                alert(`Error al resetear: ${data.error || 'Unknown error'}`);
+                alert(`Error al purgar: ${data.error || 'Unknown error'}`);
             }
         } catch (error) {
             console.error('Error resetting database:', error);
@@ -138,7 +143,7 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({ onClose, currentViewState
                         )}
                     >
                         <Globe size={14} className={activeTab === 'map' ? "text-primary" : "text-slate-400"} />
-                        Red OSRM
+                        {isAdmin ? 'Red OSRM' : 'Proyectos'}
                     </button>
                 </div>
             </div>
@@ -295,16 +300,19 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({ onClose, currentViewState
                                     <AlertTriangle size={16} /> Zona Crítica
                                 </div>
                                 <p className="text-[11px] text-red-700/60 dark:text-red-300/40 font-medium leading-relaxed">
-                                    Purgado total de infraestructura: Elimina nodos, rutas y lógica de red de forma irreversible.
+                                    Purgado total de infraestructura: elimina nodos, rutas y lógica de red del proyecto activo de forma irreversible.
                                 </p>
                                 <button
                                     onClick={() => setShowResetConfirm(true)}
-                                    disabled={isResetting}
+                                    disabled={isResetting || !activeProject}
                                     className="w-full py-3 bg-white dark:bg-red-900/20 border border-red-200 dark:border-red-900 text-red-600 text-[10px] font-black uppercase tracking-widest rounded-2xl hover:bg-red-50 transition-all flex items-center justify-center gap-2 active:scale-95"
                                 >
                                     <Trash2 size={16} />
-                                    {isResetting ? 'Purgando...' : 'Reestablecer Base de Datos'}
+                                    {isResetting ? 'Purgando...' : 'Purgar proyecto activo'}
                                 </button>
+                                {!activeProject && (
+                                    <p className="text-[11px] text-red-500/80 mt-2">Selecciona un proyecto activo para habilitar el purgado.</p>
+                                )}
                             </div>
                         </div>
                     </div>
@@ -322,22 +330,68 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({ onClose, currentViewState
                 )}
 
                 {activeTab === 'map' && (
-                    <div className="fade-in animate-in duration-500">
-                        <div className="bg-primary/10 border border-primary/20 p-6 rounded-[32px] mb-8 shadow-inner">
-                             <p className="text-[11px] text-primary/80 dark:text-primary/60 font-bold leading-relaxed uppercase tracking-widest text-center">
-                                Núcleo de Enrutamiento Offline
-                            </p>
+                    <div className="fade-in animate-in duration-500 space-y-6">
+                        <div className="space-y-4">
+                            <div className="bg-primary/10 border border-primary/20 p-6 rounded-[32px] shadow-inner">
+                                <p className="text-[11px] text-primary/80 dark:text-primary/60 font-bold leading-relaxed uppercase tracking-widest text-center">
+                                    Selecciona el proyecto activo
+                                </p>
+                                <p className="text-xs text-slate-500 dark:text-slate-400 text-center mt-2">
+                                    El motor OSRM y los datos de paradas/rutas se aislan por proyecto asignado.
+                                </p>
+                            </div>
+                            <div className="space-y-3 bg-slate-50/60 dark:bg-slate-900/40 p-6 rounded-[32px] border utilitarian-border">
+                                {myProjects.length === 0 && (
+                                    <p className="text-sm text-slate-500">No tienes proyectos asignados. Pide acceso al administrador.</p>
+                                )}
+                                {myProjects.map((p) => (
+                                    <button
+                                        key={p.id}
+                                        onClick={() => setActiveProject(p)}
+                                        className={clsx(
+                                            "w-full text-left px-4 py-3 rounded-2xl border transition-all",
+                                            activeProject?.id === p.id
+                                                ? "border-primary/40 bg-primary/10 text-white"
+                                                : "border-white/10 bg-slate-900/30 hover:border-primary/30 text-slate-200"
+                                        )}
+                                    >
+                                        <div className="flex items-center justify-between">
+                                            <div>
+                                                <div className="text-sm font-semibold">{p.name}</div>
+                                                <div className="text-[11px] text-slate-400 uppercase tracking-widest truncate max-w-[240px]">
+                                                    {(p as any).map_name || 'Mapa asignado'} · {p.routing_engine_url?.split('//')[1] || 'sin motor'}
+                                                </div>
+                                            </div>
+                                            {activeProject?.id === p.id && (
+                                                <span className="text-[10px] font-black text-emerald-400 uppercase">Activo</span>
+                                            )}
+                                        </div>
+                                    </button>
+                                ))}
+                                <p className="text-[11px] text-slate-500 mt-2">
+                                    Al cambiar de proyecto, todos los POST incluyen automáticamente el <code>X-Project-Id</code> y el motor adecuado; no necesitas tocar mapas ni URLs.
+                                </p>
+                            </div>
                         </div>
-                        <MapManager />
+                        {isAdmin && (
+                            <>
+                                <div className="bg-primary/10 border border-primary/20 p-6 rounded-[32px] shadow-inner">
+                                    <p className="text-[11px] text-primary/80 dark:text-primary/60 font-bold leading-relaxed uppercase tracking-widest text-center">
+                                        Núcleo de Enrutamiento Offline
+                                    </p>
+                                </div>
+                                <MapManager />
+                            </>
+                        )}
                     </div>
                 )}
             </div>
 
             <ConfirmModal
                 isOpen={showResetConfirm}
-                title="¿Purgar Base de Datos?"
-                message="Esta acción es irreversible y removerá toda la infraestructura de red creada (paradas, rutas, aristas y planificación). ¿Proceder con el purgado total?"
-                confirmText="Sí, Purgar Datos"
+                title="¿Purgar datos del proyecto?"
+                message={`Esta acción es irreversible y eliminará paradas, rutas, segmentos y horarios solo del proyecto activo${activeProject ? `: ${activeProject.name}` : ''}.`}
+                confirmText="Sí, purgar proyecto"
                 onConfirm={handleResetDatabase}
                 onCancel={() => setShowResetConfirm(false)}
             />

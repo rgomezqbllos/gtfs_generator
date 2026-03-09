@@ -388,7 +388,21 @@ export default async function adminRoutes(fastify: FastifyInstance) {
             return reply.code(403).send({ error: 'Only SuperAdmin can delete projects' });
         }
         try {
-            db.prepare('DELETE FROM projects WHERE id = ?').run(request.params.id);
+            const projectId = request.params.id;
+            db.transaction(() => {
+                // Child tables that reference project_id
+                db.prepare('DELETE FROM stop_times WHERE project_id = ?').run(projectId);
+                db.prepare('DELETE FROM shapes WHERE project_id = ?').run(projectId);
+                db.prepare('DELETE FROM trips WHERE project_id = ?').run(projectId);
+                db.prepare('DELETE FROM calendar WHERE project_id = ?').run(projectId);
+                db.prepare('DELETE FROM segment_time_slots WHERE project_id = ?').run(projectId);
+                db.prepare('DELETE FROM segments WHERE project_id = ?').run(projectId);
+                db.prepare('DELETE FROM routes WHERE project_id = ?').run(projectId);
+                db.prepare('DELETE FROM route_parkings WHERE project_id = ?').run(projectId);
+                db.prepare('DELETE FROM stops WHERE project_id = ?').run(projectId);
+                db.prepare('DELETE FROM user_projects WHERE project_id = ?').run(projectId);
+                db.prepare('DELETE FROM projects WHERE id = ?').run(projectId);
+            })();
             return { success: true };
         } catch (error) {
             return reply.code(500).send({ error: 'Failed to delete project' });
