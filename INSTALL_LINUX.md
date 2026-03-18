@@ -1,105 +1,188 @@
-# Guía de Instalación para Linux
+# Guía de Instalación — Linux (Ubuntu / Debian / Fedora)
 
-Esta guía asume como base una distribución basada en **Debian / Ubuntu**, sin embargo, los comandos son fácilmente portables a Fedora o Arch Linux intercambiando el gestor de paquetes (`apt` por `dnf` o `pacman`).
+Esta guía asume como base **Ubuntu 22.04 LTS** o **Debian 12**, pero los comandos son fácilmente adaptables a Fedora, Arch Linux y otras distribuciones sustituyendo `apt` por `dnf` o `pacman`.
 
-## 1. Prerrequisitos
+---
 
-Actualiza tu lista de paquetes local:
+## 1. Instalar Prerrequisitos
+
+### 1.1 Actualizar el sistema y herramientas base
+
 ```bash
 sudo apt update && sudo apt upgrade -y
+sudo apt install -y build-essential curl git unzip
 ```
 
-### 1.1 Git, Curl y compiladores básicos
-GTFS Generator compila módulos que requieren algunas herramientas elementales de Linux (como dependencias nativas para SQLite).
-```bash
-sudo apt install build-essential curl git unzip -y
-```
+> En **Fedora**: `sudo dnf groupinstall "Development Tools" && sudo dnf install curl git unzip`
 
-### 1.2 Node.js (v18+)
-Por lo regular, el repositorio oficial de Debian/Ubuntu trae versiones desactualizadas de Node. Instalaremos la versión de NodeSource LTS directamente:
+---
+
+### 1.2 Node.js (versión 20 LTS)
+
+El repositorio oficial de Ubuntu/Debian suele incluir versiones desactualizadas de Node. Usa el repositorio oficial de NodeSource:
+
 ```bash
 curl -fsSL https://deb.nodesource.com/setup_20.x | sudo -E bash -
 sudo apt install -y nodejs
 ```
-Verifica su funcionamiento:
+
+> En **Fedora**: `sudo dnf install nodejs` (suele tener versiones recientes) o usa `nvm`.
+
+**Verificación:**
 ```bash
-node -v
-npm -v
+node -v   # v20.x.x
+npm -v    # 10.x.x
 ```
 
-### 1.3 Docker Engine (Opcional pero recomendado)
-Si vas a requerir OSRM localmente, instalarás el Motor Docker directo en tu entorno Linux. Docker corre de manera nativa en Linux, por lo cual es la mejor plataforma de rendimiento absoluto para el OSRM.
+---
 
-Instalar Docker usando el script oficial:
+### 1.3 Docker Engine (Requerido para OSRM)
+
+Docker corre de forma nativa en Linux — sin virtualización, lo que lo hace más rápido que en Windows o macOS para el procesamiento OSRM.
+
+**Instalación con el script oficial (más simple):**
 ```bash
 curl -fsSL https://get.docker.com -o get-docker.sh
 sudo sh get-docker.sh
 ```
 
-Añade tu usuario actual al grupo `docker` para que no tengas que usar `sudo` para cada comando (requiere que cierres sesión y vuelvas a entrar, o reinicies el terminal para aplicar los cambios):
+**Agregar tu usuario al grupo `docker`** (evita usar `sudo` en cada comando Docker):
 ```bash
 sudo usermod -aG docker $USER
 newgrp docker
 ```
 
----
+> ⚠️ **Importante:** Cierra sesión y vuelve a entrar (o reinicia la terminal) para que el cambio de grupo tenga efecto.
 
-## 2. Descarga y Dependencias
-
-Navega a un directorio donde desees alojar la app y clónala:
+**Verificación:**
 ```bash
-cd ~
-git clone <URL_DEL_REPOSITORIO>
-cd GTFS_Generator
+docker --version       # Docker version 24.x.x
+docker run hello-world # Debe correr sin sudo
 ```
 
-Procede a instalar los paquetes (Frontend, Backend principal):
+> En **Fedora**: Instala con `sudo dnf install docker-ce` después de agregar el repositorio oficial de Docker.
+
+---
+
+## 2. Descargar e Instalar el Proyecto
+
 ```bash
+cd ~
+git clone https://github.com/rgomezqbllos/gtfs_generator.git
+cd gtfs_generator
 npm run install:all
 ```
 
+> Esto instala las dependencias del raíz, del servidor y del cliente. Tarda 2-5 minutos.
+
 ---
 
-## 3. Configuración Inicial (OSRM)
+## 3. Configurar OSRM para tu Ciudad (Opcional pero Recomendado)
 
-(Opcional, si usarás la generación de rutas automáticas siguiendo vías).
-
-Al estar libre de capas de virtualización como WSL o HyperKit, Docker en Linux usa el sistema de archivos completo del anfitrión (host). Ejecuta el comando para descargar tu ciudad, por ejemplo **bogota**:
+OSRM permite que los segmentos sigan las calles reales en lugar de líneas rectas.
 
 ```bash
-npm run osrm:setup -- bogota
+# Sintaxis:
+npm run osrm:setup -- <ciudad> <puerto> "<url-del-mapa>"
+
+# Ejemplos:
+npm run osrm:setup -- bogota 5001 "https://download.geofabrik.de/south-america/colombia-latest.osm.pbf"
+npm run osrm:setup -- santiago 5002 "https://download.geofabrik.de/south-america/chile-latest.osm.pbf"
+npm run osrm:setup -- mexico-city 5003 "https://download.geofabrik.de/north-america/mexico-latest.osm.pbf"
+npm run osrm:setup -- buenos-aires 5004 "https://download.geofabrik.de/south-america/argentina-latest.osm.pbf"
+npm run osrm:setup -- lima 5005 "https://download.geofabrik.de/south-america/peru-latest.osm.pbf"
 ```
-El script creará un contenedor transitorio de `osrm-backend` que extraerá los grafos vehiculares en la carpeta base `osrm-data/`. Al concluir, levantará de fondo el servicio escuchando en `http://localhost:5001`.
+
+> ⏳ La primera vez puede tardar **5-20 minutos**. Los datos se guardan en `gtfs_data/` y no se re-procesan en ejecuciones futuras.
+
+> ⚡ **Linux** es la plataforma con mejor rendimiento para OSRM: sin capas de virtualización, Docker accede directamente al sistema de archivos del host.
+
+Al terminar verás:
+```
+✅ OSRM is running for bogota!
+URL: http://localhost:5001
+```
+
+Configura esa URL en el **Map Hub** de tu proyecto dentro de la aplicación.
 
 ---
 
-## 4. Ejecutar GTFS Generator 
+## 4. Levantar la Aplicación
 
-Simplemente levanta los flujos de Desarrollo:
+### Modo Desarrollo (sin Keycloak)
 
 ```bash
 npm start
 ```
 
-Entra en tu navegador nativo a `http://localhost:5173`. Tu gestor GTFS está vivo interactuando con tu API en `http://localhost:3001`.
+- 🖥️ **Frontend:** [http://localhost:5173](http://localhost:5173)
+- 🔧 **API Backend:** [http://localhost:3001](http://localhost:3001)
+
+Detener: `Ctrl + C`
 
 ---
 
-## 5. Despliegue en Servidores de Producción (VPS Linux)
+### Modo Completo con Docker Compose (App + Keycloak + Postgres)
 
-Si planeas montar esto de manera perpetua para tu equipo utilizando Ubuntu Server:
-
-Puedes compilar la aplicación completa y desplegarla utilizando PM2. O, alternativamente, utilizar el archivo `docker-compose.yml` que empaqueta ya sea tu frontend y backend:
+Para habilitar la autenticación completa de usuarios:
 
 ```bash
-# Compilar ambos perfiles
-npm run build 
-
-# Si tienes pm2 instalado (npm i -g pm2)
-pm2 start npm --name "gtfs-api" -- run start:prod
+docker compose up --build
 ```
-> O si clonas y construyes Docker:
+
+- **Aplicación:** [http://localhost:3001](http://localhost:3001)
+- **Panel Keycloak:** [http://localhost:8080](http://localhost:8080)
+
+**Credenciales de primer acceso:**
+```
+Usuario:    superadmin
+Contraseña: superadmin
+```
+
+> OSRM **no** se levanta con `docker compose`. Ejecútalo por separado (paso 3).
+
+---
+
+## 5. Despliegue en Producción (VPS / Servidor)
+
+Para correr la aplicación de forma permanente en un servidor Linux Ubuntu:
+
+### Opción A: Compilar y usar PM2 (sin Docker)
+
+```bash
+# Compilar frontend y backend
+npm run build
+
+# Instalar PM2 globalmente si no lo tienes
+npm install -g pm2
+
+# Levantar el servidor como servicio
+pm2 start npm --name "gtfs-generator" -- run start:prod
+pm2 startup    # Configura auto-inicio al reiniciar el servidor
+pm2 save
+```
+
+El servidor queda disponible en `http://tu-servidor:3001`.
+
+### Opción B: Docker Compose en producción
+
 ```bash
 docker compose up -d --build
 ```
-> (Recuerda que OSRM va por otro lado corriendo por su propia cuenta como explicamos en el paso 3).
+
+Esto levanta App + Keycloak + Postgres en contenedores, con la app disponible en el puerto `3001`.
+
+> Para ambas opciones: configura un **proxy reverso** (Nginx o Caddy) con SSL para exponer la aplicación en el puerto 443 (HTTPS).
+
+---
+
+## 6. Solución de Problemas en Linux
+
+| Error | Solución |
+|---|---|
+| `docker: permission denied` | Ejecuta `sudo usermod -aG docker $USER && newgrp docker` |
+| `node: command not found` | Verifica que NodeSource se instaló correctamente. Prueba `which node` |
+| `EACCES: permission denied` en npm | Ejecuta `sudo chown -R $USER ~/.npm` |
+| `GLIBC_x.xx not found` | Tu versión de Ubuntu/Debian es muy antigua. Actualiza a Ubuntu 22.04+ |
+| OSRM download bloqueado por firewall | Descarga el `.osm.pbf` manualmente desde [geofabrik.de](https://download.geofabrik.de) y colócalo en `gtfs_data/` |
+| Los segmentos son líneas rectas | OSRM no está corriendo. Verifica con `docker ps` |

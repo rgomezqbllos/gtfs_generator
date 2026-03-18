@@ -1,86 +1,166 @@
-# Guía de Instalación para macOS
+# Guía de Instalación — macOS (Intel & Apple Silicon)
 
-Esta guía te detallará cómo configurar tu entorno para ejecutar **GTFS Generator** en sistemas Apple (Macs con Intel o los nuevos Apple Silicon M1/M2/M3).
+Esta guía cubre la instalación de **GTFS Generator** en equipos Apple con procesadores **Intel** y **Apple Silicon (M1, M2, M3, M4)**.
 
-## 1. Prerrequisitos
+---
 
-Para macOS, el gestor de paquetes **Homebrew** hace el proceso infinitamente más fácil.
+## 1. Instalar Prerrequisitos
 
-### 1.1 Command Line Tools & Homebrew
-1. Abre tu aplicación **Terminal** (presiona `Cmd + Espacio`, escribe "Terminal" y presiona Enter).
-2. Primero, instala las herramientas de consola de Apple (Git vendrá incluido):
+### 1.1 Xcode Command Line Tools y Homebrew
+
+Las Command Line Tools incluyen Git y los compiladores necesarios para módulos nativos (como SQLite). Homebrew es el gestor de paquetes recomendado para macOS.
+
+1. Abre la **Terminal** (`Cmd + Espacio` → escribe "Terminal" → Enter).
+
+2. Instala las herramientas de línea de comandos:
    ```bash
    xcode-select --install
    ```
-3. Luego, instala Homebrew copiando y pegando el siguiente código en la terminal:
+   Aparecerá una ventana — haz clic en **"Instalar"** y espera a que termine (tarda unos minutos).
+
+3. Instala Homebrew:
    ```bash
    /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
    ```
-   *(Sigue las instrucciones en pantalla, al finalizar normalmente te pedirá correr dos líneas de código para agregarlo a tu `.zprofile` o `.zprofile`. Cópialas y córrelas)*.
+   Al finalizar, Homebrew te mostrará dos líneas que debes copiar y ejecutar para agregarlo a tu shell (algo como `eval "$(/opt/homebrew/bin/brew shellenv)"`). **Ejecútalas antes de continuar.**
 
-### 1.2 Node.js
-Usa Homebrew para instalar Node (versión 18 o superior).
-En la terminal, ejecuta:
+**Verificación:**
 ```bash
-brew install node
+git --version     # git version 2.x.x
+brew --version    # Homebrew x.x.x
 ```
-Confirma tu instalación con `node -v`. Debería responder con tu versión, ej. `v22.x.x`.
-
-### 1.3 Docker Desktop (Opcional pero recomendado para OSRM)
-Docker es necesario si vas a levantar tu propio servidor local de distancias de vías (OSRM) para que el editor de rutas calcule trazados automáticamente en las calles.
-1. Descarga Docker Desktop para Mac desde [este enlace](https://docs.docker.com/desktop/install/mac-install/).
-   > **Ojo:** Si posees una Mac M1/M2/M3, asegúrate de descargar la versión **"Mac with Apple silicon"**.
-2. Abre el archivo `.dmg` y arrastra el icono de Docker a la carpeta de Aplicaciones.
-3. Abre Docker desde tus Aplicaciones, dale los permisos necesarios cuando te los pida, y espera a que el icono de la barra superior esté estático.
 
 ---
 
-## 2. Descarga e Instalación del Proyecto
+### 1.2 Node.js (versión 20 LTS)
 
-1. Desde tu terminal, posiciónate en la carpeta donde trabajarás:
-   ```bash
-   cd ~/Documents
-   ```
-2. Clona el proyecto:
-   ```bash
-   git clone <URL_DEL_REPOSITORIO>
-   cd GTFS_Generator
-   ```
-3. Instala todas las dependencias necesarias. Ejecuta:
-   ```bash
-   npm run install:all
-   ```
+```bash
+brew install node@20
+brew link --overwrite node@20
+```
 
----
+**Verificación:**
+```bash
+node -v   # v20.x.x
+npm -v    # 10.x.x
+```
 
-## 3. Configuración Inicial (OSRM)
-
-**(Omitir si no vas a usar el cálculo de tramos automáticos vía OSRM)**.
-
-1. Verifica que tu **Docker Desktop** esté corriendo en la barra de menú superior.
-2. Ejecuta el inicializador de base de datos geográfica:
-   ```bash
-   npm run osrm:setup -- bogota
-   ```
-   *(Puedes cambiar `bogota` por el nombre de tu setup/región programado en `osrm_manager.ts`. Esto comenzará la descarga de datos OSM de tu ciudad y el procesamiento de vías, puede tardar y calentar tu Mac por un par de minutos, esto es completamente normal)*.
+> 💡 Si ya tienes otra versión de Node instalada, puedes usar `nvm` para gestionar múltiples versiones: `brew install nvm`.
 
 ---
 
-## 4. Servir la Aplicación en Modo Desarrollo
+### 1.3 Docker Desktop (Requerido para OSRM)
 
-Ya tienes todo instalado. Ahora, para levantar el proyecto:
+Docker es necesario para procesar y servir los mapas de calles (OSRM).
+
+1. Descarga Docker Desktop desde [docs.docker.com/desktop/install/mac-install](https://docs.docker.com/desktop/install/mac-install/).
+   > ⚠️ **Apple Silicon:** asegúrate de descargar la versión **"Mac with Apple silicon"** (archivo `.dmg` para ARM).
+2. Abre el `.dmg` descargado y arrastra Docker a la carpeta **Aplicaciones**.
+3. Abre Docker desde Launchpad o Aplicaciones.
+4. Dale los permisos que solicite y espera a que el ícono 🐳 en la barra de menú superior quede **fijo** (puede tardar 30-60 segundos).
+
+**Verificación:**
+```bash
+docker --version
+# Docker version 24.x.x o superior
+```
+
+---
+
+## 2. Descargar e Instalar el Proyecto
+
+```bash
+cd ~/Documents
+git clone https://github.com/rgomezqbllos/gtfs_generator.git
+cd gtfs_generator
+npm run install:all
+```
+
+> Esto instala las dependencias del raíz, del servidor y del cliente. Tarda 2-5 minutos.
+
+---
+
+## 3. Configurar OSRM para tu Ciudad (Opcional pero Recomendado)
+
+OSRM permite que los segmentos sigan las calles reales. Requiere Docker activo.
+
+```bash
+# Sintaxis:
+npm run osrm:setup -- <ciudad> <puerto> "<url-del-mapa>"
+
+# Ejemplos:
+npm run osrm:setup -- bogota 5001 "https://download.geofabrik.de/south-america/colombia-latest.osm.pbf"
+npm run osrm:setup -- santiago 5002 "https://download.geofabrik.de/south-america/chile-latest.osm.pbf"
+npm run osrm:setup -- mexico-city 5003 "https://download.geofabrik.de/north-america/mexico-latest.osm.pbf"
+npm run osrm:setup -- buenos-aires 5004 "https://download.geofabrik.de/south-america/argentina-latest.osm.pbf"
+npm run osrm:setup -- lima 5005 "https://download.geofabrik.de/south-america/peru-latest.osm.pbf"
+```
+
+> ⏳ La primera vez puede tardar **5-20 minutos**. El mapa se guarda en `gtfs_data/` y no se re-procesa en ejecuciones posteriores.
+
+> 🌡️ **Normal en Mac:** La CPU puede calentarse y los ventiladores pueden activarse durante el procesamiento. Esto es completamente normal.
+
+Al terminar verás:
+```
+✅ OSRM is running for bogota!
+URL: http://localhost:5001
+```
+
+---
+
+## 4. Levantar la Aplicación
+
+### Modo Desarrollo (sin Keycloak)
 
 ```bash
 npm start
 ```
 
-- Este comando utiliza `concurrently` para lanzar la base de datos (Backend corriendo en `localhost:3001`) y el servicio de pantallas visuales (Frontend corriendo en `localhost:5173`).
-- Visita [http://localhost:5173](http://localhost:5173) en Safari, Chrome, o tu navegador principal para empezar a utilizar la aplicación.
-- Puedes apagar todo regresando a la terminal y pulsando `Control + C`.
+- 🖥️ **Frontend:** [http://localhost:5173](http://localhost:5173)
+- 🔧 **API Backend:** [http://localhost:3001](http://localhost:3001)
+
+Detener: `Control + C`
 
 ---
 
-## 5. Notas Adicionales en Mac
+### Modo Completo con Docker (App + Keycloak + Postgres)
 
-- **Base de Datos:** El proyecto utiliza `sqlite3` de manera nativa embebida, la cual se guardará como un archivo físico bajo `server/gtfs.db`.
-- **Compatibilidad npm arm64:** Si estás en procesadores serie M, los módulos más recientes compilan de forma completamente nativa, lo cual hace que los cálculos de nodos en el backend vuelen en comparación a CPUs antiguos.
+```bash
+docker compose up --build
+```
+
+- **Aplicación:** [http://localhost:3001](http://localhost:3001)
+- **Panel Keycloak:** [http://localhost:8080](http://localhost:8080)
+
+**Credenciales de primer acceso:**
+```
+Usuario:    superadmin
+Contraseña: superadmin
+```
+
+---
+
+## 5. Notas Específicas para macOS
+
+### Apple Silicon (M1/M2/M3/M4)
+
+- **Rendimiento:** Los módulos nativos (SQLite, etc.) compilan de forma nativa para ARM64, lo cual puede resultar en mejor rendimiento que en equipos Intel.
+- **Docker:** Los contenedores de OSRM (`osrm/osrm-backend`) tienen imágenes multi-arquitectura. En Apple Silicon, Docker usa la emulación de AMD64. El procesamiento es más lento que en un servidor Linux nativo, pero funciona correctamente.
+- **Rosetta:** No es necesaria para este proyecto al usar las versiones correctas de Node y Docker.
+
+### Permisos de Terminal
+
+Si ves errores de permisos al ejecutar `npm run install:all`, puede ser necesario ajustar los permisos de la carpeta:
+```bash
+sudo chown -R $(whoami) ~/.npm
+```
+
+### Solución de Problemas
+
+| Error | Solución |
+|---|---|
+| `zsh: command not found: brew` | Ejecuta las líneas de configuración que Homebrew mostró al instalarse |
+| `zsh: command not found: node` | Ejecuta `brew link --overwrite node@20` y abre una nueva terminal |
+| Docker no inicia | Ve a Aplicaciones → Docker → Abrirlo manualmente |
+| Error de permisos en `npm install` | `sudo chown -R $(whoami) ~/.npm` |
+| OSRM download bloqueado | Descarga el `.osm.pbf` manualmente desde [geofabrik.de](https://download.geofabrik.de) y colócalo en `gtfs_data/` |

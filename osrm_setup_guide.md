@@ -1,53 +1,16 @@
-# Guía de Uso: OSRM Local con Docker
+# osrm_setup_guide.md → Ver README.md
 
-He configurado un script automatizado para gestionar tu servidor OSRM local. Esto te permitirá obtener rutas reales (no líneas rectas) incluso si los servidores públicos están bloqueados en tu red.
+> ⚠️ **Este archivo está consolidado.** La guía de OSRM fue incorporada al **[README.md](./README.md)** principal con la sintaxis actualizada.
 
-## 1. Requisitos Previos
+Por favor consulta la sección **[Configurar OSRM](./README.md#️-configurar-osrm-enrutamiento-por-calles)** del README.
 
-*   **Docker Desktop** debe estar ejecutándose.
-*   **Node.js** (ya instalado).
-
-## 2. Iniciar el Servidor OSRM
-
-Para configurar y ejecutar OSRM para una ciudad específica, simplemente ejecuta el siguiente comando en la terminal:
+## Sintaxis actual del comando (3 argumentos obligatorios)
 
 ```bash
-# Desde la raíz del repo
-npm run osrm:setup -- <ciudad>
+npm run osrm:setup -- <ciudad> <puerto> "<url-geofabrik>"
 
-# (Alternativa) desde la carpeta server/
-# npm run osrm:setup <ciudad>
+# Ejemplo:
+npm run osrm:setup -- bogota 5001 "https://download.geofabrik.de/south-america/colombia-latest.osm.pbf"
 ```
 
-**Ciudades Disponibles:**
-*   `bogota` (Colombia)
-*   `santiago`
-*   `chile`
-*   `buenos-aires`
-*   `mexico-city`
-
-### Ejemplo:
-```bash
-npm run osrm:setup -- bogota
-```
-
-El script automáticamente:
-1.  Descargará el mapa necesario (intentando múltiples fuentes si alguna está bloqueada).
-2.  Procesará los datos para el enrutamiento (puede tardar unos minutos la primera vez).
-3.  Iniciará el servidor en el puerto **5001**.
-    *(Usamos el 5001 porque el 5000 suele estar ocupado por AirPlay en Mac)*.
-
-## 3. Verificación
-
-Una vez que veas el mensaje `✅ OSRM is running for <ciudad>!`, el servidor estará listo.
-
-Tu aplicación ya está configurada para usarlo automáticamente gracias al archivo `.env` que he creado:
-```env
-OSRM_API_URL=http://localhost:5001/route/v1/driving
-```
-
-## 4. Notas Importantes
-
-*   **Primera ejecución:** La primera vez que ejecutas una ciudad, tardará unos minutos en descargar y procesar. Las siguientes veces será instantáneo.
-*   **Cambiar de ciudad:** Si ejecutas el comando para otra ciudad (ej. `npm run osrm:setup mexico-city`), el servidor anterior se detendrá y se iniciará el nuevo con los datos correspondientes.
-*   **Error de Puerto:** Si ves un error de puerto ocupado, asegúrate de no tener otro contenedor corriendo en el puerto 5001. El script intenta limpiar automáticamente, pero si fallara, puedes reiniciar Docker.
+Ver más ejemplos en [README.md → OSRM](./README.md#️-configurar-osrm-enrutamiento-por-calles).

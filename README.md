@@ -1,146 +1,243 @@
 # GTFS Generator
 
-Aplicación web para generar, editar e importar/exportar feeds **GTFS** (General Transit Feed Specification) con editor de mapa, gestor de segmentos y horarios, y cálculo de rutas/tiempos vía **OSRM**.
+Herramienta web integral para planificadores de transporte público. Permite digitalizar redes de buses desde cero o editar feeds GTFS existentes con un editor de mapa geoespacial, cálculo de rutas automático vía OSRM y gestión completa de horarios.
 
-## 🎯 Overview Funcional
+[![Node.js](https://img.shields.io/badge/Node.js-20+-green)](https://nodejs.org)
+[![React](https://img.shields.io/badge/React-19-blue)](https://react.dev)
+[![Fastify](https://img.shields.io/badge/Fastify-5-black)](https://fastify.dev)
+[![Docker](https://img.shields.io/badge/Docker-Required_for_OSRM-blue)](https://docker.com)
 
-Este proyecto es una herramienta para planificadores de transporte (como Rafael o Ralf) que necesitan digitalizar redes de buses en ciudades de cualquier parte del mundo.
+---
 
-### ¿Qué puede hacer el usuario actual?
+## 🎯 ¿Qué hace esta herramienta?
 
-1.  **Gestionar Proyectos Independientes:** Cada ciudad (Bogotá, Curitiba, Santiago) se gestiona como un proyecto con su propio centro de mapa y motor de enrutamiento (OSRM).
-2.  **Digitalizar Infraestructura:** Crear paradas (Stops) y unirlas con segmentos (Segments) que siguen las calles reales, calculando distancias y tiempos de viaje automáticamente.
-3.  **Configurar Operación:** Definir agencias, rutas y servicios (calendarios).
-4.  **Editor de Horarios (Trips/Stop Times):** Crear viajes con secuencias de paradas y tiempos estimados, evitando la carga manual tediosa.
-5.  **Multiperfiles:** Diferenciar si un bus circula por vía mixta, exclusiva o troncal para que el cálculo de rutas sea realista para el transporte público.
-6.  **Importar/Exportar:** Cargar ZIPs existentes de GTFS para editarlos o generar el resultado final listo para usar en planificadores como Google Maps o Transit.
+| Capacidad | Descripción |
+|---|---|
+| 🗺️ **Editor de Mapa** | Crea paradas y segmentos que siguen la red vial real |
+| 🛣️ **Enrutamiento OSRM** | Calcula distancias y tiempos de viaje por calles reales |
+| 📋 **Gestión de Rutas** | Define agencias, rutas y su configuración operativa |
+| 🕐 **Editor de Horarios** | Crea calendarios, trips y stop-times con auto-cálculo |
+| 📦 **Importar GTFS** | Carga ZIPs GTFS existentes con filtrado selectivo |
+| 📤 **Exportar GTFS** | Genera el ZIP GTFS final listo para Google Maps / Transit |
+| 👥 **Multi-proyecto** | Gestiona múltiples ciudades con mapas y OSRM independientes |
+| 🔐 **Autenticación** | Sistema de usuarios y roles vía Keycloak |
 
-### Visión de Mejora Continua
+---
 
-Mantenemos el archivo `AGENTS.md` para documentar cómo los agentes de IA ayudan a evolucionar estas capacidades y cómo garantizamos la calidad técnica y funcional del transporte.
+## 🏗️ Arquitectura del Sistema
 
-## Quickstart (desde cero)
+```
+┌─────────────────────────────────────────────┐
+│  Frontend (React 19 + MapLibre + TailwindCSS) │
+│              http://localhost:5173            │
+└─────────────────┬───────────────────────────┘
+                  │ /api
+┌─────────────────▼───────────────────────────┐
+│   Backend API (Fastify 5 + SQLite)           │
+│              http://localhost:3001            │
+└──────┬──────────────────────────────────────┘
+       │              │
+┌──────▼──────┐  ┌────▼────────────────────────┐
+│  Keycloak   │  │  OSRM (Docker, por ciudad)  │
+│  + Postgres │  │  http://localhost:500X       │
+│  :8080/:5432│  └─────────────────────────────┘
+└─────────────┘
+```
 
-Requisitos: **Node.js 18+**, **Git**, y **Docker** (solo si vas a usar OSRM local).
+**Datos persistidos en:** `server/gtfs.db` (SQLite) y `gtfs_data/` (mapas OSRM)
+
+---
+
+## ⚡ Inicio Rápido
+
+> 📋 **Guías completas por sistema operativo:**
+> - 🟦 [Windows 10/11](./INSTALL_WINDOWS.md)
+> - 🍎 [macOS (Intel / Apple Silicon)](./INSTALL_MACOS.md)
+> - 🐧 [Linux (Ubuntu / Debian / Fedora)](./INSTALL_LINUX.md)
+
+### Requisitos mínimos
+
+| Requisito | Versión | Para qué |
+|---|---|---|
+| **Node.js** | 20 LTS o superior | Ejecutar API y Frontend |
+| **Git** | Cualquiera reciente | Clonar el repositorio |
+| **Docker Desktop** | Última estable | OSRM (opcional en modo básico) |
+
+### Instalación
 
 ```bash
-git clone <url-del-repositorio>
+git clone https://github.com/rgomezqbllos/gtfs_generator.git
 cd gtfs_generator
 npm run install:all
 ```
 
-Terminal 1 (opcional, OSRM local para tu ciudad):
-
-```bash
-npm run osrm:setup -- bogota
-```
-
-Terminal 2 (dev: API + frontend con hot-reload):
+### Levantar en modo desarrollo
 
 ```bash
 npm start
 ```
 
-- Frontend (Vite): `http://localhost:5173`
-- Backend/API: `http://localhost:3001` (por defecto)
+- 🖥️ **Frontend:** [http://localhost:5173](http://localhost:5173)
+- 🔧 **API / Backend:** [http://localhost:3001](http://localhost:3001)
 
-## Características
+Detener: `Ctrl + C` en la terminal.
 
-- Editor de mapa interactivo (paradas/nodos)
-- Segmentos con distancia/tiempo calculado vía OSRM + soporte “deadheads”
-- Editor visual de rutas (recorridos)
-- Importación GTFS selectiva (agencias/rutas/servicios) + filtrado estricto
-- Editor de horarios (detección de duplicados, skip/auto-cálculo)
-- Rendimiento: WebGL + importación por streaming
-- Persistencia local en SQLite (`server/gtfs.db` por defecto)
-- Exportación a `.zip` GTFS
+---
 
-## Prerrequisitos y Guías de Instalación Completas
+## 🔐 Autenticación (Keycloak)
 
-Hemos preparado guías paso a paso detalladas según tu sistema operativo. **Por favor, lee la guía correspondiente a tu máquina antes de comenzar** para asegurar que dependencias clave como Node.js, Git y Docker se integren perfectamente:
+La aplicación requiere autenticación cuando se ejecuta con Docker Compose (modo completo).
 
-- 🟦 **[Guía para Windows (10/11)](./INSTALL_WINDOWS.md)**
-- 🍎 **[Guía para macOS (Intel/M1/M2)](./INSTALL_MACOS.md)**
-- 🐧 **[Guía para Linux (Ubuntu/Debian/etc)](./INSTALL_LINUX.md)**
+```bash
+# Levanta el stack completo: App + Keycloak + Postgres
+docker compose up --build
+```
 
-## Configuración (variables de entorno)
+Accede a:
+- **Aplicación:** [http://localhost:3001](http://localhost:3001)
+- **Panel Admin Keycloak:** [http://localhost:8080](http://localhost:8080)
 
-El servidor carga variables desde `server/.env` (opcional). Ejemplo:
+Credenciales por defecto para el superadministrador:
+```
+Usuario:    superadmin
+Contraseña: superadmin
+```
+
+> ⚠️ **Cambia la contraseña por defecto** en entornos de producción o compartidos.
+
+---
+
+## 🗺️ Configurar OSRM (Enrutamiento por Calles)
+
+OSRM permite que los segmentos entre paradas sigan las calles reales en lugar de líneas rectas.
+
+### Comando (requiere Docker activo)
+
+```bash
+npm run osrm:setup -- <ciudad> <puerto> "<url-del-mapa-pbf>"
+```
+
+| Argumento | Descripción | Ejemplo |
+|---|---|---|
+| `<ciudad>` | Nombre/clave de la ciudad | `bogota` |
+| `<puerto>` | Puerto local para el servidor OSRM | `5001` |
+| `<url-del-mapa-pbf>` | URL del archivo OSM de Geofabrik | `https://download.geofabrik.de/...` |
+
+### Ejemplos por ciudad
+
+```bash
+# Bogotá / Colombia
+npm run osrm:setup -- bogota 5001 "https://download.geofabrik.de/south-america/colombia-latest.osm.pbf"
+
+# Santiago / Chile
+npm run osrm:setup -- santiago 5002 "https://download.geofabrik.de/south-america/chile-latest.osm.pbf"
+
+# Ciudad de México
+npm run osrm:setup -- mexico-city 5003 "https://download.geofabrik.de/north-america/mexico-latest.osm.pbf"
+
+# Buenos Aires / Argentina
+npm run osrm:setup -- buenos-aires 5004 "https://download.geofabrik.de/south-america/argentina-latest.osm.pbf"
+
+# Lima / Perú
+npm run osrm:setup -- lima 5005 "https://download.geofabrik.de/south-america/peru-latest.osm.pbf"
+```
+
+> 💡 Puedes agregar cualquier región del mundo usando las URLs de [Geofabrik Downloads](https://download.geofabrik.de/).
+
+Una vez levantado, configura la URL en el proyecto desde el **Map Hub** dentro de la aplicación (`http://localhost:<puerto>/route/v1/driving`).
+
+### Notas importantes sobre OSRM
+
+- La primera vez puede tardar **varios minutos** (descarga del mapa + procesamiento).
+- Los archivos se guardan en `gtfs_data/` y **no se re-procesan** en ejecuciones futuras.
+- Cada ciudad corre en un contenedor Docker con su propio puerto.
+- Si el download de Geofabrik está bloqueado por tu red, descarga el `.osm.pbf` manualmente y colócalo en `gtfs_data/`.
+
+---
+
+## ⚙️ Variables de Entorno
+
+Crea o edita el archivo `server/.env` para personalizar la configuración:
 
 ```env
+# Puerto del servidor backend (default: 3001)
 PORT=3001
-OSRM_API_URL=http://localhost:5001/route/v1/driving
+
+# Ruta del archivo de base de datos SQLite
 DB_PATH=./gtfs.db
+
+# URL base del server Keycloak (para Docker Compose)
+KEYCLOAK_URL=http://keycloak:8080
+KEYCLOAK_ADMIN=superadmin
+KEYCLOAK_ADMIN_PASSWORD=superadmin
+
+# URL OSRM (se configura por proyecto desde la UI, pero puede ser el fallback)
+# Si no se define, la app usará el router OSRM público (con límites de peticiones)
+OSRM_API_URL=http://localhost:5001/route/v1/driving
 ```
 
-- `PORT`: puerto del backend (default `3001`)
-- `OSRM_API_URL`: endpoint OSRM. Si no lo defines, usa el OSRM público (`https://router.project-osrm.org/...`)
-- `DB_PATH`: ruta del SQLite (default: `server/gtfs.db`). Útil para Docker/volúmenes
+---
 
-## OSRM local (recomendado en redes corporativas)
+## 🏭 Producción sin Docker
 
-El script descarga datos de OpenStreetMap (PBF), los procesa y levanta un contenedor OSRM escuchando en `http://localhost:5001`.
-
-```bash
-npm run osrm:setup -- bogota
-```
-
-Ciudades/regiones disponibles (ver `server/scripts/osrm_manager.ts`): `bogota`, `santiago`, `chile`, `buenos-aires`, `mexico-city`.
-
-Notas:
-
-- La primera vez puede tardar varios minutos y ocupar bastante disco en `osrm-data/`.
-- Si cambias de ciudad, el script detiene el contenedor anterior y levanta el nuevo.
-
-## Desarrollo (hot reload)
-
-1. (Opcional) OSRM local:
-
-```bash
-npm run osrm:setup -- bogota
-```
-
-2. App en desarrollo (Vite + API):
-
-```bash
-npm start
-```
-
-En dev, el frontend proxya `/api` hacia `http://localhost:3001` (ver `client/vite.config.ts`).
-
-## Producción (sin Docker)
-
-Compila frontend + backend y ejecuta el servidor (sirve el frontend estático):
+Compila el frontend y backend, luego sirve todo desde el servidor:
 
 ```bash
 npm run build
 npm run start:prod
 ```
 
-Accede en `http://localhost:3001` (o el `PORT` que definas).
+Accede en [http://localhost:3001](http://localhost:3001) — el backend sirve el frontend estático.
 
-## Producción con Docker (opcional)
-
-El `Dockerfile` construye cliente+servidor y ejecuta el backend sirviendo `client/dist`.
+## 🐳 Producción con Docker Compose
 
 ```bash
-docker compose up --build
+docker compose up -d --build
 ```
 
-- App: `http://localhost:3001`
-- La base de datos persiste en `./gtfs_data/` (vía `DB_PATH`)
+- **App:** [http://localhost:3001](http://localhost:3001)
+- **Keycloak:** [http://localhost:8080](http://localhost:8080)
+- La base de datos persiste en `./gtfs_data/gtfs.db`
 
-> OSRM local **no** se levanta automáticamente con `docker compose` porque requiere elegir ciudad/región y preprocesar el mapa. Puedes ejecutarlo en tu host con `npm run osrm:setup -- <ciudad>`.
+> OSRM **no** se levanta automáticamente con `docker compose`. Ejecútalo por separado con `npm run osrm:setup`.
 
-## Reset de datos
+---
 
-- Borra `server/gtfs.db` (y `server/gtfs.db-wal`, `server/gtfs.db-shm` si existen) con el servidor apagado.
+## 🗑️ Reset de Datos
 
-## Troubleshooting
+Con el servidor detenido:
+```bash
+# Borra la base de datos (paradas, rutas, horarios, proyectos)
+rm server/gtfs.db server/gtfs.db-wal server/gtfs.db-shm
 
-- Si ves líneas rectas o tiempos “raros”, revisa `OSRM_API_URL` y que el contenedor OSRM esté arriba (`docker ps`).
-- Si el download de Geofabrik está bloqueado, el script te pedirá descargar manualmente el `.osm.pbf` y dejarlo en `osrm-data/`.
+# Borra los mapas OSRM procesados (libera espacio en disco)
+rm -rf gtfs_data/
+```
 
-## Copias de Seguridad y Migración
+---
 
-¿Necesitas mover tus datos a otra computadora o hacer un respaldo? Consulta nuestra **[Guía de Migración y Respaldo](./BACKUP_MIGRATION.md)** para gestionar tu base de datos SQLite de forma segura.
+## 🔧 Troubleshooting
+
+| Síntoma | Causa probable | Solución |
+|---|---|---|
+| Segmentos son líneas rectas | OSRM no está corriendo o mal configurado | Verifica `docker ps` y la URL en Map Hub |
+| `node: command not found` | Node.js no está instalado | Ver guía de tu OS |
+| Error 401 en la API | Token de Keycloak expirado | Recarga la página |
+| `docker: command not found` | Docker no instalado | Ver guía de tu OS |
+| Download PBF falla | Red corporativa / firewall | Descarga el `.osm.pbf` manualmente |
+
+---
+
+## 💾 Copias de Seguridad y Migración
+
+Para mover tus datos a otra computadora o hacer un respaldo, consulta la **[Guía de Migración](./BACKUP_MIGRATION.md)**.
+
+---
+
+## 📖 Documentación Adicional
+
+- **[Guía de Usuario](./USER_GUIDE.md)** — Flujos paso a paso de la aplicación
+- **[Instalación Windows](./INSTALL_WINDOWS.md)** — Instalación completa en Windows 10/11
+- **[Instalación macOS](./INSTALL_MACOS.md)** — Instalación completa en Mac (Intel y Apple Silicon)
+- **[Instalación Linux](./INSTALL_LINUX.md)** — Instalación completa en Ubuntu/Debian/Fedora
+- **[Migración y Backups](./BACKUP_MIGRATION.md)** — Copia de seguridad de la base de datos
