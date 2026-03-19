@@ -10,6 +10,7 @@ import {
   MapPin,
   Globe,
   CheckCircle2,
+  RefreshCw,
 } from "lucide-react";
 import { clsx } from "clsx";
 import ConfirmModal from "./ConfirmModal";
@@ -36,6 +37,7 @@ export const AdminPanel: React.FC = () => {
   const [newUserEmail, setNewUserEmail] = useState("");
   const [newUserPassword, setNewUserPassword] = useState("");
   const [assigningUser, setAssigningUser] = useState<any | null>(null);
+  const [syncing, setSyncing] = useState(false);
 
   const fetchProjects = async () => {
     try {
@@ -145,6 +147,23 @@ export const AdminPanel: React.FC = () => {
       }
     } catch (e) {
       console.error(e);
+    }
+  };
+
+  const handleSyncAuth = async () => {
+    setSyncing(true);
+    try {
+      const res = await fetch(`${API_URL}/admin/maintenance/sync-auth`, {
+        method: "POST",
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      const data = await res.json();
+      alert(data.message || "Sincronización completada");
+      fetchUsers();
+    } catch (e) {
+      console.error(e);
+    } finally {
+      setSyncing(false);
     }
   };
 
@@ -431,9 +450,19 @@ export const AdminPanel: React.FC = () => {
 
               {/* User List */}
               <div className="lg:col-span-2">
-                <h2 className="text-xl font-display font-bold text-slate-900 dark:text-white mb-6">
-                  Staff de Operaciones
-                </h2>
+                <div className="flex justify-between items-center mb-6">
+                  <h2 className="text-xl font-display font-bold text-slate-900 dark:text-white">
+                    Staff de Operaciones
+                  </h2>
+                  <button
+                    onClick={handleSyncAuth}
+                    disabled={syncing}
+                    className="flex items-center gap-2 px-4 py-2 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-[10px] font-bold uppercase tracking-widest text-slate-500 transition-all rounded-xl border utilitarian-border disabled:opacity-50"
+                  >
+                    <RefreshCw size={14} className={clsx(syncing && "animate-spin")} />
+                    {syncing ? "Sincronizando..." : "Sincronizar Auth"}
+                  </button>
+                </div>
                 <div className="border utilitarian-border rounded-2xl overflow-hidden bg-white dark:bg-slate-900/30">
                   <table className="w-full text-left border-collapse">
                     <thead>

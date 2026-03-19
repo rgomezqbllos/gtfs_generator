@@ -488,31 +488,85 @@ export default async function adminRoutes(fastify: FastifyInstance) {
             const kc = await getKcAdminClient();
             const payload = request.body;
 
-            const kcUser = await kc.users.create({
-                username: payload.username,
-                email: payload.email,
-                firstName: payload.firstName,
-                lastName: payload.lastName,
-                enabled: true,
-                credentials: [{
-                    type: 'password',
-                    value: payload.password || 'temp123!',
-                    temporary: false
-                }],
-                // Optionally assign them the user role, but for GTFS we just need them to exist
-            });
-
-            const userId = kcUser.id;
+            let userId: string;
+            try {
+                const kcUser = await kc.users.create({
+                    username: payload.username,
+                    email: payload.email,
+                    firstName: payload.firstName,
+                    lastName: payload.lastName,
+                    enabled: true,
+                    credentials: [{
+                        type: 'password',
+                        value: payload.password || 'temp123!',
+                        temporary: false
+                    }],
+                });
+                userId = kcUser.id;
+            } catch (kcError: any) {
+                // Check if user already exists in Keycloak
+                if (kcError.response?.status === 409 || (kcError.response?.data?.errorMessage?.includes('exists'))) {
+                    console.log('User already exists in Keycloak, attempting to find and sync...');
+                    const existingUsers = await kc.users.find({ email: payload.email });
+                    if (existingUsers.length > 0) {
+                        userId = existingUsers[0].id!;
+                    } else {
+                        throw kcError;
+                    }
+                } else {
+                    throw kcError;
+                }
+            }
 
             db.prepare(`
                 INSERT INTO users (id, username, email)
                 VALUES (?, ?, ?)
+                ON CONFLICT(id) DO UPDATE SET 
+                    username = excluded.username, 
+                    email = excluded.email
             `).run(userId, payload.username, payload.email);
 
-            return { success: true, id: userId };
+            return { success: true, id: userId, message: 'Usuario creado o sincronizado correctamente' };
         } catch (error: any) {
-            console.error('Failed to create user:', error.response?.data || error.message);
-            return reply.code(500).send({ error: error.response?.data?.errorMessage || 'Failed to create user' });
+            console.error('Failed to create/sync user:', error.response?.data || error.message);
+            return reply.code(500).send({ error: error.response?.data?.errorMessage || 'Failed to manage user' });
+        }
+    });
+
+    // Maintenance: Sync Users from Keycloak
+    fastify.post('/admin/maintenance/sync-auth', async (request: any, reply: any) => {
+        if (!request.isSuperAdmin) return reply.code(403).send({ error: 'Forbidden' });
+        
+        try {
+            const kc = await getKcAdminClient();
+            const kcUsers = await kc.users.find();
+            
+            console.log(`Syncing ${kcUsers.length} users from Keycloak to local DB...`);
+            
+            const stmt = db.prepare(`
+                INSERT INTO users (id, username, email)
+                VALUES (?, ?, ?)
+                ON CONFLICT(id) DO UPDATE SET 
+                    username = excluded.username, 
+                    email = excluded.email
+            `);
+
+            const transaction = db.transaction((users) => {
+                for (const u of users) {
+                    stmt.run(u.id, u.username, u.email || '');
+                }
+            });
+
+            transaction(kcUsers);
+
+            return { 
+                success: true, 
+                count: kcUsers.length,
+                message: `Se han sincronizado ${kcUsers.length} usuarios desde Keycloak.` 
+            };
+        } catch (error: any) {
+            console.error('Sync failed:', error);
+            return reply.code(500).send({ error: 'Fallo al sincronizar usuarios' });
         }
     });
 
