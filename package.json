@@ -1,14 +1,13 @@
 {
     "name": "gtfs-generator",
-    "version": "1.0.0",
-    "description": "GTFS Generator Tool",
+    "version": "2.0.0",
+    "description": "GTFS Generator — Herramienta de digitalización de redes de transporte público",
     "scripts": {
         "dev": "concurrently \"npm --prefix server run dev\" \"npm --prefix client run dev\"",
         "start": "npm run dev",
         "build": "npm --prefix client run build && npm --prefix server run build",
         "start:prod": "npm --prefix server run start",
         "osrm:setup": "npm --prefix server run osrm:setup --",
-        "vercel-build": "npm run install:all && npm run build",
         "install:all": "npm install && npm --prefix client install && npm --prefix server install"
     },
     "devDependencies": {
