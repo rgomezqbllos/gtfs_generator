@@ -631,6 +631,11 @@ export default async function adminRoutes(fastify: FastifyInstance) {
         return OsrmService.cancelProcess();
     });
 
+    fastify.post('/admin/osrm/cleanup', async (request, reply) => {
+        if (!request.isSuperAdmin) return reply.code(403).send({ error: 'Forbidden' });
+        return OsrmService.cleanupOrphanContainers();
+    });
+
     // Initialize Predefined Regions
     (async () => {
         const MapRepository = (await import('../services/MapRepository')).default;

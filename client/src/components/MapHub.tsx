@@ -3,7 +3,7 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { 
     Search, Download, Trash2, Globe,  
     Navigation, Activity, Radio,
-    CheckCircle2, Plus, Database
+    CheckCircle2, Plus, Database, ShieldCheck
 } from 'lucide-react';
 import { clsx } from 'clsx';
 import { API_URL } from '../config';
@@ -138,6 +138,27 @@ export const MapHub: React.FC = () => {
         finally { setMapToDelete(null); }
     };
 
+    const handleCleanup = async () => {
+        if (!window.confirm('¿Deseas realizar una limpieza de mantenimiento?\n\nEsto detendrá y eliminará cualquier contenedor de OSRM que no tenga un mapa correspondiente activo en la base de datos. Es útil para resolver conflictos de puertos.')) return;
+        
+        setLoading(true);
+        try {
+            const res = await fetch(`${API_URL}/admin/osrm/cleanup`, {
+                method: 'POST',
+                headers: { 'Authorization': `Bearer ${token}` }
+            });
+            const data = await res.json();
+            alert(data.message || 'Limpieza completada');
+            fetchMaps();
+            fetchStatus();
+        } catch (e) { 
+            console.error(e);
+            alert('Error al realizar la limpieza');
+        } finally {
+            setLoading(false);
+        }
+    };
+
     const filteredSuggestions = useMemo(() => {
         if (!searchQuery || searchQuery.length < 2) return [];
         const normalized = searchQuery.toLowerCase();
@@ -159,31 +180,43 @@ export const MapHub: React.FC = () => {
                     <p className="text-slate-400 mt-1">Manage global map infrastructure and routing engines.</p>
                 </div>
                 
-                {/* Global Status Badge */}
-                {osrmStatus && osrmStatus.status !== 'idle' && (
-                    <div className="space-y-2">
-                        <div className={clsx(
-                            "px-4 py-2 rounded-full border flex items-center gap-3 shadow-lg",
-                            osrmStatus.status === 'downloading' ? "border-sky-500/50 bg-sky-500/10 text-sky-400 animate-pulse" :
-                            osrmStatus.status === 'processing' ? "border-amber-500/50 bg-amber-500/10 text-amber-400 animate-pulse" :
-                            osrmStatus.status === 'running' ? "border-emerald-500/50 bg-emerald-500/10 text-emerald-400" :
-                            "border-rose-500/50 bg-rose-500/10 text-rose-400"
-                        )}>
-                            <Activity className="w-4 h-4" />
-                            <span className="text-sm font-semibold uppercase tracking-wider">
-                                {osrmStatus.status}
-                                {(osrmStatus.status === 'downloading' || osrmStatus.status === 'processing') && osrmStatus.progress !== undefined && (
-                                    <>: {osrmStatus.progress}%</>
-                                )}
-                            </span>
+                {/* Global Actions and Status */}
+                <div className="flex items-center gap-4">
+                    <button
+                        onClick={handleCleanup}
+                        disabled={loading}
+                        className="px-4 py-2 rounded-xl bg-slate-900/50 border border-white/5 text-slate-400 hover:text-indigo-400 hover:border-indigo-500/30 transition-all flex items-center gap-2 text-xs font-bold uppercase tracking-widest disabled:opacity-50"
+                        title="Mantenimiento: Limpiar contenedores huérfanos"
+                    >
+                        <ShieldCheck className="w-4 h-4" />
+                        <span>Mantenimiento</span>
+                    </button>
+
+                    {osrmStatus && osrmStatus.status !== 'idle' && (
+                        <div className="space-y-2">
+                            <div className={clsx(
+                                "px-4 py-2 rounded-full border flex items-center gap-3 shadow-lg",
+                                osrmStatus.status === 'downloading' ? "border-sky-500/50 bg-sky-500/10 text-sky-400 animate-pulse" :
+                                osrmStatus.status === 'processing' ? "border-amber-500/50 bg-amber-500/10 text-amber-400 animate-pulse" :
+                                osrmStatus.status === 'running' ? "border-emerald-500/50 bg-emerald-500/10 text-emerald-400" :
+                                "border-rose-500/50 bg-rose-500/10 text-rose-400"
+                            )}>
+                                <Activity className="w-4 h-4" />
+                                <span className="text-sm font-semibold uppercase tracking-wider">
+                                    {osrmStatus.status}
+                                    {(osrmStatus.status === 'downloading' || osrmStatus.status === 'processing') && osrmStatus.progress !== undefined && (
+                                        <>: {osrmStatus.progress}%</>
+                                    )}
+                                </span>
+                            </div>
+                            {osrmStatus.message && (
+                                <p className="text-[11px] text-slate-400 max-w-sm text-right">
+                                    {osrmStatus.message}
+                                </p>
+                            )}
                         </div>
-                        {osrmStatus.message && (
-                            <p className="text-[11px] text-slate-400 max-w-sm text-right">
-                                {osrmStatus.message}
-                            </p>
-                        )}
-                    </div>
-                )}
+                    )}
+                </div>
             </div>
 
             {/* Search and Custom Section */}

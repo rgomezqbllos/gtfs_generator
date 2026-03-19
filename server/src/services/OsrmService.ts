@@ -655,6 +655,55 @@ class OsrmService {
         currentStatus = { status: 'idle', message: 'Process cancelled' };
         return { message: 'Process successfully cancelled' };
     }
+
+    async cleanupOrphanContainers() {
+        const maps = MapRepository.getAll();
+        const readyMapIds = maps.filter(m => m.status === 'ready').map(m => m.id.substring(0, 8));
+        
+        try {
+            // Get all containers related to OSRM (running or stopped)
+            const { stdout } = await execAsync(`docker ps -a --filter "name=${CONTAINER_PREFIX}" --filter "name=osrm-setup" --format "{{.ID}}|{{.Names}}"`);
+            const lines = stdout.trim().split('\n').filter(Boolean);
+            
+            const toKill: string[] = [];
+            for (const line of lines) {
+                const [id, name] = line.split('|');
+                
+                // If it's a setup container, we should only keep it if activeSetupRegion matches
+                if (name.startsWith('osrm-setup-')) {
+                    const regionInName = name.replace('osrm-setup-', '').split('-')[0];
+                    if (activeSetupRegion?.substring(0, 8) !== regionInName) {
+                        toKill.push(id);
+                    }
+                    continue;
+                }
+
+                // If it's an OSRM instance container
+                if (name.startsWith(`${CONTAINER_PREFIX}-`)) {
+                    const regionInName = name.replace(`${CONTAINER_PREFIX}-`, '').split('-')[0];
+                    if (!readyMapIds.includes(regionInName)) {
+                        toKill.push(id);
+                    }
+                }
+            }
+
+            if (toKill.length > 0) {
+                console.log(`Cleaning up ${toKill.length} orphan OSRM containers:`, toKill);
+                await execAsync(`docker rm -f ${toKill.join(' ')}`);
+            }
+
+            return { 
+                success: true, 
+                cleanedCount: toKill.length,
+                message: toKill.length > 0 
+                    ? `Se han limpiado ${toKill.length} contenedores huérfanos.` 
+                    : 'No se encontraron contenedores huérfanos que limpiar.'
+            };
+        } catch (error: any) {
+            console.error('Cleanup Failed:', error);
+            throw new Error(`Error en la limpieza: ${error.message}`);
+        }
+    }
 }
 
 const osrmService = new OsrmService();
