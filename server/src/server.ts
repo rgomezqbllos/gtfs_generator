@@ -1,6 +1,7 @@
 import 'dotenv/config';
 import Fastify from 'fastify';
 import cors from '@fastify/cors';
+import rateLimit from '@fastify/rate-limit';
 import { initDB } from './db';
 import stopsRoutes from './routes/stops';
 import segmentsRoutes from './routes/segments';
@@ -22,11 +23,21 @@ const server = Fastify({
     logger: true
 });
 
+const allowedOrigins = process.env.ALLOWED_ORIGINS
+    ? process.env.ALLOWED_ORIGINS.split(',').map(o => o.trim())
+    : true; // Allow all only when ALLOWED_ORIGINS is not set (dev fallback)
+
 server.register(cors, {
-    origin: '*', // Allow all origins for dev
+    origin: allowedOrigins,
     methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
     allowedHeaders: ['Content-Type', 'Authorization', 'X-Project-Id'],
     exposedHeaders: ['Content-Disposition']
+});
+
+server.register(rateLimit, {
+    max: 200,
+    timeWindow: '1 minute',
+    allowList: ['127.0.0.1', '::1']
 });
 
 // Register Multipart for file uploads (1GB limit for maps)
