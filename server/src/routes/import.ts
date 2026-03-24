@@ -36,6 +36,10 @@ export default async function importRoutes(fastify: FastifyInstance) {
         try {
             for await (const part of parts) {
                 if (part.type === 'file') {
+                    const allowedMimeTypes = ['application/zip', 'application/x-zip-compressed', 'application/octet-stream'];
+                    if (!allowedMimeTypes.includes(part.mimetype)) {
+                        return reply.code(400).send({ error: `Invalid file type "${part.mimetype}". Expected a ZIP file.` });
+                    }
                     await pump(part.file, fs.createWriteStream(filePath));
                 }
             }

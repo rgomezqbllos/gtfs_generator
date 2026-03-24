@@ -30,9 +30,14 @@ COPY --from=builder /app/server/package-lock.json ./server/package-lock.json
 # Copy frontend build output where the server expects it: ../../client/dist
 COPY --from=builder /app/client/dist ./client/dist
 
-# Install production dependencies for server (requires build tools for native addons like better-sqlite3)
+# Install build tools required for native addons (better-sqlite3 rebuilds from source on npm ci)
 WORKDIR /app/server
-RUN apk add --no-cache python3 make g++ sqlite-dev docker-cli
+RUN apk add --no-cache python3 make g++ sqlite-dev
+
+# docker-cli is required: OsrmService manages OSRM containers via Docker socket at runtime.
+# Mitigation: restrict /var/run/docker.sock to trusted network. Future: replace with Docker SDK over TCP+mTLS.
+RUN apk add --no-cache docker-cli
+
 RUN npm ci --omit=dev
 
 # Expose port

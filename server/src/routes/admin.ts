@@ -13,16 +13,31 @@ import { resolveProjectRouting } from '../services/ProjectRoutingService';
 let kcAdminClient: KcAdminClient | null = null;
 async function getKcAdminClient() {
     if (!kcAdminClient) {
+        const keycloakUrl = process.env.KEYCLOAK_URL;
+        const keycloakAdmin = process.env.KEYCLOAK_ADMIN;
+        const keycloakAdminPassword = process.env.KEYCLOAK_ADMIN_PASSWORD;
+
+        if (!keycloakUrl || !keycloakAdmin || !keycloakAdminPassword) {
+            throw new Error(
+                'Missing required Keycloak env vars: KEYCLOAK_URL, KEYCLOAK_ADMIN, KEYCLOAK_ADMIN_PASSWORD'
+            );
+        }
+
         kcAdminClient = new KcAdminClient({
-            baseUrl: process.env.KEYCLOAK_URL || 'http://localhost:8080',
+            baseUrl: keycloakUrl,
             realmName: 'master'
         });
-        await kcAdminClient.auth({
-            username: process.env.KEYCLOAK_ADMIN || 'superadmin',
-            password: process.env.KEYCLOAK_ADMIN_PASSWORD || 'superadmin',
-            grantType: 'password',
-            clientId: 'admin-cli'
-        });
+        try {
+            await kcAdminClient.auth({
+                username: keycloakAdmin,
+                password: keycloakAdminPassword,
+                grantType: 'password',
+                clientId: 'admin-cli'
+            });
+        } catch (err) {
+            kcAdminClient = null; // Reset so next call retries auth
+            throw err;
+        }
         kcAdminClient.setConfig({ realmName: 'gtfs' });
     }
     return kcAdminClient;
@@ -539,8 +554,8 @@ export default async function adminRoutes(fastify: FastifyInstance) {
         
         try {
             const kc = await getKcAdminClient();
-            const kcUsers = await kc.users.find();
-            
+            const kcUsers = await kc.users.find({ max: 500, first: 0 });
+
             console.log(`Syncing ${kcUsers.length} users from Keycloak to local DB...`);
             
             const stmt = db.prepare(`

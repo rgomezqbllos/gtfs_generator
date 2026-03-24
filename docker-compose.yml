@@ -5,6 +5,8 @@ services:
       - "3001:3001"
     volumes:
       - ./gtfs_data:/data
+      # [CRÍTICO] Docker socket required for dynamic OSRM container management (OsrmService.ts).
+      # Mitigation: restrict access to trusted network only. Long-term: replace with Docker SDK over TCP + mTLS.
       - /var/run/docker.sock:/var/run/docker.sock
     restart: unless-stopped
     environment:
@@ -12,10 +14,11 @@ services:
       - PORT=3001
       - DB_PATH=/data/gtfs.db
       - KEYCLOAK_URL=http://keycloak:8080
-      - KEYCLOAK_ADMIN=superadmin
-      - KEYCLOAK_ADMIN_PASSWORD=superadmin
+      - KEYCLOAK_ADMIN=${KEYCLOAK_ADMIN}
+      - KEYCLOAK_ADMIN_PASSWORD=${KEYCLOAK_ADMIN_PASSWORD}
       - OSRM_BASE_URL=http://host.docker.internal
       - OSRM_DOCKER_NETWORK=gtfs_generator_default
+      - ALLOWED_ORIGINS=${ALLOWED_ORIGINS:-http://localhost:5173}
 
   keycloak:
     image: quay.io/keycloak/keycloak:26.1.1
@@ -23,10 +26,10 @@ services:
     environment:
       KC_DB: postgres
       KC_DB_URL: jdbc:postgresql://postgres:5432/keycloak
-      KC_DB_USERNAME: keycloak
-      KC_DB_PASSWORD: password
-      KEYCLOAK_ADMIN: superadmin
-      KEYCLOAK_ADMIN_PASSWORD: superadmin
+      KC_DB_USERNAME: ${POSTGRES_USER:-keycloak}
+      KC_DB_PASSWORD: ${KC_DB_PASSWORD}
+      KEYCLOAK_ADMIN: ${KEYCLOAK_ADMIN}
+      KEYCLOAK_ADMIN_PASSWORD: ${KEYCLOAK_ADMIN_PASSWORD}
       KC_HEALTH_ENABLED: 'true'
       KC_METRICS_ENABLED: 'true'
       KC_HTTP_PORT: 8080
@@ -50,8 +53,8 @@ services:
     image: postgres:15
     environment:
       POSTGRES_DB: keycloak
-      POSTGRES_USER: keycloak
-      POSTGRES_PASSWORD: password
+      POSTGRES_USER: ${POSTGRES_USER:-keycloak}
+      POSTGRES_PASSWORD: ${KC_DB_PASSWORD}
     volumes:
       - postgres_data:/var/lib/postgresql/data
     restart: unless-stopped

@@ -10,6 +10,28 @@ import { db } from '../db';
 
 const execAsync = promisify(exec);
 
+// Security helpers — prevent shell injection via untrusted input
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+const SAFE_NAME_RE = /^[a-zA-Z0-9\-_.]+$/;
+
+function assertValidUUID(id: string): void {
+    if (!UUID_RE.test(id)) throw new Error(`Invalid map ID format: "${id}"`);
+}
+
+function sanitizeFileName(name: string): string {
+    const sanitized = name.replace(/[^a-zA-Z0-9\-_.]/g, '');
+    if (sanitized.length === 0) throw new Error(`Unsafe filename after sanitization: "${name}"`);
+    return sanitized;
+}
+
+function parseContainerIds(dockerOutput: string): string[] {
+    // Docker container IDs and names are alphanumeric + dash. Filter strictly.
+    return dockerOutput
+        .split('\n')
+        .map(l => l.trim())
+        .filter(l => l.length > 0 && /^[a-zA-Z0-9][a-zA-Z0-9_\-]*$/.test(l));
+}
+
 // Configuration
 const IN_DOCKER = !!process.env.HOST_PROJECT_PATH;
 const HOST_PROJECT_PATH = process.env.HOST_PROJECT_PATH || path.resolve(__dirname, '../../../');
@@ -290,18 +312,20 @@ class OsrmService {
     }
 
     async deleteMap(mapId: string) {
+        assertValidUUID(mapId);
         const map = MapRepository.getById(mapId);
         if (!map) throw new Error('Map not found');
 
-        const osrmName = path.basename(map.pbf_url).replace('.osm.pbf', '');
+        const osrmName = sanitizeFileName(path.basename(map.pbf_url).replace('.osm.pbf', ''));
 
         // Stop existing containers for this map
         currentStatus = { status: 'processing', message: `Stopping OSRM containers for ${map.name}...`, activeMapId: mapId, progress: 100 };
         try {
             const containerPattern = `${CONTAINER_PREFIX}-${mapId.substring(0, 8)}`;
             const { stdout: containerIds } = await execAsync(`docker ps -aq --filter "name=${containerPattern}"`);
-            if (containerIds.trim()) {
-                await execAsync(`docker rm -f ${containerIds.trim().split('\n').join(' ')}`);
+            const safeIds = parseContainerIds(containerIds);
+            if (safeIds.length > 0) {
+                await execAsync(`docker rm -f ${safeIds.join(' ')}`);
             }
         } catch (e) { /* ignore */ }
 
@@ -336,6 +360,7 @@ class OsrmService {
     }
 
     async downloadMap(mapId: string, force: boolean = false) {
+        assertValidUUID(mapId);
         if (currentStatus.status === 'downloading' || currentStatus.status === 'processing') {
             throw new Error('A process is already running');
         }
@@ -343,7 +368,7 @@ class OsrmService {
         const map = MapRepository.getById(mapId);
         if (!map) throw new Error('Map not found');
 
-        const filename = path.basename(new URL(map.pbf_url).pathname) || `${mapId.substring(0, 8)}.osm.pbf`;
+        const filename = sanitizeFileName(path.basename(new URL(map.pbf_url).pathname) || `${mapId.substring(0, 8)}.osm.pbf`);
         const pbfPath = path.join(DATA_DIR, filename);
 
         MapRepository.updateStatus(mapId, 'downloading');
@@ -353,6 +378,7 @@ class OsrmService {
     }
 
     async activateMap(mapId: string) {
+        assertValidUUID(mapId);
         if (currentStatus.status === 'downloading' || currentStatus.status === 'processing') {
             throw new Error('A process is already running');
         }
@@ -360,7 +386,7 @@ class OsrmService {
         const map = MapRepository.getById(mapId);
         if (!map) throw new Error('Map not found');
 
-        const filename = path.basename(new URL(map.pbf_url).pathname);
+        const filename = sanitizeFileName(path.basename(new URL(map.pbf_url).pathname));
         const pbfPath = path.join(DATA_DIR, filename);
 
         if (!fs.existsSync(pbfPath)) {
@@ -429,15 +455,16 @@ class OsrmService {
 
     private async runActivationProcess(mapId: string, filename: string, pbfPath: string, basePort: number) {
         try {
-            const osrmName = filename.replace('.osm.pbf', '');
+            const osrmName = sanitizeFileName(filename.replace('.osm.pbf', ''));
             const regionSafeName = mapId.substring(0, 8);
-            
+
             currentStatus = { status: 'processing', message: `Iniciando activación de ${filename}...`, activeMapId: mapId, progress: 5 };
             try {
                 const containerPattern = `${CONTAINER_PREFIX}-${regionSafeName}`;
                 const { stdout: containerIds } = await execAsync(`docker ps -aq --filter "name=${containerPattern}"`);
-                if (containerIds.trim()) {
-                    await execAsync(`docker rm -f ${containerIds.trim().split('\n').join(' ')}`);
+                const safeIds = parseContainerIds(containerIds);
+                if (safeIds.length > 0) {
+                    await execAsync(`docker rm -f ${safeIds.join(' ')}`);
                 }
             } catch (e) { /* ignore */ }
 
@@ -544,11 +571,12 @@ class OsrmService {
             const proto = url.startsWith('https') ? https : http;
 
             const req = proto.get(url, { 
-                headers: { 
+                headers: {
                     'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
                     'Accept': '*/*'
-                }, 
-                rejectUnauthorized: false,
+                },
+                // Allow self-signed certs only when explicitly enabled (e.g., internal mirrors)
+                rejectUnauthorized: process.env.ALLOW_INSECURE_DOWNLOADS !== 'true',
                 timeout: 300000 // 5 minutes timeout for large files
             }, (res) => {
                 if (res.statusCode === 301 || res.statusCode === 302) {
@@ -643,8 +671,9 @@ class OsrmService {
             // Try to kill any container starting with osrm-setup
             try {
                 const { stdout } = await execAsync(`docker ps -aq --filter "name=osrm-setup"`);
-                if (stdout.trim()) {
-                    await execAsync(`docker rm -f ${stdout.trim().split('\n').join(' ')}`);
+                const safeIds = parseContainerIds(stdout);
+                if (safeIds.length > 0) {
+                    await execAsync(`docker rm -f ${safeIds.join(' ')}`);
                 }
             } catch (e) {}
             
@@ -688,8 +717,9 @@ class OsrmService {
             }
 
             if (toKill.length > 0) {
-                console.log(`Cleaning up ${toKill.length} orphan OSRM containers:`, toKill);
-                await execAsync(`docker rm -f ${toKill.join(' ')}`);
+                const safeToKill = toKill.filter(id => /^[a-zA-Z0-9][a-zA-Z0-9_\-]*$/.test(id));
+                console.log(`Cleaning up ${safeToKill.length} orphan OSRM containers:`, safeToKill);
+                if (safeToKill.length > 0) await execAsync(`docker rm -f ${safeToKill.join(' ')}`);
             }
 
             return { 

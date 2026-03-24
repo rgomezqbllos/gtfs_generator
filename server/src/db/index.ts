@@ -10,7 +10,8 @@ type DBInstance = Database.Database;
 // Ensure parent folder exists when DB_PATH points outside the repo tree (e.g. Docker volume).
 fs.mkdirSync(path.dirname(dbPath), { recursive: true });
 
-let dbConnection: DBInstance = new Database(dbPath, { verbose: console.log });
+const dbVerbose = process.env.NODE_ENV !== 'production' ? console.log : undefined;
+let dbConnection: DBInstance = new Database(dbPath, { verbose: dbVerbose });
 dbConnection.pragma('journal_mode = WAL');
 
 // Stable proxy so imports keep working even if reconnectDB replaces the underlying connection.
@@ -123,7 +124,7 @@ export function reconnectDB() {
     if (dbConnection.open) {
         dbConnection.close();
     }
-    dbConnection = new Database(dbPath, { verbose: console.log });
+    dbConnection = new Database(dbPath, { verbose: dbVerbose });
     dbConnection.pragma('journal_mode = WAL');
 }
 
