@@ -21,6 +21,7 @@ export interface Segment {
     slots?: any[]; // For time-dependent travel, added 'any' to avoid circular/missing references if moved
     allowed_transport_modes?: string; // e.g. 'bus,walk'
     routing_profile?: RoutingProfile;
+    waypoints?: { lat: number; lng: number }[]; // Virtual nodes for custom path shaping
 }
 
 export interface Route {

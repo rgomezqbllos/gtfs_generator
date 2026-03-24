@@ -14,6 +14,7 @@ import RouteCatalog from './RouteCatalog';
 import SettingsPanel from './SettingsPanel';
 import FilterPanel, { type FilterState } from './FilterPanel';
 import StopCreationModal from './StopCreationModal';
+import MapContextMenu from './UI/MapContextMenu';
 import { useSettings } from '../context/SettingsContext';
 import CalendarManager from './CalendarManager';
 import TripsManager from './TripsManager';
@@ -361,6 +362,57 @@ const MapEditor: React.FC = () => {
     // Stop Creation State
     const [isCreatingStop, setIsCreatingStop] = React.useState(false);
     const [newStopCoords, setNewStopCoords] = React.useState<{ lat: number; lon: number } | null>(null);
+    const [pendingNodeType, setPendingNodeType] = React.useState<Stop['node_type']>('regular');
+
+    // Context Menu State
+    const [contextMenu, setContextMenu] = React.useState<{ x: number; y: number; lat: number; lon: number } | null>(null);
+
+    // Waypoint editing state (virtual nodes for selected segment)
+    const [activeWaypoints, setActiveWaypoints] = React.useState<{ lat: number; lng: number }[]>([]);
+    const [isRerouting, setIsRerouting] = React.useState(false);
+
+    // Sync waypoints with selected segment
+    React.useEffect(() => {
+        if (viewingSegment) {
+            const raw = viewingSegment.waypoints;
+            let wps: { lat: number; lng: number }[] = [];
+            if (raw) {
+                if (typeof raw === 'string') {
+                    try { wps = JSON.parse(raw); } catch {}
+                } else if (Array.isArray(raw)) {
+                    wps = raw;
+                }
+            }
+            setActiveWaypoints(wps);
+        } else {
+            setActiveWaypoints([]);
+        }
+    }, [viewingSegment?.segment_id]);
+
+    const rerouteSegment = React.useCallback(async (segmentId: string, waypoints: { lat: number; lng: number }[]) => {
+        setIsRerouting(true);
+        try {
+            const res = await fetch(`${API_URL}/segments/${segmentId}/reroute`, {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ waypoints })
+            });
+            if (res.ok) {
+                const data = await res.json();
+                setSegments(prev => prev.map(s => s.segment_id === segmentId ? {
+                    ...s,
+                    geometry: data.geometry,
+                    distance: data.distance,
+                    travel_time: data.travel_time,
+                    waypoints: data.waypoints
+                } : s));
+            }
+        } catch (e) {
+            console.error('Reroute failed:', e);
+        } finally {
+            setIsRerouting(false);
+        }
+    }, []);
 
     const handleStopDragEnd = async (e: { lngLat: { lng: number; lat: number } }, stop: Stop) => {
         const { lng, lat } = e.lngLat;
@@ -382,17 +434,18 @@ const MapEditor: React.FC = () => {
         }
     };
 
-    const handleCreateStopSave = async (data: { stop_name: string; stop_code: string }) => {
+    const handleCreateStopSave = async (data: { stop_name: string; stop_code: string; node_type: Stop['node_type'] }) => {
         if (!newStopCoords) return;
         try {
             const res = await fetch(`${API_URL}/stops`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
-                    ...data,
+                    stop_name: data.stop_name,
+                    stop_code: data.stop_code,
                     stop_lat: newStopCoords.lat,
                     stop_lon: newStopCoords.lon,
-                    node_type: 'regular' // Default
+                    node_type: data.node_type || 'regular'
                 })
             });
 
@@ -413,16 +466,72 @@ const MapEditor: React.FC = () => {
     };
 
 
+    // GeoJSON for the selected segment (interactive hit area for waypoint creation)
+    const selectedSegmentGeoJSON = React.useMemo(() => {
+        if (!viewingSegment) return null;
+        let coordinates: number[][] = [];
+        if (viewingSegment.geometry) {
+            try {
+                const parsed = JSON.parse(viewingSegment.geometry);
+                if (parsed.type === 'LineString' && Array.isArray(parsed.coordinates)) {
+                    coordinates = parsed.coordinates;
+                }
+            } catch {}
+        }
+        if (coordinates.length === 0) {
+            const seg = viewingSegment as any;
+            if (seg.start_lon != null && seg.start_lat != null && seg.end_lon != null && seg.end_lat != null) {
+                coordinates = [[seg.start_lon, seg.start_lat], [seg.end_lon, seg.end_lat]];
+            }
+        }
+        if (coordinates.length < 2) return null;
+        return {
+            type: 'Feature' as const,
+            geometry: { type: 'LineString' as const, coordinates },
+            properties: { segment_id: viewingSegment.segment_id }
+        };
+    }, [viewingSegment?.segment_id, viewingSegment?.geometry]);
+
+    const insertWaypointAtClick = React.useCallback((clickLat: number, clickLng: number) => {
+        if (!viewingSegment || !selectedSegmentGeoJSON) return;
+        const geomCoords = selectedSegmentGeoJSON.geometry.coordinates;
+
+        let closestGeomIdx = 0;
+        let minDist = Infinity;
+        geomCoords.forEach(([lon, lat], i) => {
+            const d = (lon - clickLng) ** 2 + (lat - clickLat) ** 2;
+            if (d < minDist) { minDist = d; closestGeomIdx = i; }
+        });
+
+        const waypointGeomIndices = activeWaypoints.map(wp => {
+            let min = Infinity;
+            let idx = 0;
+            geomCoords.forEach(([lon, lat], i) => {
+                const d = (lon - wp.lng) ** 2 + (lat - wp.lat) ** 2;
+                if (d < min) { min = d; idx = i; }
+            });
+            return idx;
+        });
+
+        const insertIdx = waypointGeomIndices.filter(idx => idx <= closestGeomIdx).length;
+        const newWaypoints = [...activeWaypoints];
+        newWaypoints.splice(insertIdx, 0, { lat: clickLat, lng: clickLng });
+        setActiveWaypoints(newWaypoints);
+        rerouteSegment(viewingSegment.segment_id, newWaypoints);
+    }, [viewingSegment, selectedSegmentGeoJSON, activeWaypoints, rerouteSegment]);
+
     // Picking Mode Logic
     const handleMapClick = React.useCallback(async (event: MapLayerMouseEvent) => {
         // const { pickingState } = useEditor(); // Get fresh state from hook?
         // Note: pickingState is already in scope from the component body.
         // But if we use useCallback, we must include it in deps.
 
+        const SEGMENT_LAYER_IDS = ['segments-layer-revenue', 'segments-layer-empty', 'segments-layer-hit'];
+
         // If picking mode is active
         if (pickingState.isActive && pickingState.type === 'segment') {
             const features = event.features || [];
-            const segmentFeature = features.find(f => f.layer.id === 'segments-layer');
+            const segmentFeature = features.find(f => SEGMENT_LAYER_IDS.includes(f.layer.id));
             if (segmentFeature && segmentFeature.properties) {
                 const seg = segmentFeature.properties as any;
                 if (seg.segment_id && pickingState.onPick) {
@@ -446,7 +555,7 @@ const MapEditor: React.FC = () => {
 
         // If we are in path edit mode (activeRoute is set)
         if (activeRoute) {
-            const segmentFeature = features.find(f => f.layer.id === 'segments-layer');
+            const segmentFeature = features.find(f => SEGMENT_LAYER_IDS.includes(f.layer.id));
             if (segmentFeature && segmentFeature.properties) {
                 const seg = segmentFeature.properties as any;
                 if (!seg.start_node_id || !seg.end_node_id) return;
@@ -471,11 +580,19 @@ const MapEditor: React.FC = () => {
 
         // Check for segment clicks
         if (mode === 'idle') {
-            const segmentFeature = features.find(f => f.layer.id === 'segments-layer');
+            // If a segment is selected and user clicks on it → insert waypoint
+            if (viewingSegment) {
+                const selectedHit = features.find(f => f.layer.id === 'selected-segment-hit');
+                if (selectedHit) {
+                    insertWaypointAtClick(event.lngLat.lat, event.lngLat.lng);
+                    return;
+                }
+            }
+
+            const segmentFeature = features.find(f => SEGMENT_LAYER_IDS.includes(f.layer.id));
 
             if (segmentFeature && segmentFeature.properties) {
                 const seg = segmentFeature.properties as any;
-                // Ensure we have the ID to identify it
                 if (seg.segment_id) {
                     selectElement('segment', seg.segment_id);
                     return;
@@ -488,11 +605,11 @@ const MapEditor: React.FC = () => {
 
         if (mode === 'add_stop') {
             const { lngLat } = event;
+            setPendingNodeType('regular');
             setNewStopCoords({ lat: lngLat.lat, lon: lngLat.lng });
             setIsCreatingStop(true);
-            // Do NOT immediately create. Open Modal.
         }
-    }, [mode, pickingState, activeRoute, pathStops, selectElement, clearSelection, segmentStartNode]);
+    }, [mode, pickingState, activeRoute, pathStops, selectElement, clearSelection, segmentStartNode, viewingSegment, insertWaypointAtClick]);
 
 
 
@@ -688,6 +805,15 @@ const MapEditor: React.FC = () => {
         } as const;
     }, [displaySegments]);
 
+    const stopsGeoJSON = React.useMemo(() => ({
+        type: 'FeatureCollection' as const,
+        features: displayStops.map(stop => ({
+            type: 'Feature' as const,
+            geometry: { type: 'Point' as const, coordinates: [Number(stop.stop_lon), Number(stop.stop_lat)] },
+            properties: { ...stop }
+        }))
+    }), [displayStops]);
+
     const segmentColorExpression = React.useMemo(() => {
         const expr: any[] = ['case'];
         if (viewingSegment?.segment_id) {
@@ -801,14 +927,41 @@ const MapEditor: React.FC = () => {
         }));
     };
 
+    const handleMapContextMenu = React.useCallback((e: any) => {
+        e.preventDefault();
+        // If in segment mode, cancel it
+        if (mode === 'add_segment' || mode === 'add_empty_segment') {
+            setMode('idle');
+            setSegmentStartNode(null);
+            setCursorLoc(null);
+            return;
+        }
+        const { lngLat, point } = e;
+        if (!lngLat) return;
+        setContextMenu({
+            x: point.x,
+            y: point.y,
+            lat: lngLat.lat,
+            lon: lngLat.lng
+        });
+    }, [mode]);
+
+    const handleContextMenuCreateNode = React.useCallback((type: Stop['node_type']) => {
+        if (!contextMenu) return;
+        setPendingNodeType(type);
+        setNewStopCoords({ lat: contextMenu.lat, lon: contextMenu.lon });
+        setIsCreatingStop(true);
+        setContextMenu(null);
+    }, [contextMenu]);
+
+    const handleContextMenuStartSegment = React.useCallback(() => {
+        setMode('add_segment');
+        setContextMenu(null);
+    }, []);
+
     return (
         <div className="w-full h-full relative font-sans"
-            onContextMenu={(e) => {
-                e.preventDefault();
-                setMode('idle');
-                setSegmentStartNode(null);
-                setCursorLoc(null);
-            }}
+            onContextMenu={(e) => e.preventDefault()}
         >
             <ConnectionModal
                 isOpen={isConnectionModalOpen}
@@ -842,7 +995,11 @@ const MapEditor: React.FC = () => {
                     sources: {
                         'osm': {
                             type: 'raster',
-                            tiles: ['https://a.tile.openstreetmap.org/{z}/{x}/{y}.png'],
+                            tiles: [
+                            'https://a.tile.openstreetmap.org/{z}/{x}/{y}.png',
+                            'https://b.tile.openstreetmap.org/{z}/{x}/{y}.png',
+                            'https://c.tile.openstreetmap.org/{z}/{x}/{y}.png'
+                        ],
                             tileSize: 256,
                             attribution: '&copy; OpenStreetMap Contributors',
                             maxzoom: 19
@@ -861,8 +1018,9 @@ const MapEditor: React.FC = () => {
                 onMouseEnter={() => setIsHovering(true)}
                 onMouseLeave={() => setIsHovering(false)}
                 onClick={handleMapClick}
-                interactiveLayerIds={['segments-layer', 'stops-layer-circle']}
-                cursor={mode === 'add_stop' ? 'crosshair' : (pickingState.isActive || isHovering) ? 'pointer' : 'grab'}
+                onContextMenu={handleMapContextMenu}
+                interactiveLayerIds={['segments-layer-revenue', 'segments-layer-empty', 'segments-layer-hit', 'selected-segment-hit', 'stops-layer-circle']}
+                cursor={mode === 'add_stop' ? 'crosshair' : (mode === 'add_segment' || mode === 'add_empty_segment') ? 'crosshair' : (pickingState.isActive || isHovering) ? 'pointer' : 'grab'}
             >
                 {/* Default NavigationControl Removed */}
 
@@ -923,6 +1081,24 @@ const MapEditor: React.FC = () => {
                     />
                 </Source>
 
+                {/* Selected Segment Highlight + Interactive Hit Area for Waypoint Creation */}
+                {selectedSegmentGeoJSON && (
+                    <Source id="selected-segment-source" type="geojson" data={selectedSegmentGeoJSON as any}>
+                        <Layer
+                            id="selected-segment-highlight"
+                            type="line"
+                            layout={{ 'line-join': 'round', 'line-cap': 'round' }}
+                            paint={{ 'line-color': '#f59e0b', 'line-width': 8, 'line-opacity': 0.35 }}
+                        />
+                        <Layer
+                            id="selected-segment-hit"
+                            type="line"
+                            layout={{ 'line-join': 'round', 'line-cap': 'round' }}
+                            paint={{ 'line-color': 'transparent', 'line-width': 24, 'line-opacity': 0 }}
+                        />
+                    </Source>
+                )}
+
                 {/* Rubber Band Line for Segment Creation */}
                 {rubberBandGeoJSON && (
                     <Source id="rubber-band-source" type="geojson" data={rubberBandGeoJSON as any}>
@@ -942,14 +1118,7 @@ const MapEditor: React.FC = () => {
 
                 {/* Stops Markers */}
                 {/* Stops Layer (WebGL) */}
-                <Source id="stops-source" type="geojson" data={{
-                    type: 'FeatureCollection',
-                    features: displayStops.map(stop => ({
-                        type: 'Feature',
-                        geometry: { type: 'Point', coordinates: [Number(stop.stop_lon), Number(stop.stop_lat)] },
-                        properties: { ...stop }
-                    }))
-                }}>
+                <Source id="stops-source" type="geojson" data={stopsGeoJSON}>
                     <Layer
                         id="stops-layer-circle"
                         type="circle"
@@ -1000,7 +1169,66 @@ const MapEditor: React.FC = () => {
                         </div>
                     </Marker>
                 )}
+
+                {/* Waypoint Markers for Selected Segment */}
+                {viewingSegment && activeWaypoints.map((wp, idx) => (
+                    <Marker
+                        key={`wp-${viewingSegment.segment_id}-${idx}`}
+                        longitude={wp.lng}
+                        latitude={wp.lat}
+                        anchor="center"
+                        draggable={true}
+                        onDragEnd={(e) => {
+                            const newWaypoints = [...activeWaypoints];
+                            newWaypoints[idx] = { lat: e.lngLat.lat, lng: e.lngLat.lng };
+                            setActiveWaypoints(newWaypoints);
+                            rerouteSegment(viewingSegment.segment_id, newWaypoints);
+                        }}
+                        style={{ zIndex: 90, ...markerStyle }}
+                    >
+                        <div
+                            title={`Nodo virtual ${idx + 1} · Clic derecho para eliminar`}
+                            className="w-4 h-4 bg-amber-400 border-2 border-white rounded-full shadow-lg cursor-grab active:cursor-grabbing hover:scale-125 transition-transform"
+                            onContextMenu={(e) => {
+                                e.preventDefault();
+                                e.stopPropagation();
+                                const newWaypoints = activeWaypoints.filter((_, i) => i !== idx);
+                                setActiveWaypoints(newWaypoints);
+                                rerouteSegment(viewingSegment.segment_id, newWaypoints);
+                            }}
+                        />
+                    </Marker>
+                ))}
             </Map>
+
+            {/* Context Menu */}
+            {contextMenu && (
+                <MapContextMenu
+                    x={contextMenu.x}
+                    y={contextMenu.y}
+                    lat={contextMenu.lat}
+                    lon={contextMenu.lon}
+                    onCreateNode={handleContextMenuCreateNode}
+                    onStartSegment={handleContextMenuStartSegment}
+                    onClose={() => setContextMenu(null)}
+                />
+            )}
+
+            {/* Stop Creation Panel */}
+            {isCreatingStop && newStopCoords && (
+                <StopCreationModal
+                    isOpen={isCreatingStop}
+                    lat={newStopCoords.lat}
+                    lon={newStopCoords.lon}
+                    initialNodeType={pendingNodeType}
+                    onClose={() => {
+                        setIsCreatingStop(false);
+                        setNewStopCoords(null);
+                        setMode('idle');
+                    }}
+                    onSave={handleCreateStopSave}
+                />
+            )}
 
             {/* Side Panels */}
             {
@@ -1022,6 +1250,10 @@ const MapEditor: React.FC = () => {
                         onClose={() => clearSelection()}
                         onDelete={handleSegmentDelete}
                         onUpdate={handleSegmentUpdate}
+                        onClearWaypoints={() => {
+                            setActiveWaypoints([]);
+                            rerouteSegment(viewingSegment.segment_id, []);
+                        }}
                     />
                 )
             }
@@ -1318,17 +1550,39 @@ const MapEditor: React.FC = () => {
                 )
             }
 
-            <StopCreationModal
-                isOpen={isCreatingStop}
-                lat={newStopCoords?.lat || 0}
-                lon={newStopCoords?.lon || 0}
-                onClose={() => {
-                    setIsCreatingStop(false);
-                    setNewStopCoords(null);
-                }}
-                onSave={handleCreateStopSave}
-            />
-        </div >
+            {/* Segment Waypoint Mode Hint */}
+            {viewingSegment && mode === 'idle' && !activeWaypoints.length && (
+                <div className="absolute bottom-6 left-1/2 -translate-x-1/2 z-50 pointer-events-none">
+                    <div className="bg-amber-500/90 text-white text-[10px] font-black uppercase tracking-widest px-4 py-2 rounded-full shadow-xl backdrop-blur-sm flex items-center gap-2">
+                        <div className="w-1.5 h-1.5 rounded-full bg-white animate-pulse" />
+                        Click sobre el trazado para añadir nodos virtuales · Arrastrar para modificar
+                    </div>
+                </div>
+            )}
+
+            {/* Rerouting Indicator */}
+            {isRerouting && (
+                <div className="absolute top-4 left-1/2 -translate-x-1/2 z-50 pointer-events-none">
+                    <div className="bg-slate-900/90 text-white text-[10px] font-black uppercase tracking-widest px-4 py-2 rounded-full shadow-xl backdrop-blur-sm flex items-center gap-2">
+                        <span className="w-3 h-3 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                        Recalculando ruta...
+                    </div>
+                </div>
+            )}
+
+            {/* Mode Cursor Tooltip */}
+            {(mode === 'add_stop' || mode === 'add_segment' || mode === 'add_empty_segment') && (
+                <div className="absolute bottom-6 left-1/2 -translate-x-1/2 z-50 pointer-events-none">
+                    <div className="bg-slate-900/90 dark:bg-white/90 text-white dark:text-slate-900 text-[10px] font-black uppercase tracking-widest px-4 py-2 rounded-full shadow-xl backdrop-blur-sm border border-white/10 dark:border-slate-900/10 flex items-center gap-2">
+                        <div className="w-1.5 h-1.5 rounded-full bg-primary animate-pulse" />
+                        {mode === 'add_stop' && 'Click en el mapa para crear parada · Clic derecho para cancelar'}
+                        {(mode === 'add_segment' || mode === 'add_empty_segment') && !segmentStartNode && 'Click en parada de origen · Clic derecho para cancelar'}
+                        {(mode === 'add_segment' || mode === 'add_empty_segment') && segmentStartNode && 'Click en parada de destino · Clic derecho para cancelar'}
+                    </div>
+                </div>
+            )}
+
+        </div>
     );
 };
 

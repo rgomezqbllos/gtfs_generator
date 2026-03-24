@@ -73,6 +73,10 @@ export function initDB() {
             db.prepare("ALTER TABLE segments ADD COLUMN routing_profile TEXT DEFAULT 'bus_mixed'").run();
             console.log('Migrated: Added routing_profile to segments');
         }
+        if (!segmentColumnNames.includes('waypoints')) {
+            db.prepare("ALTER TABLE segments ADD COLUMN waypoints TEXT DEFAULT '[]'").run();
+            console.log('Migrated: Added waypoints to segments');
+        }
 
         // Multi-Tenancy Migration: Ensure project_id exists in all GTFS tables
         const gtfsTables = [

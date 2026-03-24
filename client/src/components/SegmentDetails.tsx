@@ -1,6 +1,6 @@
 import * as React from 'react';
 import type { Segment, Stop } from '../types';
-import { Trash2, ArrowRightLeft, Clock, Ruler, Save, X, Activity, Navigation, ChevronRight } from 'lucide-react';
+import { Trash2, ArrowRightLeft, Clock, Ruler, Save, X, Activity, Navigation, ChevronRight, GitCommit } from 'lucide-react';
 import ConfirmModal from './ConfirmModal';
 import Draggable from './UI/Draggable';
 import { API_URL } from '../config';
@@ -12,9 +12,10 @@ interface SegmentDetailsProps {
     onClose: () => void;
     onDelete: (segmentId: string) => Promise<void>;
     onUpdate: (updatedSegment: Segment) => void;
+    onClearWaypoints?: () => void;
 }
 
-const SegmentDetails: React.FC<SegmentDetailsProps> = ({ segment, stops, onClose, onDelete, onUpdate }) => {
+const SegmentDetails: React.FC<SegmentDetailsProps> = ({ segment, stops, onClose, onDelete, onUpdate, onClearWaypoints }) => {
     const [distance, setDistance] = React.useState<number | ''>(segment.distance || 0);
     const [timeMinutes, setTimeMinutes] = React.useState<number | ''>(
         segment.travel_time ? Number((segment.travel_time / 60).toFixed(2)) : 0
@@ -164,6 +165,41 @@ const SegmentDetails: React.FC<SegmentDetailsProps> = ({ segment, stops, onClose
                             <ChevronRight size={16} className="text-slate-300" />
                         </div>
                     </div>
+
+                    {/* Virtual Nodes (Waypoints) */}
+                    {(() => {
+                        let wps: { lat: number; lng: number }[] = [];
+                        const raw = segment.waypoints;
+                        if (raw) {
+                            if (typeof raw === 'string') { try { wps = JSON.parse(raw); } catch {} }
+                            else if (Array.isArray(raw)) { wps = raw; }
+                        }
+                        if (wps.length === 0) return null;
+                        return (
+                            <div className="space-y-3">
+                                <div className="flex items-center gap-2 text-[10px] font-black uppercase tracking-[0.2em] text-slate-400 px-1">
+                                    Nodos Virtuales
+                                </div>
+                                <div className="bg-amber-50 dark:bg-amber-950/30 p-4 rounded-3xl border border-amber-200/50 dark:border-amber-800/30 flex items-center gap-4">
+                                    <div className="h-8 w-8 rounded-xl bg-amber-400 flex items-center justify-center text-white shrink-0">
+                                        <GitCommit size={16} strokeWidth={2.5} />
+                                    </div>
+                                    <div className="flex-1">
+                                        <p className="text-[11px] font-black text-amber-800 dark:text-amber-300 uppercase tracking-widest">{wps.length} Waypoint{wps.length !== 1 ? 's' : ''}</p>
+                                        <p className="text-[9px] text-amber-600 dark:text-amber-400 font-bold uppercase tracking-widest">Trazado personalizado activo</p>
+                                    </div>
+                                    {onClearWaypoints && (
+                                        <button
+                                            onClick={onClearWaypoints}
+                                            className="text-[9px] font-black uppercase tracking-widest text-amber-600 hover:text-red-500 transition-colors"
+                                        >
+                                            Limpiar
+                                        </button>
+                                    )}
+                                </div>
+                            </div>
+                        );
+                    })()}
 
                     {/* Operational Metrics Form */}
                     <div className="grid grid-cols-2 gap-6">

@@ -1,7 +1,7 @@
 import { FastifyInstance } from 'fastify';
 import db from '../db';
 import { randomUUID } from 'crypto';
-import { fetchRoute } from '../services/routing';
+import { fetchRoute, fetchRouteWithWaypoints } from '../services/routing';
 import { mapToOsrmProfile, normalizeRoutingProfile, RoutingProfile } from '../constants/routingProfiles';
 import { resolveProjectRouting } from '../services/ProjectRoutingService';
 
@@ -139,6 +139,71 @@ export default async function segmentsRoutes(fastify: FastifyInstance) {
         );
 
         return { segment_id, distance, travel_time, geometry, type: segmentType, ...body };
+    });
+
+    // REROUTE segment with waypoints
+    fastify.put('/segments/:id/reroute', async (request: any, reply: any) => {
+        const { id } = request.params as { id: string };
+        const { waypoints } = request.body as { waypoints: { lat: number; lng: number }[] };
+
+        const segment = db.prepare(`
+            SELECT s.*, start.stop_lat as start_lat, start.stop_lon as start_lon,
+                   end_s.stop_lat as end_lat, end_s.stop_lon as end_lon
+            FROM segments s
+            JOIN stops start ON s.start_node_id = start.stop_id
+            JOIN stops end_s ON s.end_node_id = end_s.stop_id
+            WHERE s.segment_id = ? AND s.project_id = ?
+        `).get(id, request.projectId) as any;
+
+        if (!segment) return reply.code(404).send({ error: 'Segment not found' });
+
+        const normalizedProfile = normalizeRoutingProfile(segment.routing_profile);
+        const osrmProfile = mapToOsrmProfile(normalizedProfile);
+        const routing = await resolveProjectRouting(request.projectId);
+
+        // Build ordered points: [start, ...waypoints, end] as [lon, lat]
+        const allPoints: [number, number][] = [
+            [segment.start_lon, segment.start_lat],
+            ...(waypoints || []).map((wp): [number, number] => [wp.lng, wp.lat]),
+            [segment.end_lon, segment.end_lat]
+        ];
+
+        let distance = segment.distance || 0;
+        let travel_time = segment.travel_time || 0;
+        let geometry = null;
+
+        try {
+            const routeData = await fetchRouteWithWaypoints(allPoints, routing.routingUrl || undefined, osrmProfile);
+            if (routeData) {
+                distance = routeData.distance;
+                travel_time = routeData.duration;
+                geometry = JSON.stringify(routeData.geometry);
+            }
+        } catch (e) {
+            request.log.error(e, 'Failed to fetch rerouted segment from OSRM');
+        }
+
+        if (!geometry) {
+            // Straight-line fallback through all waypoints
+            geometry = JSON.stringify({
+                type: 'LineString',
+                coordinates: allPoints
+            });
+        }
+
+        const waypointsJson = JSON.stringify(waypoints || []);
+        db.prepare(`
+            UPDATE segments SET geometry = ?, distance = ?, travel_time = ?, waypoints = ?
+            WHERE segment_id = ? AND project_id = ?
+        `).run(geometry, distance, travel_time, waypointsJson, id, request.projectId);
+
+        return {
+            segment_id: id,
+            geometry,
+            distance,
+            travel_time,
+            waypoints: waypoints || []
+        };
     });
 
     // UPDATE segment
