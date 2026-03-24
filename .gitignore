@@ -34,8 +34,12 @@ server/uploads/
 
 # Data
 gtfs_data/
-import/
 *.zip
+
+# Keycloak import: track realm JSON, exclude binaries
+import/*.pbf
+import/*.zip
+import/*.tar
 
 # Debug & test scripts (prevent accidental commits)
 debug_*.ts

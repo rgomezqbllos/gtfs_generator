@@ -44,10 +44,10 @@ services:
     networks:
       - default
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8080/health/live"]
+      test: ["CMD", "curl", "-f", "http://localhost:9000/health/live"]
       interval: 10s
       timeout: 5s
-      retries: 5
+      retries: 12
 
   postgres:
     image: postgres:15
