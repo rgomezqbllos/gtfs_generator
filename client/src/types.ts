@@ -41,6 +41,16 @@ export interface Route {
     parkings?: string[]; // Associated parking stop IDs
 }
 
+export interface SegmentPreview {
+    profile: RoutingProfile;
+    distance: number | null;   // metros
+    travel_time: number | null; // segundos
+    geometry: { type: 'LineString'; coordinates: number[][] } | null;
+    recommended: boolean;
+    available: boolean;
+    fallback?: boolean;
+}
+
 // Hack to resolve "SyntaxError: The requested module ... does not provide an export named 'Segment'"
 // This ensures that if any file accidentally treats Segment as a value import, it finds something.
 export const Segment = {};

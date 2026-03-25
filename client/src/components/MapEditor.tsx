@@ -1,8 +1,9 @@
 import * as React from 'react';
 import Map, { Marker, type MapLayerMouseEvent, Source, Layer } from 'react-map-gl/maplibre';
 import 'maplibre-gl/dist/maplibre-gl.css';
-import type { Stop, Route, RoutingProfile } from '../types';
+import type { Stop, Route, RoutingProfile, SegmentPreview } from '../types';
 import { MapPin, GitBranch, ChevronRight, Activity, CheckCircle } from 'lucide-react';
+import SegmentPreviewPanel from './SegmentPreviewPanel';
 import { clsx } from 'clsx';
 import RouteDetailsPanel from './RouteDetailsPanel';
 import StopDetails from './StopDetails';
@@ -133,6 +134,12 @@ const MapEditor: React.FC = () => {
     const [isConnectionModalOpen, setIsConnectionModalOpen] = React.useState(false);
     const [cursorLoc, setCursorLoc] = React.useState<{ lat: number; lon: number } | null>(null);
     const [isHovering, setIsHovering] = React.useState(false); // New hover state
+
+    // Segment Preview State (Waze-style route alternatives)
+    const [segmentPreviews, setSegmentPreviews] = React.useState<SegmentPreview[] | null>(null);
+    const [selectedPreviewProfile, setSelectedPreviewProfile] = React.useState<RoutingProfile | null>(null);
+    const [hoveredPreviewProfile, setHoveredPreviewProfile] = React.useState<RoutingProfile | null>(null);
+    const [isLoadingPreview, setIsLoadingPreview] = React.useState(false);
 
     // const [selectedStops, setSelectedStops] = React.useState<string[]>([]); // For future connecting nodes feature
     const [loading, setLoading] = React.useState(false);
@@ -544,6 +551,16 @@ const MapEditor: React.FC = () => {
 
         const SEGMENT_LAYER_IDS = ['segments-layer-revenue', 'segments-layer-empty', 'segments-layer-hit'];
 
+        // If preview routes are visible, intercept clicks on them to select the profile
+        if (segmentPreviews) {
+            const features = event.features || [];
+            const previewFeature = features.find(f => f.layer.id === 'preview-routes-hit');
+            if (previewFeature && previewFeature.properties?.profile) {
+                setSelectedPreviewProfile(previewFeature.properties.profile as RoutingProfile);
+                return;
+            }
+        }
+
         // If picking mode is active
         if (pickingState.isActive && pickingState.type === 'segment') {
             const features = event.features || [];
@@ -625,7 +642,7 @@ const MapEditor: React.FC = () => {
             setNewStopCoords({ lat: lngLat.lat, lon: lngLat.lng });
             setIsCreatingStop(true);
         }
-    }, [mode, pickingState, activeRoute, pathStops, selectElement, clearSelection, segmentStartNode, viewingSegment, insertWaypointAtClick]);
+    }, [mode, pickingState, activeRoute, pathStops, selectElement, clearSelection, segmentStartNode, viewingSegment, insertWaypointAtClick, segmentPreviews]);
 
 
 
@@ -633,7 +650,12 @@ const MapEditor: React.FC = () => {
         if (segmentStartNode) {
             setCursorLoc({ lat: e.lngLat.lat, lon: e.lngLat.lng });
         }
-    }, [segmentStartNode]);
+        // Track hover over preview route lines
+        if (segmentPreviews) {
+            const previewFeature = (e.features || []).find(f => f.layer.id === 'preview-routes-hit');
+            setHoveredPreviewProfile(previewFeature?.properties?.profile as RoutingProfile ?? null);
+        }
+    }, [segmentStartNode, segmentPreviews]);
 
     const rubberBandGeoJSON = React.useMemo(() => {
         if (!segmentStartNode || !cursorLoc) return null;
@@ -667,9 +689,30 @@ const MapEditor: React.FC = () => {
                 setSegmentStartNode(stop.stop_id);
                 return;
             } else {
-                // Second click: We have a start node, now set the end node and prompt for profile
-                setPendingSegmentEndNode(stop.stop_id);
-                setIsConnectionModalOpen(true);
+                // Second click: fetch route previews for all profiles
+                const endNodeId = stop.stop_id;
+                setPendingSegmentEndNode(endNodeId);
+                setIsLoadingPreview(true);
+                try {
+                    const res = await fetch(`${API_URL}/segments/preview?start_node_id=${segmentStartNode}&end_node_id=${endNodeId}`);
+                    if (res.ok) {
+                        const previews: SegmentPreview[] = await res.json();
+                        setSegmentPreviews(previews);
+                        // Pre-select the route's profile if active, otherwise the recommended one
+                        const routeProfile = activeRoute?.routing_profile as RoutingProfile | undefined;
+                        const preferred = previews.find(p => p.profile === routeProfile && p.available)
+                            || previews.find(p => p.recommended && p.available)
+                            || previews.find(p => p.available);
+                        setSelectedPreviewProfile(preferred?.profile ?? null);
+                    } else {
+                        // Fallback: open legacy modal
+                        setIsConnectionModalOpen(true);
+                    }
+                } catch {
+                    setIsConnectionModalOpen(true);
+                } finally {
+                    setIsLoadingPreview(false);
+                }
                 return;
             }
         }
@@ -704,6 +747,9 @@ const MapEditor: React.FC = () => {
                 setPendingSegmentEndNode(null);
                 setCursorLoc(null);
                 setIsConnectionModalOpen(false);
+                setSegmentPreviews(null);
+                setSelectedPreviewProfile(null);
+                setHoveredPreviewProfile(null);
             } else {
                 const errorData = await res.json().catch(() => null);
                 alert(errorData?.error || "Failed to create segment");
@@ -829,6 +875,29 @@ const MapEditor: React.FC = () => {
             properties: { ...stop }
         }))
     }), [displayStops]);
+
+    // GeoJSON for preview route alternatives
+    const previewRoutesGeoJSON = React.useMemo(() => {
+        if (!segmentPreviews) return null;
+        return {
+            type: 'FeatureCollection' as const,
+            features: segmentPreviews
+                .filter(p => p.available && p.geometry)
+                .map(p => ({
+                    type: 'Feature' as const,
+                    geometry: p.geometry!,
+                    properties: {
+                        profile:      p.profile,
+                        distance:     p.distance,
+                        travel_time:  p.travel_time,
+                        recommended:  p.recommended,
+                        selected:     p.profile === selectedPreviewProfile,
+                        hovered:      p.profile === hoveredPreviewProfile,
+                        color:        routingProfileMetadata[p.profile].color
+                    }
+                }))
+        };
+    }, [segmentPreviews, selectedPreviewProfile, hoveredPreviewProfile]);
 
     const segmentColorExpression = React.useMemo(() => {
         const expr: any[] = ['case'];
@@ -979,15 +1048,54 @@ const MapEditor: React.FC = () => {
         <div className="w-full h-full relative font-sans"
             onContextMenu={(e) => e.preventDefault()}
         >
+            {/* Legacy ConnectionModal — fallback when preview fetch fails */}
             <ConnectionModal
                 isOpen={isConnectionModalOpen}
                 onSelect={handleConnectionSelect}
                 onCancel={() => {
                     setIsConnectionModalOpen(false);
                     setPendingSegmentEndNode(null);
+                    setSegmentStartNode(null);
                 }}
                 suggestedProfile={activeRoute?.routing_profile as RoutingProfile | undefined}
             />
+
+            {/* Segment Preview Panel (Waze-style route alternatives) */}
+            {segmentPreviews && (
+                <SegmentPreviewPanel
+                    previews={segmentPreviews}
+                    selectedProfile={selectedPreviewProfile}
+                    hoveredProfile={hoveredPreviewProfile}
+                    onSelect={setSelectedPreviewProfile}
+                    onHover={setHoveredPreviewProfile}
+                    onConfirm={() => {
+                        if (selectedPreviewProfile) handleConnectionSelect(selectedPreviewProfile);
+                    }}
+                    onCancel={() => {
+                        setSegmentPreviews(null);
+                        setSelectedPreviewProfile(null);
+                        setHoveredPreviewProfile(null);
+                        setPendingSegmentEndNode(null);
+                        setSegmentStartNode(null);
+                        setCursorLoc(null);
+                    }}
+                    loading={loading}
+                />
+            )}
+
+            {/* Preview loading indicator */}
+            {isLoadingPreview && (
+                <div className="absolute bottom-6 right-6 z-[1000] pointer-events-none">
+                    <div className="bg-white dark:bg-slate-900 rounded-2xl shadow-xl border utilitarian-border px-5 py-4 flex items-center gap-3">
+                        <svg className="animate-spin h-4 w-4 text-primary" viewBox="0 0 24 24" fill="none">
+                            <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                            <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z" />
+                        </svg>
+                        <span className="text-[11px] font-black uppercase tracking-widest text-slate-600 dark:text-slate-300">Calculando trayectos…</span>
+                    </div>
+                </div>
+            )}
+
             {/* Map Controls */}
             <MapControls
                 onZoomIn={handleZoomIn}
@@ -1036,7 +1144,7 @@ const MapEditor: React.FC = () => {
                 onMouseLeave={() => setIsHovering(false)}
                 onClick={handleMapClick}
                 onContextMenu={handleMapContextMenu}
-                interactiveLayerIds={['segments-layer-revenue', 'segments-layer-empty', 'segments-layer-hit', 'selected-segment-hit', 'stops-layer-circle']}
+                interactiveLayerIds={['segments-layer-revenue', 'segments-layer-empty', 'segments-layer-hit', 'selected-segment-hit', 'stops-layer-circle', 'preview-routes-hit']}
                 cursor={mode === 'add_stop' ? 'crosshair' : (mode === 'add_segment' || mode === 'add_empty_segment') ? 'crosshair' : (pickingState.isActive || isHovering) ? 'pointer' : 'grab'}
             >
                 {/* Default NavigationControl Removed */}
@@ -1112,6 +1220,52 @@ const MapEditor: React.FC = () => {
                             type="line"
                             layout={{ 'line-join': 'round', 'line-cap': 'round' }}
                             paint={{ 'line-color': 'transparent', 'line-width': 24, 'line-opacity': 0 }}
+                        />
+                    </Source>
+                )}
+
+                {/* Preview Route Alternatives (Waze-style) */}
+                {previewRoutesGeoJSON && (
+                    <Source id="preview-routes-source" type="geojson" data={previewRoutesGeoJSON as any}>
+                        {/* Glow / selection halo */}
+                        <Layer
+                            id="preview-routes-bg"
+                            type="line"
+                            layout={{ 'line-join': 'round', 'line-cap': 'round' }}
+                            paint={{
+                                'line-color': '#ffffff',
+                                'line-width': 12,
+                                'line-opacity': ['case', ['==', ['get', 'selected'], true], 0.35, 0]
+                            }}
+                        />
+                        {/* Main colored line */}
+                        <Layer
+                            id="preview-routes-line"
+                            type="line"
+                            layout={{ 'line-join': 'round', 'line-cap': 'round' }}
+                            paint={{
+                                'line-color': ['get', 'color'],
+                                'line-width': [
+                                    'case',
+                                    ['==', ['get', 'selected'], true], 6,
+                                    ['==', ['get', 'hovered'], true], 5,
+                                    ['==', ['get', 'recommended'], true], 4,
+                                    3
+                                ],
+                                'line-opacity': [
+                                    'case',
+                                    ['==', ['get', 'selected'], true], 1.0,
+                                    ['==', ['get', 'hovered'], true], 0.85,
+                                    0.45
+                                ]
+                            }}
+                        />
+                        {/* Wide transparent hit area */}
+                        <Layer
+                            id="preview-routes-hit"
+                            type="line"
+                            layout={{ 'line-join': 'round', 'line-cap': 'round' }}
+                            paint={{ 'line-color': 'transparent', 'line-width': 18, 'line-opacity': 0 }}
                         />
                     </Source>
                 )}
