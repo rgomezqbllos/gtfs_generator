@@ -691,6 +691,7 @@ const MapEditor: React.FC = () => {
             } else {
                 // Second click: fetch route previews for all profiles
                 const endNodeId = stop.stop_id;
+                const currentActiveRoute: Route | null = activeRoute; // Capture current route state
                 setPendingSegmentEndNode(endNodeId);
                 setIsLoadingPreview(true);
                 try {
@@ -699,7 +700,7 @@ const MapEditor: React.FC = () => {
                         const previews: SegmentPreview[] = await res.json();
                         setSegmentPreviews(previews);
                         // Pre-select the route's profile if active, otherwise the recommended one
-                        const routeProfile = activeRoute?.routing_profile as RoutingProfile | undefined;
+                        const routeProfile = (currentActiveRoute as Route | null)?.routing_profile;
                         const preferred = previews.find(p => p.profile === routeProfile && p.available)
                             || previews.find(p => p.recommended && p.available)
                             || previews.find(p => p.available);
