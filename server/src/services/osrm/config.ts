@@ -27,6 +27,7 @@ export interface MapInfo {
     name: string;
     status: MapInstance['status'];
     isActive: boolean;
+    is_local?: boolean;
     base_port?: number | null;
     disk_size?: number | null;
     running_profiles?: string[];

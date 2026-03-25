@@ -1,6 +1,7 @@
 import { exec } from 'child_process';
 import https from 'https';
 import http from 'http';
+import fs from 'fs';
 import { promisify } from 'util';
 import { URL } from 'url';
 import MapRepository from '../MapRepository';
@@ -15,8 +16,55 @@ import { parseContainerIds } from './security';
 import { state } from './state';
 
 const execAsync = promisify(exec);
+const OSRM_EXEC_MAX_BUFFER = Math.max(Number(process.env.OSRM_EXEC_MAX_BUFFER_MB) || 64, 16) * 1024 * 1024;
 
 export class DockerManager {
+    private buildDockerMount(leftSide: string, destination: string): string {
+        return `${leftSide.replace(/\\/g, '/')}:${destination}`;
+    }
+
+    private getSelfContainerRef(): string | null {
+        const candidates = [
+            (process.env.HOSTNAME || '').trim(),
+            fs.existsSync('/etc/hostname') ? fs.readFileSync('/etc/hostname', 'utf8').trim() : '',
+        ].filter(Boolean);
+
+        const valid = candidates.find(ref => /^[a-zA-Z0-9][a-zA-Z0-9_.-]{0,127}$/.test(ref));
+        return valid || null;
+    }
+
+    async resolveDataVolumeMount(defaultMount: string): Promise<string> {
+        if (!IN_DOCKER) return defaultMount;
+
+        const explicit = (process.env.OSRM_DATA_MOUNT || '').trim();
+        if (explicit) {
+            return explicit.includes(':/data') ? explicit : this.buildDockerMount(explicit, '/data');
+        }
+
+        const selfContainer = this.getSelfContainerRef();
+        if (!selfContainer) return defaultMount;
+
+        try {
+            const { stdout } = await execAsync(
+                `docker inspect ${selfContainer} --format "{{range .Mounts}}{{if eq .Destination \\"/data\\"}}{{.Type}}|{{.Name}}|{{.Source}}{{end}}{{end}}"`
+            );
+            const mountInfo = stdout.trim();
+            if (!mountInfo) return defaultMount;
+
+            const [mountType, volumeName, sourcePath] = mountInfo.split('|');
+            if (mountType === 'volume' && volumeName) {
+                return this.buildDockerMount(volumeName, '/data');
+            }
+            if (sourcePath) {
+                return this.buildDockerMount(sourcePath, '/data');
+            }
+        } catch (error) {
+            console.warn('Could not resolve shared /data mount from current container. Falling back to default mount.', error);
+        }
+
+        return defaultMount;
+    }
+
     // --- URL builders ---
 
     buildContainerName(mapId: string, profile: string): string {
@@ -200,25 +248,29 @@ export class DockerManager {
     async runExtract(setupName: string, volume: string, profilesVolume: string, profilePbfName: string, profile: string): Promise<void> {
         try { await execAsync(`docker rm -f ${setupName}`); } catch { /* ignore */ }
         await execAsync(
-            `docker run --name ${setupName} --platform linux/amd64 -v "${volume}" -v "${profilesVolume}" osrm/osrm-backend osrm-extract -p /profiles/${profile}.lua /data/${profilePbfName}`
+            `docker run --rm --name ${setupName} --platform linux/amd64 -v "${volume}" -v "${profilesVolume}" osrm/osrm-backend osrm-extract -p /profiles/${profile}.lua /data/${profilePbfName}`,
+            { maxBuffer: OSRM_EXEC_MAX_BUFFER }
         );
     }
 
     async runPartition(volume: string, osrmName: string, profile: string): Promise<void> {
         await execAsync(
-            `docker run --rm --platform linux/amd64 -v "${volume}" osrm/osrm-backend osrm-partition /data/${osrmName}-${profile}`
+            `docker run --rm --platform linux/amd64 -v "${volume}" osrm/osrm-backend osrm-partition /data/${osrmName}-${profile}`,
+            { maxBuffer: OSRM_EXEC_MAX_BUFFER }
         );
     }
 
     async runCustomize(volume: string, osrmName: string, profile: string): Promise<void> {
         await execAsync(
-            `docker run --rm --platform linux/amd64 -v "${volume}" osrm/osrm-backend osrm-customize /data/${osrmName}-${profile}`
+            `docker run --rm --platform linux/amd64 -v "${volume}" osrm/osrm-backend osrm-customize /data/${osrmName}-${profile}`,
+            { maxBuffer: OSRM_EXEC_MAX_BUFFER }
         );
     }
 
     async runOsrmRouted(containerName: string, port: number, volume: string, osrmName: string, profile: string): Promise<void> {
         await execAsync(
-            `docker run --platform linux/amd64 -d --restart unless-stopped --network ${OSRM_DOCKER_NETWORK} --name ${containerName} -p ${port}:5000 -v "${volume}" osrm/osrm-backend osrm-routed --algorithm mld --mmap --threads ${OSRM_ROUTED_THREADS} /data/${osrmName}-${profile}`
+            `docker run --platform linux/amd64 -d --restart unless-stopped --network ${OSRM_DOCKER_NETWORK} --name ${containerName} -p ${port}:5000 -v "${volume}" osrm/osrm-backend osrm-routed --algorithm mld --mmap --threads ${OSRM_ROUTED_THREADS} /data/${osrmName}-${profile}`,
+            { maxBuffer: OSRM_EXEC_MAX_BUFFER }
         );
     }
 }

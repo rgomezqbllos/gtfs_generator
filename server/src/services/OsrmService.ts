@@ -24,6 +24,27 @@ class OsrmService {
         return Number.isInteger(value) && Number(value) >= 5000;
     }
 
+    private isLocalSource(pbfSource: string): boolean {
+        return pbfSource.startsWith('file://');
+    }
+
+    private buildLocalSourceUrl(filename: string): string {
+        return `file:///${sanitizeFileName(path.basename(filename))}`;
+    }
+
+    private extractFilenameFromSource(pbfSource: string, mapId: string): string {
+        try {
+            const parsed = new URL(pbfSource);
+            const candidate = path.basename(parsed.pathname);
+            if (candidate) return sanitizeFileName(candidate);
+        } catch {
+            // Fallback for legacy or malformed records
+        }
+
+        const fallback = path.basename(pbfSource) || `${mapId.substring(0, 8)}.osm.pbf`;
+        return sanitizeFileName(fallback);
+    }
+
     private getNextAvailablePort(): number {
         const maps = MapRepository.getAll();
         const usedPorts = maps
@@ -95,6 +116,7 @@ class OsrmService {
                 id: m.id,
                 name: m.name,
                 status: m.status,
+                is_local: this.isLocalSource(m.pbf_url),
                 base_port: m.base_port ?? null,
                 disk_size: m.disk_size ?? null,
                 running_profiles: runningProfiles,
@@ -126,6 +148,61 @@ class OsrmService {
         `).run(routingUrl, mapId);
     }
 
+    registerUploadedMap(name: string | undefined, uploadedFilename: string): MapInfo {
+        const filename = sanitizeFileName(path.basename(uploadedFilename));
+        if (!filename.toLowerCase().endsWith('.osm.pbf')) {
+            throw new Error('Uploaded file must end with .osm.pbf');
+        }
+
+        const pbfPath = path.join(DATA_DIR, filename);
+        if (!fs.existsSync(pbfPath)) {
+            throw new Error('Uploaded file not found on server storage');
+        }
+
+        const stats = fs.statSync(pbfPath);
+        const sourceUrl = this.buildLocalSourceUrl(filename);
+        const existing = MapRepository.getByUrl(sourceUrl);
+        if (existing) {
+            MapRepository.updateStatus(existing.id, existing.status, existing.base_port, stats.size);
+            const map = MapRepository.getById(existing.id)!;
+            return {
+                id: map.id,
+                name: map.name,
+                status: map.status,
+                isActive: false,
+                is_local: true,
+                base_port: map.base_port ?? null,
+                disk_size: map.disk_size ?? null,
+                running_profiles: [],
+                healthy_profiles: [],
+                total_profiles: PROFILES.length,
+                health_status: 'offline',
+            };
+        }
+
+        const inferredName = (name || '')
+            .trim()
+            || filename.replace(/\.osm\.pbf$/i, '').replace(/[-_]+/g, ' ').trim();
+
+        const created = MapRepository.create(inferredName || filename, sourceUrl);
+        MapRepository.updateStatus(created.id, 'pending', created.base_port, stats.size);
+        const map = MapRepository.getById(created.id)!;
+
+        return {
+            id: map.id,
+            name: map.name,
+            status: map.status,
+            isActive: false,
+            is_local: true,
+            base_port: map.base_port ?? null,
+            disk_size: map.disk_size ?? null,
+            running_profiles: [],
+            healthy_profiles: [],
+            total_profiles: PROFILES.length,
+            health_status: 'offline',
+        };
+    }
+
     // --- Map lifecycle ---
 
     async deleteMap(mapId: string): Promise<{ message: string }> {
@@ -133,14 +210,22 @@ class OsrmService {
         const map = MapRepository.getById(mapId);
         if (!map) throw new Error('Map not found');
 
-        const osrmName = sanitizeFileName(path.basename(map.pbf_url).replace('.osm.pbf', ''));
+        const regionSafeName = mapId.substring(0, 8);
+        const sourceFilename = this.extractFilenameFromSource(map.pbf_url, mapId);
+        const legacyOsrmName = sanitizeFileName(sourceFilename.replace('.osm.pbf', ''));
+        const scopedOsrmName = sanitizeFileName(`${regionSafeName}-${legacyOsrmName}`);
+        const hasOtherMapsWithSameSource = MapRepository.getAll().some(
+            m => m.id !== mapId && m.pbf_url === map.pbf_url
+        );
 
         state.currentStatus = { status: 'processing', message: `Stopping OSRM containers for ${map.name}...`, activeMapId: mapId, progress: 100 };
-        await dockerManager.stopContainersByPattern(`${CONTAINER_PREFIX}-${mapId.substring(0, 8)}`);
+        await dockerManager.stopContainersByPattern(`${CONTAINER_PREFIX}-${regionSafeName}`);
 
         if (fs.existsSync(DATA_DIR)) {
             fs.readdirSync(DATA_DIR).forEach(f => {
-                if (f.startsWith(osrmName) || f.includes(mapId.substring(0, 8))) {
+                const isScopedArtifact = f.startsWith(scopedOsrmName) || f.includes(regionSafeName);
+                const isLegacyArtifact = !hasOtherMapsWithSameSource && f.startsWith(legacyOsrmName);
+                if (isScopedArtifact || isLegacyArtifact) {
                     try { fs.unlinkSync(path.join(DATA_DIR, f)); } catch (e) {
                         console.error('Error deleting file', f, e);
                     }
@@ -169,9 +254,11 @@ class OsrmService {
         const map = MapRepository.getById(mapId);
         if (!map) throw new Error('Map not found');
 
-        const filename = sanitizeFileName(
-            path.basename(new URL(map.pbf_url).pathname) || `${mapId.substring(0, 8)}.osm.pbf`
-        );
+        if (this.isLocalSource(map.pbf_url)) {
+            throw new Error('This map was uploaded as a local file. Use Activate directly.');
+        }
+
+        const filename = this.extractFilenameFromSource(map.pbf_url, mapId);
         const pbfPath = path.join(DATA_DIR, filename);
 
         MapRepository.updateStatus(mapId, 'downloading');
@@ -189,7 +276,7 @@ class OsrmService {
         const map = MapRepository.getById(mapId);
         if (!map) throw new Error('Map not found');
 
-        const filename = sanitizeFileName(path.basename(new URL(map.pbf_url).pathname));
+        const filename = this.extractFilenameFromSource(map.pbf_url, mapId);
         const pbfPath = path.join(DATA_DIR, filename);
 
         if (!fs.existsSync(pbfPath)) {

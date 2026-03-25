@@ -9,6 +9,7 @@ import { pipeline } from 'stream/promises';
 import KcAdminClient from '@keycloak/keycloak-admin-client';
 import OsrmService from '../services/OsrmService';
 import { resolveProjectRouting } from '../services/ProjectRoutingService';
+import { sanitizeFileName } from '../services/osrm/security';
 
 let kcAdminClient: KcAdminClient | null = null;
 async function getKcAdminClient() {
@@ -55,6 +56,24 @@ function collectFilesRecursive(dir: string): string[] {
     }
 
     return files;
+}
+
+function allocateUploadedPbfName(dataDir: string, originalName: string): { filename: string; fullPath: string } {
+    const safeName = sanitizeFileName(path.basename(originalName));
+    if (!safeName.toLowerCase().endsWith('.osm.pbf')) {
+        throw new Error('El archivo debe terminar en .osm.pbf');
+    }
+
+    const ext = '.osm.pbf';
+    const base = safeName.slice(0, -ext.length);
+    let candidate = safeName;
+    let counter = 1;
+    while (fs.existsSync(path.join(dataDir, candidate))) {
+        candidate = `${base}-${counter}${ext}`;
+        counter += 1;
+    }
+
+    return { filename: candidate, fullPath: path.join(dataDir, candidate) };
 }
 
 export default async function adminRoutes(fastify: FastifyInstance) {
@@ -792,6 +811,58 @@ export default async function adminRoutes(fastify: FastifyInstance) {
         const MapRepository = (await import('../services/MapRepository')).default;
         const map = MapRepository.create(request.body.name, request.body.url);
         return map;
+    });
+
+    fastify.post('/admin/maps/upload', async (request: any, reply: any) => {
+        if (!request.isSuperAdmin) return reply.code(403).send({ error: 'Forbidden' });
+
+        let tempPath: string | null = null;
+        let uploadStream: NodeJS.ReadableStream | null = null;
+        try {
+            const data = await request.file();
+            if (!data) return reply.code(400).send({ error: 'No file uploaded' });
+            uploadStream = data.file;
+
+            const dataDir = OsrmService.getDataDir();
+            if (!fs.existsSync(dataDir)) {
+                fs.mkdirSync(dataDir, { recursive: true });
+            }
+
+            const { filename, fullPath } = allocateUploadedPbfName(dataDir, data.filename);
+            tempPath = `${fullPath}.uploading-${Date.now()}`;
+
+            await pipeline(data.file, fs.createWriteStream(tempPath));
+
+            const uploadedStats = fs.statSync(tempPath);
+            if (uploadedStats.size <= 0) {
+                throw new Error('Uploaded file is empty');
+            }
+
+            fs.renameSync(tempPath, fullPath);
+            tempPath = null;
+
+            const requestedName = typeof data.fields?.name?.value === 'string'
+                ? data.fields.name.value.trim()
+                : undefined;
+
+            const map = OsrmService.registerUploadedMap(requestedName, filename);
+            return { message: 'Map uploaded successfully', filename, map };
+        } catch (error: any) {
+            if (tempPath && fs.existsSync(tempPath)) {
+                try { fs.unlinkSync(tempPath); } catch { /* ignore */ }
+            }
+            if (uploadStream) {
+                try { uploadStream.resume(); } catch { /* ignore */ }
+            }
+            console.error('Admin map upload failed:', error);
+            const message = error?.message || 'Failed to upload map file';
+            const isValidation = typeof message === 'string' && (
+                message.includes('.osm.pbf')
+                || message.includes('empty')
+                || message.includes('No file uploaded')
+            );
+            return reply.code(isValidation ? 400 : 500).send({ error: message });
+        }
     });
 
     fastify.post<{ Params: { id: string } }>('/admin/maps/:id/download', async (request, reply) => {

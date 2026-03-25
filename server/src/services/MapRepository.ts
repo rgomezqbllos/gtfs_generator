@@ -27,6 +27,11 @@ class MapRepository {
     }
 
     create(name: string, pbf_url: string): MapInstance {
+        const existing = this.getByUrl(pbf_url);
+        if (existing) {
+            return existing;
+        }
+
         const id = uuidv4();
         db.prepare('INSERT INTO map_instances (id, name, pbf_url) VALUES (?, ?, ?)')
             .run(id, name, pbf_url);

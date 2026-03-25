@@ -15,6 +15,67 @@ import { state } from './state';
 import { dockerManager } from './DockerManager';
 
 export class OsrmProcessor {
+    private buildScopedOsrmName(mapId: string, filename: string): string {
+        const baseName = sanitizeFileName(filename.replace('.osm.pbf', ''));
+        const mapScope = sanitizeFileName(mapId.substring(0, 8));
+        return sanitizeFileName(`${mapScope}-${baseName}`);
+    }
+
+    private hasCompleteProfileArtifacts(osrmName: string, profile: string): boolean {
+        const base = path.join(DATA_DIR, `${osrmName}-${profile}.osrm`);
+        const required = ['', '.edges', '.partition', '.cells', '.mldgr'];
+        const hasAll = required.every(suffix => fs.existsSync(`${base}${suffix}`));
+        if (!hasAll) return false;
+
+        if (this.shouldRebuildForProfileChange(osrmName, profile)) {
+            console.log(`Profile ${profile} changed since last build for ${osrmName}. Rebuilding artifacts...`);
+            return false;
+        }
+
+        return true;
+    }
+
+    private shouldRebuildForProfileChange(osrmName: string, profile: string): boolean {
+        const profilePath = path.join(HOST_PROJECT_PATH, 'server/scripts/osrm-profiles', `${profile}.lua`);
+        const buildTimestampPath = path.join(DATA_DIR, `${osrmName}-${profile}.osrm.timestamp`);
+
+        if (!fs.existsSync(profilePath) || !fs.existsSync(buildTimestampPath)) {
+            return false;
+        }
+
+        try {
+            const profileMtime = fs.statSync(profilePath).mtimeMs;
+            const buildMtime = fs.statSync(buildTimestampPath).mtimeMs;
+            return profileMtime > buildMtime;
+        } catch {
+            return false;
+        }
+    }
+
+    private cleanupProfileArtifacts(profileBaseName: string): void {
+        try {
+            fs.readdirSync(DATA_DIR).forEach(file => {
+                if (file.startsWith(`${profileBaseName}.osrm`)) {
+                    fs.unlinkSync(path.join(DATA_DIR, file));
+                }
+            });
+        } catch (error) {
+            console.warn(`Could not fully clean old artifacts for ${profileBaseName}:`, error);
+        }
+    }
+
+    private prepareProfileInputPbf(sourcePath: string, targetPath: string): void {
+        if (fs.existsSync(targetPath)) return;
+
+        try {
+            fs.linkSync(sourcePath, targetPath);
+            console.log(`Created hard link for profile input: ${path.basename(targetPath)}`);
+        } catch (error: any) {
+            console.warn(`Hard link failed for ${path.basename(targetPath)} (${error?.message || 'unknown error'}). Falling back to file copy.`);
+            fs.copyFileSync(sourcePath, targetPath);
+        }
+    }
+
     // --- Download ---
 
     async runDownloadProcess(
@@ -74,9 +135,13 @@ export class OsrmProcessor {
         throw new Error('All download mirrors failed.');
     }
 
-    downloadSingle(url: string, dest: string): Promise<void> {
+    downloadSingle(url: string, dest: string, redirectCount = 0): Promise<void> {
         return new Promise((resolve, reject) => {
-            const file = fs.createWriteStream(dest);
+            if (redirectCount > 5) {
+                reject(new Error('Too many redirects while downloading map file'));
+                return;
+            }
+
             const proto = url.startsWith('https') ? https : http;
 
             const req = proto.get(url, {
@@ -89,18 +154,22 @@ export class OsrmProcessor {
             }, (res) => {
                 if (res.statusCode === 301 || res.statusCode === 302) {
                     if (res.headers.location) {
+                        res.resume();
                         state.activeHttpRequest = null;
-                        this.downloadSingle(res.headers.location, dest).then(resolve).catch(reject);
+                        const redirectUrl = new URL(res.headers.location, url).toString();
+                        this.downloadSingle(redirectUrl, dest, redirectCount + 1).then(resolve).catch(reject);
                         return;
                     }
                 }
 
                 if (res.statusCode !== 200) {
+                    res.resume();
                     state.activeHttpRequest = null;
                     reject(new Error(`Status ${res.statusCode}`));
                     return;
                 }
 
+                const file = fs.createWriteStream(dest);
                 const totalLength = parseInt(res.headers['content-length'] || '0', 10);
                 let downloaded = 0;
 
@@ -112,6 +181,16 @@ export class OsrmProcessor {
                 });
 
                 res.pipe(file);
+                file.on('error', (err) => {
+                    state.activeHttpRequest = null;
+                    fs.unlink(dest, () => { });
+                    reject(err);
+                });
+                res.on('error', (err) => {
+                    state.activeHttpRequest = null;
+                    file.close(() => fs.unlink(dest, () => { }));
+                    reject(err);
+                });
                 file.on('finish', () => {
                     file.close(() => resolve());
                     state.activeHttpRequest = null;
@@ -140,45 +219,37 @@ export class OsrmProcessor {
 
     async runActivationProcess(mapId: string, filename: string, pbfPath: string, basePort: number): Promise<void> {
         try {
-            const osrmName = sanitizeFileName(filename.replace('.osm.pbf', ''));
             const regionSafeName = mapId.substring(0, 8);
+            const osrmName = this.buildScopedOsrmName(mapId, filename);
 
             state.currentStatus = { status: 'processing', message: `Iniciando activación de ${filename}...`, activeMapId: mapId, progress: 5 };
 
             await dockerManager.stopContainersByPattern(`${CONTAINER_PREFIX}-${regionSafeName}`);
 
-            const hostDataParam = IN_DOCKER ? `${HOST_PROJECT_PATH}/gtfs_data` : DATA_DIR.replace(/\\/g, '/');
-            const volume = `${hostDataParam}:/data`;
+            const fallbackDataMount = `${(IN_DOCKER ? `${HOST_PROJECT_PATH}/gtfs_data` : DATA_DIR).replace(/\\/g, '/')}:/data`;
+            const volume = await dockerManager.resolveDataVolumeMount(fallbackDataMount);
             const hostProfilesParam = IN_DOCKER
                 ? `${HOST_PROJECT_PATH}/server/scripts/osrm-profiles`
                 : path.join(HOST_PROJECT_PATH, 'server/scripts/osrm-profiles').replace(/\\/g, '/');
             const profilesVolume = `${hostProfilesParam}:/profiles`;
+            console.log(`OSRM setup mounts: data=${volume} profiles=${profilesVolume}`);
 
             for (const profile of PROFILES) {
-                const profilePbfName = `${osrmName}-${profile}.osm.pbf`;
+                const profileBaseName = `${osrmName}-${profile}`;
+                const profilePbfName = `${profileBaseName}.osm.pbf`;
                 const profilePbfPath = path.join(DATA_DIR, profilePbfName);
-                const profileOsrmPath = path.join(DATA_DIR, `${osrmName}-${profile}.osrm`);
-                const profileEdgesPath = path.join(DATA_DIR, `${osrmName}-${profile}.osrm.edges`);
+                const hasCompleteArtifacts = this.hasCompleteProfileArtifacts(osrmName, profile);
 
-                if (fs.existsSync(profileOsrmPath) && !fs.existsSync(profileEdgesPath)) {
-                    console.log(`Found base .osrm file for ${profile} but missing index files. Cleaning...`);
-                    try {
-                        fs.readdirSync(DATA_DIR).forEach(file => {
-                            if (file.startsWith(`${osrmName}-${profile}`)) {
-                                fs.unlinkSync(path.join(DATA_DIR, file));
-                            }
-                        });
-                    } catch { /* ignore */ }
-                }
-
-                if (!fs.existsSync(profileOsrmPath) || !fs.existsSync(profileEdgesPath)) {
+                if (!hasCompleteArtifacts) {
                     const profileIndex = PROFILES.indexOf(profile);
                     const baseProgress = 10 + profileIndex * 25;
 
+                    this.cleanupProfileArtifacts(profileBaseName);
+
                     if (!fs.existsSync(profilePbfPath)) {
-                        console.log(`Creating profile copy: ${profilePbfName} from ${pbfPath}`);
+                        console.log(`Preparing profile input: ${profilePbfName} from ${pbfPath}`);
                         state.currentStatus = { status: 'processing', message: `Preparando archivos para ${profile}...`, activeMapId: mapId, progress: baseProgress };
-                        fs.copyFileSync(pbfPath, profilePbfPath);
+                        this.prepareProfileInputPbf(pbfPath, profilePbfPath);
                     }
 
                     state.currentStatus = { status: 'processing', message: `Extracting ${profile} (Esto puede tardar varios minutos)...`, activeMapId: mapId, progress: baseProgress + 5 };

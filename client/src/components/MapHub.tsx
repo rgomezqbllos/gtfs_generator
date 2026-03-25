@@ -3,7 +3,7 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { 
     Search, Download, Trash2, Globe,  
     Navigation, Activity, Radio,
-    CheckCircle2, Plus, Database, ShieldCheck
+    CheckCircle2, Plus, Database, ShieldCheck, Upload
 } from 'lucide-react';
 import { clsx } from 'clsx';
 import { API_URL } from '../config';
@@ -15,6 +15,7 @@ interface MapInstance {
     name: string;
     status: 'pending' | 'downloading' | 'processing' | 'ready' | 'error';
     isActive: boolean;
+    is_local?: boolean;
     base_port?: number;
     disk_size?: number;
     running_profiles?: string[];
@@ -37,8 +38,11 @@ export const MapHub: React.FC = () => {
     const [loading, setLoading] = useState(false);
     const [mapToDelete, setMapToDelete] = useState<string | null>(null);
     const [showCustomForm, setShowCustomForm] = useState(false);
+    const [showUploadForm, setShowUploadForm] = useState(false);
     const [customName, setCustomName] = useState('');
     const [customUrl, setCustomUrl] = useState('');
+    const [uploadName, setUploadName] = useState('');
+    const [uploadFile, setUploadFile] = useState<File | null>(null);
     const [osrmStatus, setOsrmStatus] = useState<any>(null);
 
     const fetchMaps = async () => {
@@ -124,6 +128,41 @@ export const MapHub: React.FC = () => {
             });
             fetchStatus();
         } catch (e) { console.error(e); }
+    };
+
+    const handleUploadMap = async () => {
+        if (!uploadFile) return;
+
+        setLoading(true);
+        try {
+            const formData = new FormData();
+            if (uploadName.trim()) {
+                formData.append('name', uploadName.trim());
+            }
+            formData.append('file', uploadFile);
+
+            const res = await fetch(`${API_URL}/admin/maps/upload`, {
+                method: 'POST',
+                headers: { 'Authorization': `Bearer ${token}` },
+                body: formData
+            });
+
+            if (!res.ok) {
+                const data = await res.json().catch(() => ({}));
+                throw new Error(data?.error || 'No se pudo cargar el archivo');
+            }
+
+            setUploadFile(null);
+            setUploadName('');
+            setShowUploadForm(false);
+            fetchMaps();
+            fetchStatus();
+        } catch (e: any) {
+            console.error(e);
+            alert(e?.message || 'Error al subir archivo');
+        } finally {
+            setLoading(false);
+        }
     };
 
     const handleDelete = async () => {
@@ -234,6 +273,7 @@ export const MapHub: React.FC = () => {
                             onChange={(e) => {
                                 setSearchQuery(e.target.value);
                                 if (showCustomForm) setShowCustomForm(false);
+                                if (showUploadForm) setShowUploadForm(false);
                             }}
                         />
 
@@ -258,7 +298,10 @@ export const MapHub: React.FC = () => {
                     </div>
 
                     <button
-                        onClick={() => setShowCustomForm(!showCustomForm)}
+                        onClick={() => {
+                            setShowCustomForm(!showCustomForm);
+                            if (!showCustomForm) setShowUploadForm(false);
+                        }}
                         className={clsx(
                             "px-6 py-4 rounded-2xl border font-bold transition-all flex items-center gap-2",
                             showCustomForm 
@@ -268,6 +311,22 @@ export const MapHub: React.FC = () => {
                     >
                         <Plus className="w-5 h-5" />
                         <span>URL Manual</span>
+                    </button>
+
+                    <button
+                        onClick={() => {
+                            setShowUploadForm(!showUploadForm);
+                            if (!showUploadForm) setShowCustomForm(false);
+                        }}
+                        className={clsx(
+                            "px-6 py-4 rounded-2xl border font-bold transition-all flex items-center gap-2",
+                            showUploadForm
+                                ? "bg-sky-500 border-sky-400 text-white shadow-[0_0_20px_rgba(14,165,233,0.4)]"
+                                : "bg-slate-900/50 border-white/10 text-slate-400 hover:border-white/20 hover:text-white"
+                        )}
+                    >
+                        <Upload className="w-5 h-5" />
+                        <span>Subir Archivo</span>
                     </button>
                 </div>
 
@@ -307,6 +366,53 @@ export const MapHub: React.FC = () => {
                         </div>
                     </div>
                 )}
+
+                {showUploadForm && (
+                    <div className="p-6 rounded-3xl bg-sky-500/5 border border-sky-500/20 animate-in slide-in-from-top-4 duration-300">
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                            <div className="space-y-2">
+                                <label className="text-[10px] font-black uppercase tracking-widest text-sky-400/70 ml-2">Nombre del Mapa</label>
+                                <input
+                                    type="text"
+                                    placeholder="Ej: Colombia 2026-03-26"
+                                    value={uploadName}
+                                    onChange={(e) => setUploadName(e.target.value)}
+                                    className="w-full px-4 py-3 bg-slate-950/50 border border-white/10 rounded-xl text-white placeholder-slate-600 focus:outline-none focus:border-sky-500/50 transition-all font-medium"
+                                />
+                            </div>
+                            <div className="space-y-2">
+                                <label className="text-[10px] font-black uppercase tracking-widest text-sky-400/70 ml-2">Archivo .osm.pbf</label>
+                                <input
+                                    type="file"
+                                    accept=".osm.pbf"
+                                    onChange={(e) => {
+                                        const file = e.target.files?.[0] || null;
+                                        setUploadFile(file);
+                                        if (file && !uploadName.trim()) {
+                                            const inferred = file.name.replace(/\.osm\.pbf$/i, '').replace(/[-_]+/g, ' ').trim();
+                                            setUploadName(inferred);
+                                        }
+                                    }}
+                                    className="w-full px-4 py-3 bg-slate-950/50 border border-white/10 rounded-xl text-white file:mr-4 file:rounded-lg file:border-0 file:bg-sky-600 file:px-3 file:py-1 file:text-xs file:font-bold file:text-white hover:file:bg-sky-500"
+                                />
+                                {uploadFile && (
+                                    <p className="text-xs text-slate-400 ml-2">
+                                        {uploadFile.name} · {(uploadFile.size / 1024 / 1024).toFixed(1)} MB
+                                    </p>
+                                )}
+                            </div>
+                        </div>
+                        <div className="mt-4 flex justify-end">
+                            <button
+                                disabled={!uploadFile || loading}
+                                onClick={handleUploadMap}
+                                className="px-8 py-3 bg-sky-600 hover:bg-sky-500 disabled:opacity-50 disabled:cursor-not-allowed text-white rounded-xl font-black uppercase tracking-widest text-[11px] transition-all shadow-lg active:scale-95"
+                            >
+                                {loading ? 'Subiendo...' : 'Cargar Archivo'}
+                            </button>
+                        </div>
+                    </div>
+                )}
             </div>
 
             {/* Maps Grid */}
@@ -334,6 +440,11 @@ export const MapHub: React.FC = () => {
                                 <Navigation className="w-6 h-6 text-indigo-400" />
                             </div>
                             <div className="flex items-center gap-2">
+                                {map.is_local && (
+                                    <span className="px-2.5 py-1 rounded-md text-[10px] uppercase font-black tracking-widest bg-sky-500/10 text-sky-300 border border-sky-500/20">
+                                        local file
+                                    </span>
+                                )}
                                 <span className={clsx(
                                     "px-2.5 py-1 rounded-md text-[10px] uppercase font-black tracking-widest",
                                     map.status === 'ready' ? "bg-emerald-500/10 text-emerald-400 border border-emerald-500/20" :
@@ -385,7 +496,7 @@ export const MapHub: React.FC = () => {
                         )}
 
                         <div className="flex items-center gap-2 pt-4 border-t border-white/5">
-                            {(map.status === 'pending' || map.status === 'error') && (
+                            {!map.is_local && (map.status === 'pending' || map.status === 'error') && (
                                 <button 
                                     onClick={() => handleAction(map.id, 'download')}
                                     className={clsx(
@@ -397,7 +508,7 @@ export const MapHub: React.FC = () => {
                                     {map.status === 'error' ? 'Retry' : 'Download'}
                                 </button>
                             )}
-                            {(map.status === 'ready' || map.status === 'error' || map.status === 'pending') && !(map.isActive && map.status === 'ready') && (
+                            {(map.status === 'ready' || map.status === 'error' || (map.status === 'pending' && (map.is_local || !!map.disk_size))) && !(map.isActive && map.status === 'ready') && (
                                 <button 
                                     className={clsx(
                                         "flex-1 flex items-center justify-center gap-2 py-2.5 rounded-xl transition-all shadow-inner active:scale-95",

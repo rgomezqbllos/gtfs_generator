@@ -145,6 +145,7 @@ function setup()
     speeds = Sequence {
       highway = {
         busway          = 100, -- Highest speed to strongly prefer it
+        bus_guideway    = 90,
         motorway        = 50,
         motorway_link   = 45,
         trunk           = 45,
@@ -173,6 +174,7 @@ function setup()
 
     restricted_highway_whitelist = Set {
       'busway',
+      'bus_guideway',
       'motorway',
       'motorway_link',
       'trunk',
@@ -373,6 +375,44 @@ function process_node(profile, node, result, relations)
   end
 end
 
+local function has_truthy_tag(value)
+  return value == 'yes' or value == 'designated' or value == 'official' or value == 'permissive'
+end
+
+local function has_restrictive_tag(value)
+  return value == 'no' or value == 'private'
+end
+
+local function is_exclusive_bus_corridor(way, highway)
+  if not highway or highway == '' then
+    return false
+  end
+
+  if highway == 'busway' or highway == 'bus_guideway' then
+    return true
+  end
+
+  local busway = way:get_value_by_key('busway')
+  if busway and busway ~= '' and busway ~= 'no' then
+    return true
+  end
+
+  local psv = way:get_value_by_key('psv')
+  local bus = way:get_value_by_key('bus')
+  local access = way:get_value_by_key('access')
+  local motor_vehicle = way:get_value_by_key('motor_vehicle')
+  local motorcar = way:get_value_by_key('motorcar')
+
+  if (has_truthy_tag(psv) or has_truthy_tag(bus))
+      and (has_restrictive_tag(access)
+          or has_restrictive_tag(motor_vehicle)
+          or has_restrictive_tag(motorcar)) then
+    return true
+  end
+
+  return false
+end
+
 function process_way(profile, way, result, relations)
   -- the intial filtering of ways based on presence of tags
   -- affects processing times significantly, because all ways
@@ -399,6 +439,12 @@ function process_way(profile, way, result, relations)
   if (not data.highway or data.highway == '') and
   (not data.route or data.route == '')
   then
+    return
+  end
+
+  -- Trunk profile must remain on physically/operationally exclusive bus corridors.
+  -- If OSM does not tag exclusivity (busway/bus-only access), this edge is not used.
+  if not is_exclusive_bus_corridor(way, data.highway) then
     return
   end
 
