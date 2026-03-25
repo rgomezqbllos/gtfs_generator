@@ -105,6 +105,13 @@ export function initDB() {
             )
         `);
 
+        // Routes Migration
+        const routeColumns = db.pragma('table_info(routes)') as { name: string }[];
+        if (routeColumns.length > 0 && !routeColumns.some(c => c.name === 'routing_profile')) {
+            db.prepare("ALTER TABLE routes ADD COLUMN routing_profile TEXT DEFAULT 'bus_mixed_exclusive'").run();
+            console.log('Migrated: Added routing_profile to routes');
+        }
+
         // Migration for project -> map_instance link
         const projectColumns = db.pragma('table_info(projects)') as { name: string }[];
         if (projectColumns.length > 0 && !projectColumns.some(c => c.name === 'map_instance_id')) {

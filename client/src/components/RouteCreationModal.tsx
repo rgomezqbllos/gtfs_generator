@@ -1,8 +1,9 @@
 import * as React from 'react';
-import { X, Check, Bus, Save, Building2, Activity, Palette, Type, Globe, Layers } from 'lucide-react';
+import { X, Check, Bus, Save, Building2, Activity, Palette, Type, Globe, Layers, GitBranch } from 'lucide-react';
 import { clsx } from 'clsx';
 import type { Route } from '../types';
 import { API_URL } from '../config';
+import { defaultRoutingProfile, routingProfileMetadata, routingProfiles, type RoutingProfile } from '../constants/routingProfiles';
 
 interface RouteCreationModalProps {
     isOpen: boolean;
@@ -35,7 +36,8 @@ const RouteCreationModal: React.FC<RouteCreationModalProps> = ({ isOpen, onClose
         agency_name: '',
         route_desc: '',
         route_url: '',
-        route_sort_order: undefined
+        route_sort_order: undefined,
+        routing_profile: defaultRoutingProfile
     });
 
     const [loading, setLoading] = React.useState(false);
@@ -48,7 +50,10 @@ const RouteCreationModal: React.FC<RouteCreationModalProps> = ({ isOpen, onClose
             fetchAgencies();
             fetchParkingStops();
             if (routeToEdit) {
-                setFormData(routeToEdit);
+                setFormData({
+                    ...routeToEdit,
+                    routing_profile: (routeToEdit.routing_profile as RoutingProfile) || defaultRoutingProfile
+                });
             } else {
                 setFormData({
                     route_short_name: '',
@@ -61,7 +66,8 @@ const RouteCreationModal: React.FC<RouteCreationModalProps> = ({ isOpen, onClose
                     route_desc: '',
                     route_url: '',
                     route_sort_order: undefined,
-                    parkings: []
+                    parkings: [],
+                    routing_profile: defaultRoutingProfile
                 });
             }
             setActiveTab('basic');
@@ -246,6 +252,45 @@ const RouteCreationModal: React.FC<RouteCreationModalProps> = ({ isOpen, onClose
                                         value={formData.route_sort_order || ''}
                                         onChange={e => setFormData({ ...formData, route_sort_order: parseInt(e.target.value) || undefined })}
                                     />
+                                </div>
+                            </div>
+
+                            {/* Routing Profile Selector */}
+                            <div className="space-y-3">
+                                <label className="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] px-1 flex items-center gap-2">
+                                    <GitBranch size={14} className="text-indigo-500" /> Perfil de Routing Preferido
+                                </label>
+                                <div className="space-y-2">
+                                    {routingProfiles.map(profile => {
+                                        const meta = routingProfileMetadata[profile];
+                                        const isActive = formData.routing_profile === profile;
+                                        return (
+                                            <button
+                                                key={profile}
+                                                type="button"
+                                                onClick={() => setFormData({ ...formData, routing_profile: profile as RoutingProfile })}
+                                                className={clsx(
+                                                    'w-full flex items-center gap-4 p-4 rounded-2xl border text-left transition-all relative overflow-hidden',
+                                                    isActive
+                                                        ? 'bg-white dark:bg-slate-800 border-indigo-500/50 shadow-md shadow-indigo-500/10'
+                                                        : 'bg-slate-50 dark:bg-slate-800/30 border-transparent hover:border-slate-200 dark:hover:border-slate-700'
+                                                )}
+                                            >
+                                                <div className="absolute top-0 left-0 w-1 h-full rounded-l-2xl" style={{ backgroundColor: meta.color }} />
+                                                <div className="pl-2 flex-1">
+                                                    <div className={clsx('text-[12px] font-black uppercase tracking-tight', isActive ? 'text-slate-900 dark:text-white' : 'text-slate-500 dark:text-slate-400')}>
+                                                        {meta.label}
+                                                    </div>
+                                                    <div className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mt-0.5">{meta.description}</div>
+                                                </div>
+                                                {isActive && (
+                                                    <div className="w-5 h-5 rounded-full flex items-center justify-center flex-shrink-0" style={{ backgroundColor: meta.color }}>
+                                                        <Check size={11} className="text-white" strokeWidth={3} />
+                                                    </div>
+                                                )}
+                                            </button>
+                                        );
+                                    })}
                                 </div>
                             </div>
                         </div>

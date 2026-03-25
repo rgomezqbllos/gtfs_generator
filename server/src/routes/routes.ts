@@ -15,6 +15,7 @@ interface RouteBody {
     route_url?: string;
     route_sort_order?: number;
     allowed_materials?: string; // Custom field
+    routing_profile?: string;   // Preferred OSRM routing profile
     agency_name?: string;
     agency_id?: string; // Added
     parkings?: string[]; // Added
@@ -214,14 +215,16 @@ export default async function routesRoutes(fastify: FastifyInstance) {
             }
         }
 
+        const routeProfile = normalizeRoutingProfile(body.routing_profile);
+
         const insertTransaction = db.transaction(() => {
             const stmt = db.prepare(`
                 INSERT INTO routes (
-                    route_id, project_id, route_short_name, route_long_name, route_type, 
+                    route_id, project_id, route_short_name, route_long_name, route_type,
                     route_color, route_text_color, route_desc, route_url, route_sort_order,
-                    allowed_materials, agency_id
+                    allowed_materials, routing_profile, agency_id
                 )
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             `);
 
             stmt.run(
@@ -236,6 +239,7 @@ export default async function routesRoutes(fastify: FastifyInstance) {
                 route_url || null,
                 route_sort_order || null,
                 allowed_materials || '',
+                routeProfile,
                 agency_id_to_use
             );
 
@@ -260,7 +264,7 @@ export default async function routesRoutes(fastify: FastifyInstance) {
         const {
             route_short_name, route_long_name, route_type,
             route_color, route_text_color, route_desc, route_url, route_sort_order,
-            allowed_materials, agency_name, agency_id
+            allowed_materials, agency_name, agency_id, routing_profile
         } = body;
 
         try {
@@ -305,6 +309,7 @@ export default async function routesRoutes(fastify: FastifyInstance) {
                         route_url = COALESCE(?, route_url),
                         route_sort_order = COALESCE(?, route_sort_order),
                         allowed_materials = COALESCE(?, allowed_materials),
+                        routing_profile = COALESCE(?, routing_profile),
                         agency_id = ?
                     WHERE route_id = ? AND project_id = ?
                 `);
@@ -319,6 +324,7 @@ export default async function routesRoutes(fastify: FastifyInstance) {
                     route_url,
                     route_sort_order,
                     allowed_materials,
+                    routing_profile ? normalizeRoutingProfile(routing_profile) : null,
                     agency_id_to_use,
                     id,
                     request.projectId
@@ -447,8 +453,12 @@ export default async function routesRoutes(fastify: FastifyInstance) {
         if (!ordered_stop_ids || ordered_stop_ids.length < 2) {
             return reply.code(400).send({ error: 'ordered_stop_ids must have at least 2 stops' });
         }
-        const normalizedPathProfile = normalizeRoutingProfile(routing_profile);
-        const osrmProfileForPath = mapToOsrmProfile(normalizedPathProfile);
+
+        // If no profile is provided in the request, fall back to the route's own stored profile
+        const routeRow = db.prepare('SELECT routing_profile FROM routes WHERE route_id = ? AND project_id = ?')
+            .get(id, request.projectId) as { routing_profile?: string } | undefined;
+        const effectiveProfile = normalizeRoutingProfile(routing_profile || routeRow?.routing_profile);
+        const osrmProfileForPath = mapToOsrmProfile(effectiveProfile);
         const routing = await resolveProjectRouting(request.projectId);
 
         if (routing.mapAssigned && !routing.routingUrl) {
@@ -574,9 +584,9 @@ export default async function routesRoutes(fastify: FastifyInstance) {
                 }
 
                 db.prepare('INSERT INTO segments (segment_id, project_id, start_node_id, end_node_id, distance, travel_time, routing_profile, geometry) VALUES (?, ?, ?, ?, ?, ?, ?, ?)')
-                    .run(segId, request.projectId, fromId, toId, dist, time, normalizedPathProfile, geom);
+                    .run(segId, request.projectId, fromId, toId, dist, time, effectiveProfile, geom);
 
-                segment = { distance: dist, geometry: geom, start_node_id: fromId, end_node_id: toId, routing_profile: normalizedPathProfile };
+                segment = { distance: dist, geometry: geom, start_node_id: fromId, end_node_id: toId, routing_profile: effectiveProfile };
             }
 
             // Add to shape
