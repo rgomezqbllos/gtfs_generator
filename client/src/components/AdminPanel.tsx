@@ -773,7 +773,7 @@ export const AdminPanel: React.FC = () => {
                 <>
                   <div className="mb-6 max-h-[40vh] overflow-y-auto custom-scrollbar">
                     <div className="space-y-2">
-                      {orphanedUsers.orphaned.map((user: any, idx: number) => (
+                      {orphanedUsers.orphaned.map((user: any) => (
                         <div
                           key={user.id}
                           className="p-4 rounded-xl bg-slate-50 dark:bg-slate-800/50 border utilitarian-border flex justify-between items-center"
