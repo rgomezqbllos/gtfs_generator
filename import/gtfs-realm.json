@@ -18,6 +18,20 @@
   },
   "clients": [
     {
+      "clientId": "gtfs-admin",
+      "enabled": true,
+      "publicClient": false,
+      "protocol": "openid-connect",
+      "clientAuthenticatorType": "client-secret",
+      "secret": "gtfs-admin-secret-key-do-not-share",
+      "standardFlowEnabled": false,
+      "directAccessGrantsEnabled": false,
+      "serviceAccountsEnabled": true,
+      "implicitFlowEnabled": false,
+      "redirectUris": [],
+      "webOrigins": []
+    },
+    {
       "clientId": "gtfs-client",
       "enabled": true,
       "publicClient": true,
@@ -57,6 +71,12 @@
         }
       ],
       "realmRoles": ["admin", "user"]
+    }
+  ],
+  "scopeMappings": [
+    {
+      "clientId": "gtfs-admin",
+      "roles": ["admin"]
     }
   ]
 }

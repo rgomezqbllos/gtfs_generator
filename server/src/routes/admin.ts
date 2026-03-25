@@ -14,31 +14,27 @@ let kcAdminClient: KcAdminClient | null = null;
 async function getKcAdminClient() {
     if (!kcAdminClient) {
         const keycloakUrl = process.env.KEYCLOAK_URL;
-        const keycloakAdmin = process.env.KEYCLOAK_ADMIN;
-        const keycloakAdminPassword = process.env.KEYCLOAK_ADMIN_PASSWORD;
+        const keycloakAdminClientId = process.env.KEYCLOAK_ADMIN_CLIENT_ID || 'gtfs-admin';
+        const keycloakAdminClientSecret = process.env.KEYCLOAK_ADMIN_CLIENT_SECRET || 'gtfs-admin-secret-key-do-not-share';
 
-        if (!keycloakUrl || !keycloakAdmin || !keycloakAdminPassword) {
-            throw new Error(
-                'Missing required Keycloak env vars: KEYCLOAK_URL, KEYCLOAK_ADMIN, KEYCLOAK_ADMIN_PASSWORD'
-            );
+        if (!keycloakUrl) {
+            throw new Error('Missing required env var: KEYCLOAK_URL');
         }
 
         kcAdminClient = new KcAdminClient({
             baseUrl: keycloakUrl,
-            realmName: 'master'
+            realmName: 'gtfs'
         });
         try {
             await kcAdminClient.auth({
-                username: keycloakAdmin,
-                password: keycloakAdminPassword,
-                grantType: 'password',
-                clientId: 'admin-cli'
+                clientId: keycloakAdminClientId,
+                clientSecret: keycloakAdminClientSecret,
+                grantType: 'client_credentials'
             });
         } catch (err) {
             kcAdminClient = null; // Reset so next call retries auth
             throw err;
         }
-        kcAdminClient.setConfig({ realmName: 'gtfs' });
     }
     return kcAdminClient;
 }
