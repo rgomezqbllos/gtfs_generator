@@ -493,11 +493,13 @@ export default async function adminRoutes(fastify: FastifyInstance) {
             return reply.code(500).send({ error: 'Failed to unassign user' });
         }
     });
-    // Create User (Keycloak + Local)
-    fastify.post<{ Body: { username: string, email: string, password?: string, firstName?: string, lastName?: string } }>('/admin/users', async (request: any, reply: any) => {
+    // Create User (Keycloak + Local) — SuperAdmin only, can create admin or operations users
+    fastify.post<{ Body: { username: string, email: string, password?: string, firstName?: string, lastName?: string, role?: string } }>('/admin/users', async (request: any, reply: any) => {
+        if (!request.isSuperAdmin) return reply.code(403).send({ error: 'Solo SuperAdmin puede crear usuarios' });
         try {
             const kc = await getKcAdminClient();
             const payload = request.body;
+            const userRole = payload.role === 'admin' ? 'admin' : 'operations';
 
             let userId: string;
             try {
@@ -529,15 +531,31 @@ export default async function adminRoutes(fastify: FastifyInstance) {
                 }
             }
 
+            // Assign realm role 'admin' if creating an admin user
+            if (userRole === 'admin') {
+                try {
+                    const realmRoles = await kc.roles.find();
+                    const adminRole = realmRoles.find((r: any) => r.name === 'admin');
+                    if (adminRole) {
+                        await kc.users.addRealmRoleMappings({
+                            id: userId,
+                            roles: [{ id: adminRole.id!, name: 'admin' }],
+                        });
+                    }
+                } catch (roleError: any) {
+                    console.error('Failed to assign admin role:', roleError.message);
+                }
+            }
+
             db.prepare(`
                 INSERT INTO users (id, username, email)
                 VALUES (?, ?, ?)
-                ON CONFLICT(id) DO UPDATE SET 
-                    username = excluded.username, 
+                ON CONFLICT(id) DO UPDATE SET
+                    username = excluded.username,
                     email = excluded.email
             `).run(userId, payload.username, payload.email);
 
-            return { success: true, id: userId, message: 'Usuario creado o sincronizado correctamente' };
+            return { success: true, id: userId, role: userRole, message: `Usuario ${userRole} creado correctamente` };
         } catch (error: any) {
             console.error('Failed to create/sync user:', error.response?.data || error.message);
             return reply.code(500).send({ error: error.response?.data?.errorMessage || 'Failed to manage user' });
@@ -735,8 +753,8 @@ export default async function adminRoutes(fastify: FastifyInstance) {
                 return reply.code(404).send({ error: 'Usuario no encontrado' });
             }
 
-            if (user?.username === 'admin') {
-                return reply.code(400).send({ error: 'No se puede eliminar la cuenta de administrador integrada' });
+            if (user?.username === 'superadmin') {
+                return reply.code(400).send({ error: 'La cuenta superadmin no puede ser eliminada' });
             }
 
             // Delete in transaction for consistency

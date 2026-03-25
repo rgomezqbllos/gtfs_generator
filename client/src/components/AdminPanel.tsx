@@ -40,6 +40,7 @@ export const AdminPanel: React.FC = () => {
   const [newUserName, setNewUserName] = useState("");
   const [newUserEmail, setNewUserEmail] = useState("");
   const [newUserPassword, setNewUserPassword] = useState("");
+  const [newUserRole, setNewUserRole] = useState<"operations" | "admin">("operations");
   const [assigningUser, setAssigningUser] = useState<any | null>(null);
   const [editingUser, setEditingUser] = useState<any | null>(null);
   const [editEmail, setEditEmail] = useState("");
@@ -148,12 +149,14 @@ export const AdminPanel: React.FC = () => {
           username: newUserName,
           email: newUserEmail,
           password: newUserPassword,
+          role: newUserRole,
         }),
       });
       if (res.ok) {
         setNewUserName("");
         setNewUserEmail("");
         setNewUserPassword("");
+        setNewUserRole("operations");
         fetchUsers();
       }
     } catch (e) {
@@ -521,7 +524,7 @@ export const AdminPanel: React.FC = () => {
               <div className="lg:col-span-1">
                 <div className="glass-panel p-8 rounded-2xl border border-white/20 dark:border-slate-800">
                   <h2 className="text-xl font-display font-bold text-slate-900 dark:text-white mb-6">
-                    Dar de Alta Usuario
+                    Registrar Usuario
                   </h2>
                   <div className="space-y-4">
                     <div className="space-y-1.5">
@@ -557,12 +560,48 @@ export const AdminPanel: React.FC = () => {
                         className="w-full px-4 py-2.5 bg-slate-50 dark:bg-slate-900 border utilitarian-border rounded-xl text-sm outline-none focus:ring-2 focus:ring-primary/20"
                       />
                     </div>
+                    <div className="space-y-1.5">
+                      <label className="text-[10px] font-bold uppercase tracking-widest text-slate-500">
+                        Rol del Usuario
+                      </label>
+                      <div className="flex gap-2">
+                        <button
+                          type="button"
+                          onClick={() => setNewUserRole("operations")}
+                          className={clsx(
+                            "flex-1 py-2.5 rounded-xl text-xs font-bold uppercase tracking-widest transition-all border",
+                            newUserRole === "operations"
+                              ? "bg-primary text-white border-primary shadow-lg shadow-primary/20"
+                              : "bg-slate-50 dark:bg-slate-900 text-slate-500 border-slate-200 dark:border-slate-700 hover:border-primary/50"
+                          )}
+                        >
+                          Operations
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setNewUserRole("admin")}
+                          className={clsx(
+                            "flex-1 py-2.5 rounded-xl text-xs font-bold uppercase tracking-widest transition-all border",
+                            newUserRole === "admin"
+                              ? "bg-amber-500 text-white border-amber-500 shadow-lg shadow-amber-500/20"
+                              : "bg-slate-50 dark:bg-slate-900 text-slate-500 border-slate-200 dark:border-slate-700 hover:border-amber-500/50"
+                          )}
+                        >
+                          Admin
+                        </button>
+                      </div>
+                      <p className="text-[10px] text-slate-500 mt-1 italic">
+                        {newUserRole === "admin"
+                          ? "Admin: acceso al Centro de Control (Mapas, Proyectos, Usuarios)"
+                          : "Operations: acceso a proyectos asignados y editor de mapas"}
+                      </p>
+                    </div>
                     <button
                       onClick={handleCreateUser}
                       className="w-full mt-4 flex items-center justify-center gap-2 px-6 py-3 bg-primary text-white rounded-xl hover:scale-[1.02] active:scale-95 transition-all font-bold text-xs uppercase tracking-widest shadow-xl shadow-primary/20"
                     >
                       <Plus size={16} strokeWidth={3} />
-                      Registrar Operador
+                      Registrar Usuario
                     </button>
                   </div>
                 </div>
@@ -673,11 +712,11 @@ export const AdminPanel: React.FC = () => {
                               >
                                 <Pencil size={16} />
                               </button>
-                              {isSuperAdmin && (
+                              {isSuperAdmin && u.username !== 'superadmin' && (
                                 <button
                                   onClick={() => setUserToDelete(u.id)}
                                   className="p-2 text-slate-400 hover:text-red-500 transition-colors rounded-lg hover:bg-red-500/10"
-                                  title="Eliminar usuario (Solo SuperAdmin)"
+                                  title="Eliminar usuario"
                                 >
                                   <Trash2 size={16} />
                                 </button>

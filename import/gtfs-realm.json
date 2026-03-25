@@ -57,16 +57,16 @@
   ],
   "users": [
     {
-      "username": "admin",
-      "email": "admin@gtfs.local",
-      "firstName": "Admin",
-      "lastName": "GTFS",
+      "username": "superadmin",
+      "email": "superadmin@gtfs.local",
+      "firstName": "Super",
+      "lastName": "Admin",
       "enabled": true,
       "emailVerified": true,
       "credentials": [
         {
           "type": "password",
-          "value": "admin123",
+          "value": "dba",
           "temporary": false
         }
       ],
@@ -75,7 +75,7 @@
   ],
   "scopeMappings": [
     {
-      "clientId": "gtfs-admin",
+      "client": "gtfs-admin",
       "roles": ["admin"]
     }
   ]

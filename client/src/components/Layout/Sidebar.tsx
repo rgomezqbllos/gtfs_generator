@@ -37,84 +37,85 @@ const Sidebar: React.FC = () => {
 
     const roleText = isSuperAdmin ? 'Super Admin' : (isTenantAdmin ? 'Tenant Admin' : 'Operador');
 
-    const MENU_ITEMS = [
-        {
-            id: 'select',
-            label: 'Editor de Mapa',
-            icon: MousePointer2,
-            active: mode === 'idle' && activePanel === 'none',
-            onClick: () => {
-                setMode('idle');
-                setActivePanel('none');
+    // SuperAdmin ONLY sees Centro de Control — no map editor access
+    const MENU_ITEMS = isSuperAdmin
+        ? [
+            {
+                id: 'admin_panel',
+                label: 'Centro de Control',
+                icon: Shield,
+                active: true,
+                onClick: () => setActivePanel('admin_panel')
             }
-        },
-        {
-            id: 'stops_catalog',
-            label: 'Catálogo de Paradas',
-            icon: List,
-            active: activePanel === 'stops_catalog',
-            onClick: () => setActivePanel('stops_catalog')
-        },
-        {
-            id: 'segments_catalog',
-            label: 'Catálogo de Aristas',
-            icon: GitBranch,
-            active: activePanel === 'segments_catalog',
-            onClick: () => setActivePanel('segments_catalog')
-        },
-        {
-            id: 'routes',
-            label: 'Rutas y Trazados',
-            icon: RouteIcon,
-            active: activePanel === 'routes' || activePanel === 'routes_catalog',
-            onClick: () => setActivePanel('routes_catalog')
-        },
-        {
-            id: 'calendar',
-            label: 'Calendarios de Servicio',
-            icon: CalendarDays,
-            active: activePanel === 'calendar',
-            onClick: () => setActivePanel(activePanel === 'calendar' ? 'none' : 'calendar')
-        },
-        {
-            id: 'empty_segments',
-            label: 'Tramos en Vacío',
-            icon: RouteIcon,
-            active: activePanel === 'empty_segments',
-            onClick: () => setActivePanel(activePanel === 'empty_segments' ? 'none' : 'empty_segments')
-        },
-        {
-            id: 'simulation',
-            label: 'Motor de Simulación',
-            icon: PlayCircle,
-            active: activePanel === 'simulation',
-            onClick: () => setActivePanel(activePanel === 'simulation' ? 'none' : 'simulation')
-        },
-        {
-            id: 'settings',
-            label: 'Ajustes del Proyecto',
-            icon: Settings,
-            active: activePanel === 'settings',
-            onClick: () => setActivePanel(activePanel === 'settings' ? 'none' : 'settings')
-        },
-        {
-            id: 'external_load',
-            label: 'Sincronización DB',
-            icon: Database,
-            active: activePanel === 'external_load',
-            onClick: () => setActivePanel(activePanel === 'external_load' ? 'none' : 'external_load')
-        }
-    ];
-
-    if (isSuperAdmin || isTenantAdmin) {
-        MENU_ITEMS.push({
-            id: 'admin_panel',
-            label: 'Centro de Control',
-            icon: Shield,
-            active: activePanel === 'admin_panel',
-            onClick: () => setActivePanel(activePanel === 'admin_panel' ? 'none' : 'admin_panel')
-        });
-    }
+        ]
+        : [
+            {
+                id: 'select',
+                label: 'Editor de Mapa',
+                icon: MousePointer2,
+                active: mode === 'idle' && activePanel === 'none',
+                onClick: () => {
+                    setMode('idle');
+                    setActivePanel('none');
+                }
+            },
+            {
+                id: 'stops_catalog',
+                label: 'Catálogo de Paradas',
+                icon: List,
+                active: activePanel === 'stops_catalog',
+                onClick: () => setActivePanel('stops_catalog')
+            },
+            {
+                id: 'segments_catalog',
+                label: 'Catálogo de Aristas',
+                icon: GitBranch,
+                active: activePanel === 'segments_catalog',
+                onClick: () => setActivePanel('segments_catalog')
+            },
+            {
+                id: 'routes',
+                label: 'Rutas y Trazados',
+                icon: RouteIcon,
+                active: activePanel === 'routes' || activePanel === 'routes_catalog',
+                onClick: () => setActivePanel('routes_catalog')
+            },
+            {
+                id: 'calendar',
+                label: 'Calendarios de Servicio',
+                icon: CalendarDays,
+                active: activePanel === 'calendar',
+                onClick: () => setActivePanel(activePanel === 'calendar' ? 'none' : 'calendar')
+            },
+            {
+                id: 'empty_segments',
+                label: 'Tramos en Vacío',
+                icon: RouteIcon,
+                active: activePanel === 'empty_segments',
+                onClick: () => setActivePanel(activePanel === 'empty_segments' ? 'none' : 'empty_segments')
+            },
+            {
+                id: 'simulation',
+                label: 'Motor de Simulación',
+                icon: PlayCircle,
+                active: activePanel === 'simulation',
+                onClick: () => setActivePanel(activePanel === 'simulation' ? 'none' : 'simulation')
+            },
+            {
+                id: 'settings',
+                label: 'Ajustes del Proyecto',
+                icon: Settings,
+                active: activePanel === 'settings',
+                onClick: () => setActivePanel(activePanel === 'settings' ? 'none' : 'settings')
+            },
+            {
+                id: 'external_load',
+                label: 'Sincronización DB',
+                icon: Database,
+                active: activePanel === 'external_load',
+                onClick: () => setActivePanel(activePanel === 'external_load' ? 'none' : 'external_load')
+            }
+        ];
 
     return (
         <aside className="group relative z-[70] flex h-full w-[80px] flex-col items-center bg-[#0f172a] border-r utilitarian-border transition-[width] duration-500 ease-out-expo hover:w-72 shadow-[20px_0_50px_rgba(0,0,0,0.2)]">
@@ -172,31 +173,35 @@ const Sidebar: React.FC = () => {
 
             {/* System Controls */}
             <div className="w-full px-4 pt-6 border-t utilitarian-border flex flex-col gap-1.5 pb-4 bg-slate-950/10">
-                <button
-                    onClick={() => setIsImportOpen(true)}
-                    className="flex h-11 w-full items-center rounded-xl text-slate-400 hover:text-emerald-400 hover:bg-emerald-500/5 transition-all duration-300 group/btn"
-                    title="Vincular Datos"
-                >
-                    <div className="flex h-11 w-[48px] shrink-0 items-center justify-center">
-                        <Upload size={18} className="group-hover/btn:-translate-y-0.5 transition-transform" />
-                    </div>
-                    <span className="ml-3 overflow-hidden whitespace-nowrap opacity-0 transition-opacity duration-300 group-hover:opacity-100 text-[11px] font-bold uppercase tracking-widest">
-                        Vincular GTFS
-                    </span>
-                </button>
+                {!isSuperAdmin && (
+                    <>
+                        <button
+                            onClick={() => setIsImportOpen(true)}
+                            className="flex h-11 w-full items-center rounded-xl text-slate-400 hover:text-emerald-400 hover:bg-emerald-500/5 transition-all duration-300 group/btn"
+                            title="Vincular Datos"
+                        >
+                            <div className="flex h-11 w-[48px] shrink-0 items-center justify-center">
+                                <Upload size={18} className="group-hover/btn:-translate-y-0.5 transition-transform" />
+                            </div>
+                            <span className="ml-3 overflow-hidden whitespace-nowrap opacity-0 transition-opacity duration-300 group-hover:opacity-100 text-[11px] font-bold uppercase tracking-widest">
+                                Vincular GTFS
+                            </span>
+                        </button>
 
-                <button
-                    onClick={() => setIsExportOpen(true)}
-                    className="flex h-11 w-full items-center rounded-xl text-slate-400 hover:text-primary hover:bg-primary/5 transition-all duration-300 group/btn"
-                    title="Suministro de Datos"
-                >
-                    <div className="flex h-11 w-[48px] shrink-0 items-center justify-center">
-                        <Download size={18} className="group-hover/btn:translate-y-0.5 transition-transform" />
-                    </div>
-                    <span className="ml-3 overflow-hidden whitespace-nowrap opacity-0 transition-opacity duration-300 group-hover:opacity-100 text-[11px] font-bold uppercase tracking-widest">
-                        Suministrar GTFS
-                    </span>
-                </button>
+                        <button
+                            onClick={() => setIsExportOpen(true)}
+                            className="flex h-11 w-full items-center rounded-xl text-slate-400 hover:text-primary hover:bg-primary/5 transition-all duration-300 group/btn"
+                            title="Suministro de Datos"
+                        >
+                            <div className="flex h-11 w-[48px] shrink-0 items-center justify-center">
+                                <Download size={18} className="group-hover/btn:translate-y-0.5 transition-transform" />
+                            </div>
+                            <span className="ml-3 overflow-hidden whitespace-nowrap opacity-0 transition-opacity duration-300 group-hover:opacity-100 text-[11px] font-bold uppercase tracking-widest">
+                                Suministrar GTFS
+                            </span>
+                        </button>
+                    </>
+                )}
 
                 <button
                     onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')}

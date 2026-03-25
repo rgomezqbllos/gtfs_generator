@@ -125,22 +125,27 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
                         });
                     }
 
-                    // Fetch user's projects
-                    try {
-                        const res = await originalFetch('/api/projects/my', {
-                            headers: { 'Authorization': `Bearer ${keycloak.token}` }
-                        });
-                        const projects = await res.json();
-                        if (Array.isArray(projects)) {
-                            setMyProjects(projects);
-                            if (projects.length > 0) {
-                                setActiveProject(projects[0]); // Select first by default
+                    // SuperAdmin skips project fetch — they only manage infrastructure
+                    const roles = keycloak.realmAccess?.roles || [];
+                    const isAdmin = roles.includes('admin');
+
+                    if (!isAdmin) {
+                        try {
+                            const res = await originalFetch('/api/projects/my', {
+                                headers: { 'Authorization': `Bearer ${keycloak.token}` }
+                            });
+                            const projects = await res.json();
+                            if (Array.isArray(projects)) {
+                                setMyProjects(projects);
+                                if (projects.length > 0) {
+                                    setActiveProject(projects[0]);
+                                }
+                            } else {
+                                console.error('API did not return an array of projects:', projects);
                             }
-                        } else {
-                            console.error('API did not return an array of projects:', projects);
+                        } catch (e) {
+                            console.error('Failed to load user projects', e);
                         }
-                    } catch (e) {
-                        console.error('Failed to load user projects', e);
                     }
                 }
             } catch (error) {
