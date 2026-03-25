@@ -105,6 +105,8 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
                 const authenticated = await keycloak.init({
                     onLoad: 'login-required', // Forces login immediately
                     checkLoginIframe: false,
+                    enableLogging: true,
+                    silentCheckSsoRedirectUri: `${window.location.origin}/silent-check-sso.html`,
                 });
 
                 setIsAuthenticated(authenticated);
@@ -163,7 +165,9 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     }, []);
 
     const login = () => keycloak.login();
-    const logout = () => keycloak.logout();
+    const logout = () => keycloak.logout({
+        redirectUri: window.location.origin
+    });
 
     // Show a loading screen until Keycloak responds
     if (!isInitialized) {
