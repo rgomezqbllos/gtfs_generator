@@ -14,6 +14,7 @@ import {
   Pencil,
   Lock,
   Mail,
+  AlertCircle,
 } from "lucide-react";
 import { clsx } from "clsx";
 import ConfirmModal from "./ConfirmModal";
@@ -46,6 +47,8 @@ export const AdminPanel: React.FC = () => {
   const [userToDelete, setUserToDelete] = useState<string | null>(null);
   const [syncing, setSyncing] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [orphanedUsers, setOrphanedUsers] = useState<any>(null);
+  const [cleanupConfirm, setCleanupConfirm] = useState(false);
 
   const fetchProjects = async () => {
     try {
@@ -172,6 +175,46 @@ export const AdminPanel: React.FC = () => {
       console.error(e);
     } finally {
       setSyncing(false);
+    }
+  };
+
+  const handleCheckOrphaned = async () => {
+    setLoading(true);
+    try {
+      const res = await fetch(`${API_URL}/admin/maintenance/orphaned-users`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      const data = await res.json();
+      setOrphanedUsers(data);
+    } catch (e) {
+      console.error(e);
+      alert("Error al verificar usuarios huérfanos");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleCleanupOrphaned = async () => {
+    setLoading(true);
+    try {
+      const res = await fetch(`${API_URL}/admin/maintenance/cleanup-orphaned`, {
+        method: "POST",
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      const data = await res.json();
+      if (res.ok) {
+        alert(`✅ ${data.message}\n\nEliminados:\n${data.deletedUsers?.join("\n") || "Ninguno"}`);
+        setOrphanedUsers(null);
+        setCleanupConfirm(false);
+        fetchUsers();
+      } else {
+        alert(`Error: ${data.error}`);
+      }
+    } catch (e) {
+      console.error(e);
+      alert("Error al limpiar usuarios");
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -531,14 +574,25 @@ export const AdminPanel: React.FC = () => {
                   <h2 className="text-xl font-display font-bold text-slate-900 dark:text-white">
                     Staff de Operaciones
                   </h2>
-                  <button
-                    onClick={handleSyncAuth}
-                    disabled={syncing}
-                    className="flex items-center gap-2 px-4 py-2 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-[10px] font-bold uppercase tracking-widest text-slate-500 transition-all rounded-xl border utilitarian-border disabled:opacity-50"
-                  >
-                    <RefreshCw size={14} className={clsx(syncing && "animate-spin")} />
-                    {syncing ? "Sincronizando..." : "Sincronizar Auth"}
-                  </button>
+                  <div className="flex gap-2">
+                    <button
+                      onClick={handleCheckOrphaned}
+                      disabled={loading}
+                      className="flex items-center gap-2 px-4 py-2 bg-amber-100 dark:bg-amber-900/30 hover:bg-amber-200 dark:hover:bg-amber-900/50 text-[10px] font-bold uppercase tracking-widest text-amber-700 dark:text-amber-300 transition-all rounded-xl border border-amber-300 dark:border-amber-700 disabled:opacity-50"
+                      title="Detectar usuarios en BD pero no en Keycloak"
+                    >
+                      <AlertCircle size={14} />
+                      {orphanedUsers ? "Mostrar Huérfanos" : "Detectar Huérfanos"}
+                    </button>
+                    <button
+                      onClick={handleSyncAuth}
+                      disabled={syncing}
+                      className="flex items-center gap-2 px-4 py-2 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-[10px] font-bold uppercase tracking-widest text-slate-500 transition-all rounded-xl border utilitarian-border disabled:opacity-50"
+                    >
+                      <RefreshCw size={14} className={clsx(syncing && "animate-spin")} />
+                      {syncing ? "Sincronizando..." : "Sincronizar Auth"}
+                    </button>
+                  </div>
                 </div>
                 <div className="border utilitarian-border rounded-2xl overflow-hidden bg-white dark:bg-slate-900/30">
                   <table className="w-full text-left border-collapse">
@@ -664,6 +718,155 @@ export const AdminPanel: React.FC = () => {
         onCancel={() => setUserToDelete(null)}
         isDestructive={true}
       />
+
+      {/* Orphaned Users Modal */}
+      {orphanedUsers && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
+          <div
+            className="absolute inset-0 bg-slate-950/40 backdrop-blur-md animate-in fade-in duration-300"
+            onClick={() => !cleanupConfirm && setOrphanedUsers(null)}
+          />
+          <div className="relative w-full max-w-2xl bg-white dark:bg-slate-900 rounded-[32px] shadow-[0_0_50px_rgba(0,0,0,0.3)] border utilitarian-border overflow-hidden animate-in zoom-in-95 duration-300">
+            <div className="p-8 border-b utilitarian-border bg-amber-50 dark:bg-amber-900/20">
+              <div className="flex items-center gap-3 mb-2">
+                <AlertCircle size={24} className="text-amber-600 dark:text-amber-400" />
+                <h3 className="text-base font-display font-black text-slate-900 dark:text-white uppercase tracking-tight">
+                  Usuarios Huérfanos
+                </h3>
+              </div>
+              <p className="text-[10px] font-bold text-slate-600 dark:text-slate-400 uppercase tracking-widest mt-1">
+                En BD pero no en Keycloak
+              </p>
+            </div>
+
+            <div className="p-8">
+              <div className="mb-6 p-4 bg-amber-50 dark:bg-amber-900/20 rounded-xl border border-amber-200 dark:border-amber-800">
+                <div className="grid grid-cols-3 gap-4 text-center">
+                  <div>
+                    <div className="text-2xl font-bold text-slate-900 dark:text-white">
+                      {orphanedUsers.totalInDb}
+                    </div>
+                    <div className="text-[10px] font-bold uppercase tracking-widest text-slate-500">
+                      En BD
+                    </div>
+                  </div>
+                  <div>
+                    <div className="text-2xl font-bold text-slate-900 dark:text-white">
+                      {orphanedUsers.totalInKeycloak}
+                    </div>
+                    <div className="text-[10px] font-bold uppercase tracking-widest text-slate-500">
+                      En Keycloak
+                    </div>
+                  </div>
+                  <div>
+                    <div className="text-2xl font-bold text-amber-600 dark:text-amber-400">
+                      {orphanedUsers.orphanedCount}
+                    </div>
+                    <div className="text-[10px] font-bold uppercase tracking-widest text-amber-600 dark:text-amber-400">
+                      Huérfanos
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {orphanedUsers.orphanedCount > 0 ? (
+                <>
+                  <div className="mb-6 max-h-[40vh] overflow-y-auto custom-scrollbar">
+                    <div className="space-y-2">
+                      {orphanedUsers.orphaned.map((user: any, idx: number) => (
+                        <div
+                          key={user.id}
+                          className="p-4 rounded-xl bg-slate-50 dark:bg-slate-800/50 border utilitarian-border flex justify-between items-center"
+                        >
+                          <div>
+                            <div className="font-bold text-slate-900 dark:text-white text-sm">
+                              {user.username}
+                            </div>
+                            <div className="text-[11px] text-slate-500 font-medium">
+                              {user.email}
+                            </div>
+                          </div>
+                          <div className="text-[10px] text-amber-600 dark:text-amber-400 font-bold">
+                            HUÉRFANO
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+
+                  {!cleanupConfirm ? (
+                    <>
+                      <p className="text-[11px] text-slate-600 dark:text-slate-400 mb-6 italic">
+                        Estos usuarios están en la base de datos pero no existen en Keycloak. Probablemente fueron
+                        eliminados de Keycloak manualmente o perdidos en una migración. Puedes limpiarlos de la BD.
+                      </p>
+                      <div className="space-y-3">
+                        <button
+                          onClick={() => setCleanupConfirm(true)}
+                          disabled={loading}
+                          className="w-full py-4 rounded-2xl font-black uppercase tracking-widest text-[11px] bg-amber-600 hover:bg-amber-700 text-white disabled:opacity-50 transition-colors"
+                        >
+                          {loading ? "Limpiando..." : `🗑️ Limpiar ${orphanedUsers.orphanedCount} Usuario${orphanedUsers.orphanedCount > 1 ? "s" : ""}`}
+                        </button>
+                        <button
+                          onClick={() => setOrphanedUsers(null)}
+                          disabled={loading}
+                          className="w-full py-4 rounded-2xl font-black uppercase tracking-widest text-[11px] text-slate-400 hover:text-slate-600 dark:hover:text-white transition-colors disabled:opacity-50"
+                        >
+                          Cancelar
+                        </button>
+                      </div>
+                    </>
+                  ) : (
+                    <>
+                      <div className="mb-6 p-4 bg-red-50 dark:bg-red-900/20 rounded-xl border border-red-200 dark:border-red-800">
+                        <p className="text-sm font-bold text-red-700 dark:text-red-300">
+                          ⚠️ Confirmar eliminación
+                        </p>
+                        <p className="text-[11px] text-red-600 dark:text-red-400 mt-2">
+                          Se eliminarán permanentemente {orphanedUsers.orphanedCount} usuario{orphanedUsers.orphanedCount > 1 ? "s" : ""} de la base de datos. Esta acción no se puede deshacer.
+                        </p>
+                      </div>
+                      <div className="space-y-3">
+                        <button
+                          onClick={handleCleanupOrphaned}
+                          disabled={loading}
+                          className="w-full py-4 rounded-2xl font-black uppercase tracking-widest text-[11px] bg-red-600 hover:bg-red-700 text-white disabled:opacity-50 transition-colors"
+                        >
+                          {loading ? "Eliminando..." : "✓ Confirmar Eliminación"}
+                        </button>
+                        <button
+                          onClick={() => setCleanupConfirm(false)}
+                          disabled={loading}
+                          className="w-full py-4 rounded-2xl font-black uppercase tracking-widest text-[11px] text-slate-400 hover:text-slate-600 dark:hover:text-white transition-colors disabled:opacity-50"
+                        >
+                          Volver
+                        </button>
+                      </div>
+                    </>
+                  )}
+                </>
+              ) : (
+                <div className="text-center py-12">
+                  <CheckCircle2 size={48} className="mx-auto text-green-500 mb-4" />
+                  <p className="text-slate-600 dark:text-slate-400 font-bold">
+                    ✅ No hay usuarios huérfanos
+                  </p>
+                  <p className="text-[11px] text-slate-500 mt-2">
+                    Todos los usuarios en BD existen en Keycloak
+                  </p>
+                  <button
+                    onClick={() => setOrphanedUsers(null)}
+                    className="mt-6 py-4 px-8 rounded-2xl font-black uppercase tracking-widest text-[11px] text-slate-400 hover:text-slate-600 dark:hover:text-white transition-colors"
+                  >
+                    Cerrar
+                  </button>
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* User Editor Modal */}
       {editingUser && (

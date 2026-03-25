@@ -551,18 +551,18 @@ export default async function adminRoutes(fastify: FastifyInstance) {
     // Maintenance: Sync Users from Keycloak
     fastify.post('/admin/maintenance/sync-auth', async (request: any, reply: any) => {
         if (!request.isSuperAdmin) return reply.code(403).send({ error: 'Forbidden' });
-        
+
         try {
             const kc = await getKcAdminClient();
             const kcUsers = await kc.users.find({ max: 500, first: 0 });
 
             console.log(`Syncing ${kcUsers.length} users from Keycloak to local DB...`);
-            
+
             const stmt = db.prepare(`
                 INSERT INTO users (id, username, email)
                 VALUES (?, ?, ?)
-                ON CONFLICT(id) DO UPDATE SET 
-                    username = excluded.username, 
+                ON CONFLICT(id) DO UPDATE SET
+                    username = excluded.username,
                     email = excluded.email
             `);
 
@@ -574,14 +574,85 @@ export default async function adminRoutes(fastify: FastifyInstance) {
 
             transaction(kcUsers);
 
-            return { 
-                success: true, 
+            return {
+                success: true,
                 count: kcUsers.length,
-                message: `Se han sincronizado ${kcUsers.length} usuarios desde Keycloak.` 
+                message: `Se han sincronizado ${kcUsers.length} usuarios desde Keycloak.`
             };
         } catch (error: any) {
             console.error('Sync failed:', error);
             return reply.code(500).send({ error: 'Fallo al sincronizar usuarios' });
+        }
+    });
+
+    // Get orphaned users (in DB but not in Keycloak)
+    fastify.get('/admin/maintenance/orphaned-users', async (request: any, reply: any) => {
+        if (!request.isSuperAdmin) return reply.code(403).send({ error: 'Forbidden' });
+
+        try {
+            const kc = await getKcAdminClient();
+            const kcUsers = await kc.users.find({ max: 500, first: 0 });
+            const kcUserIds = new Set(kcUsers.map(u => u.id));
+
+            // Find users in DB but not in Keycloak
+            const dbUsers = db.prepare('SELECT id, username, email FROM users').all() as any[];
+            const orphaned = dbUsers.filter(u => !kcUserIds.has(u.id));
+
+            return {
+                success: true,
+                totalInDb: dbUsers.length,
+                totalInKeycloak: kcUsers.length,
+                orphanedCount: orphaned.length,
+                orphaned: orphaned
+            };
+        } catch (error: any) {
+            console.error('Check orphaned failed:', error);
+            return reply.code(500).send({ error: 'Fallo al verificar usuarios huérfanos' });
+        }
+    });
+
+    // Clean up orphaned users
+    fastify.post('/admin/maintenance/cleanup-orphaned', async (request: any, reply: any) => {
+        if (!request.isSuperAdmin) return reply.code(403).send({ error: 'Forbidden' });
+
+        try {
+            const kc = await getKcAdminClient();
+            const kcUsers = await kc.users.find({ max: 500, first: 0 });
+            const kcUserIds = new Set(kcUsers.map(u => u.id));
+
+            // Find orphaned users
+            const dbUsers = db.prepare('SELECT id, username FROM users').all() as any[];
+            const orphaned = dbUsers.filter(u => !kcUserIds.has(u.id));
+
+            if (orphaned.length === 0) {
+                return {
+                    success: true,
+                    cleaned: 0,
+                    message: 'No hay usuarios huérfanos para limpiar'
+                };
+            }
+
+            // Delete orphaned users in transaction
+            const deletedUsers: string[] = [];
+            db.transaction(() => {
+                for (const user of orphaned) {
+                    db.prepare('DELETE FROM user_projects WHERE user_id = ?').run(user.id);
+                    db.prepare('DELETE FROM users WHERE id = ?').run(user.id);
+                    deletedUsers.push(`${user.username} (${user.id})`);
+                }
+            })();
+
+            console.log(`Cleaned up ${orphaned.length} orphaned users:`, deletedUsers);
+
+            return {
+                success: true,
+                cleaned: orphaned.length,
+                deletedUsers: deletedUsers,
+                message: `Se eliminaron ${orphaned.length} usuarios huérfanos (en BD pero no en Keycloak)`
+            };
+        } catch (error: any) {
+            console.error('Cleanup failed:', error);
+            return reply.code(500).send({ error: 'Fallo al limpiar usuarios huérfanos' });
         }
     });
 
