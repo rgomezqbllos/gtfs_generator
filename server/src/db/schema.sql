@@ -89,6 +89,7 @@ CREATE TABLE IF NOT EXISTS routes (
     
     -- Custom fields
     allowed_materials TEXT, -- 'buses', 'trains', etc.
+    routing_profile TEXT DEFAULT 'bus_mixed_exclusive', -- Preferred OSRM profile for this route
     PRIMARY KEY (route_id, project_id),
     FOREIGN KEY(project_id) REFERENCES projects(id) ON DELETE CASCADE
 );

@@ -18,4 +18,4 @@ export const routingProfileMetadata = {
 
 export type RoutingProfile = keyof typeof routingProfileMetadata;
 export const routingProfiles = Object.keys(routingProfileMetadata) as RoutingProfile[];
-export const defaultRoutingProfile: RoutingProfile = 'bus_mixed';
+export const defaultRoutingProfile: RoutingProfile = 'bus_mixed_exclusive';

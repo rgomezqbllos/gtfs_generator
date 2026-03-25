@@ -35,6 +35,7 @@ export interface Route {
     route_desc?: string;
     route_url?: string;
     route_sort_order?: number;
+    routing_profile?: RoutingProfile; // Preferred OSRM routing profile for this route
     directions?: any[]; // Simplified
     agency_name?: string; // Enriched
     parkings?: string[]; // Associated parking stop IDs

@@ -33,9 +33,10 @@ interface ConnectionModalProps {
     isOpen: boolean;
     onSelect: (profile: RoutingProfile) => void;
     onCancel: () => void;
+    suggestedProfile?: RoutingProfile;
 }
 
-const ConnectionModal: React.FC<ConnectionModalProps> = ({ isOpen, onSelect, onCancel }) => {
+const ConnectionModal: React.FC<ConnectionModalProps> = ({ isOpen, onSelect, onCancel, suggestedProfile }) => {
     if (!isOpen) return null;
 
     const options = routingProfiles.map(profile => ({
@@ -60,22 +61,37 @@ const ConnectionModal: React.FC<ConnectionModalProps> = ({ isOpen, onSelect, onC
 
                 <div className="p-8 space-y-4">
                     <div className="space-y-3">
-                        {options.map(opt => (
-                            <button
-                                key={opt.id}
-                                onClick={() => onSelect(opt.id)}
-                                className="w-full flex items-center gap-4 p-5 rounded-2xl border utilitarian-border hover:border-primary/50 hover:bg-primary/5 text-left transition-all group relative overflow-hidden active:scale-[0.98]"
-                            >
-                                <div className="absolute top-0 left-0 w-1.5 h-full transition-all group-hover:w-2"
-                                     style={{ backgroundColor: opt.color }} />
-                                
-                                <div className="flex-1">
-                                    <div className="font-display font-black text-[13px] text-slate-900 dark:text-white uppercase tracking-tight">{opt.name}</div>
-                                    <div className="text-[10px] font-bold text-slate-500 uppercase tracking-widest mt-0.5">{opt.desc}</div>
-                                </div>
-                                <ChevronRight size={16} className="text-slate-300 group-hover:text-primary transition-transform group-hover:translate-x-1" />
-                            </button>
-                        ))}
+                        {options.map(opt => {
+                            const isSuggested = opt.id === suggestedProfile;
+                            return (
+                                <button
+                                    key={opt.id}
+                                    onClick={() => onSelect(opt.id)}
+                                    className={clsx(
+                                        "w-full flex items-center gap-4 p-5 rounded-2xl border text-left transition-all group relative overflow-hidden active:scale-[0.98]",
+                                        isSuggested
+                                            ? "border-primary/40 bg-primary/5 shadow-md shadow-primary/10"
+                                            : "utilitarian-border hover:border-primary/50 hover:bg-primary/5"
+                                    )}
+                                >
+                                    <div className="absolute top-0 left-0 w-1.5 h-full transition-all group-hover:w-2"
+                                         style={{ backgroundColor: opt.color }} />
+
+                                    <div className="flex-1 pl-1">
+                                        <div className="flex items-center gap-2">
+                                            <div className="font-display font-black text-[13px] text-slate-900 dark:text-white uppercase tracking-tight">{opt.name}</div>
+                                            {isSuggested && (
+                                                <span className="text-[9px] font-black uppercase tracking-widest px-2 py-0.5 rounded-full text-white" style={{ backgroundColor: opt.color }}>
+                                                    Ruta
+                                                </span>
+                                            )}
+                                        </div>
+                                        <div className="text-[10px] font-bold text-slate-500 uppercase tracking-widest mt-0.5">{opt.desc}</div>
+                                    </div>
+                                    <ChevronRight size={16} className="text-slate-300 group-hover:text-primary transition-transform group-hover:translate-x-1" />
+                                </button>
+                            );
+                        })}
                     </div>
 
                     <div className="pt-4 flex justify-center">
@@ -327,7 +343,7 @@ const MapEditor: React.FC = () => {
     const [pathRoutingProfile, setPathRoutingProfile] = React.useState<RoutingProfile>(defaultRoutingProfile);
 
     React.useEffect(() => {
-        setPathRoutingProfile(defaultRoutingProfile);
+        setPathRoutingProfile((activeRoute?.routing_profile as RoutingProfile | undefined) ?? defaultRoutingProfile);
     }, [activeRoute]);
 
     // Load path when route or direction changes
@@ -970,6 +986,7 @@ const MapEditor: React.FC = () => {
                     setIsConnectionModalOpen(false);
                     setPendingSegmentEndNode(null);
                 }}
+                suggestedProfile={activeRoute?.routing_profile as RoutingProfile | undefined}
             />
             {/* Map Controls */}
             <MapControls

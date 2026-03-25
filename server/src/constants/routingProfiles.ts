@@ -6,7 +6,7 @@ export const ROUTING_PROFILES: RoutingProfile[] = [
     'bus_trunk'
 ];
 
-export const DEFAULT_ROUTING_PROFILE: RoutingProfile = 'bus_mixed';
+export const DEFAULT_ROUTING_PROFILE: RoutingProfile = 'bus_mixed_exclusive';
 
 const OSRM_PROFILE_MAP: Record<RoutingProfile, string> = {
     bus_mixed: 'bus_mixed',
