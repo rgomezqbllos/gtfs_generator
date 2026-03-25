@@ -11,6 +11,9 @@ import {
   Globe,
   CheckCircle2,
   RefreshCw,
+  Pencil,
+  Lock,
+  Mail,
 } from "lucide-react";
 import { clsx } from "clsx";
 import ConfirmModal from "./ConfirmModal";
@@ -18,7 +21,7 @@ import ConfirmModal from "./ConfirmModal";
 import { MapHub } from "./MapHub";
 
 export const AdminPanel: React.FC = () => {
-  const { token } = useAuth();
+  const { token, isSuperAdmin } = useAuth();
   const [activeTab, setActiveTab] = useState<"projects" | "users" | "maps">(
     "projects",
   );
@@ -37,7 +40,12 @@ export const AdminPanel: React.FC = () => {
   const [newUserEmail, setNewUserEmail] = useState("");
   const [newUserPassword, setNewUserPassword] = useState("");
   const [assigningUser, setAssigningUser] = useState<any | null>(null);
+  const [editingUser, setEditingUser] = useState<any | null>(null);
+  const [editEmail, setEditEmail] = useState("");
+  const [editPassword, setEditPassword] = useState("");
+  const [userToDelete, setUserToDelete] = useState<string | null>(null);
   const [syncing, setSyncing] = useState(false);
+  const [loading, setLoading] = useState(false);
 
   const fetchProjects = async () => {
     try {
@@ -203,6 +211,75 @@ export const AdminPanel: React.FC = () => {
       }
     } catch (e) {
       console.error(e);
+    }
+  };
+
+  const handleEditUser = async () => {
+    if (!editingUser || !editEmail) return;
+
+    // Validations
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(editEmail)) {
+      alert("Email inválido");
+      return;
+    }
+
+    if (editPassword && editPassword.length < 8) {
+      alert("La contraseña debe tener al menos 8 caracteres");
+      return;
+    }
+
+    setLoading(true);
+    try {
+      const res = await fetch(`${API_URL}/admin/users/${editingUser.id}`, {
+        method: "PUT",
+        headers: {
+          Authorization: `Bearer ${token}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          username: editingUser.username,
+          email: editEmail,
+          password: editPassword || undefined,
+        }),
+      });
+      if (res.ok) {
+        setEditingUser(null);
+        setEditEmail("");
+        setEditPassword("");
+        fetchUsers();
+        alert("Usuario actualizado correctamente");
+      } else {
+        const error = await res.json();
+        alert(`Error: ${error.error || "No se pudo actualizar el usuario"}`);
+      }
+    } catch (e) {
+      console.error(e);
+      alert("Error al actualizar usuario");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleDeleteUser = async (userId: string) => {
+    setLoading(true);
+    try {
+      const res = await fetch(`${API_URL}/admin/users/${userId}`, {
+        method: "DELETE",
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (res.ok) {
+        setUserToDelete(null);
+        fetchUsers();
+      } else {
+        const error = await res.json();
+        alert(`Error: ${error.error || "No se pudo eliminar el usuario"}`);
+      }
+    } catch (e) {
+      console.error(e);
+      alert("Error al eliminar usuario");
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -469,7 +546,8 @@ export const AdminPanel: React.FC = () => {
                       <tr className="bg-slate-50/50 dark:bg-slate-800/40 text-[10px] font-bold uppercase tracking-[0.2em] text-slate-500 dark:text-slate-400 border-b utilitarian-border">
                         <th className="px-6 py-4">Identidad</th>
                         <th className="px-6 py-4">Proyectos Asignados</th>
-                        <th className="px-6 py-4 text-right">Rol de Sistema</th>
+                        <th className="px-6 py-4 text-center">Rol de Sistema</th>
+                        <th className="px-6 py-4 text-right">Acciones</th>
                       </tr>
                     </thead>
                     <tbody className="divide-y utilitarian-border">
@@ -523,10 +601,34 @@ export const AdminPanel: React.FC = () => {
                               </div>
                             </div>
                           </td>
-                          <td className="px-6 py-4 text-right">
+                          <td className="px-6 py-4 text-center">
                             <span className="px-3 py-1 bg-slate-100 dark:bg-slate-800 text-[10px] font-bold uppercase tracking-widest text-slate-500 rounded-full border utilitarian-border">
                               {u.role || "Operador"}
                             </span>
+                          </td>
+                          <td className="px-6 py-4 text-right">
+                            <div className="flex justify-end gap-2">
+                              <button
+                                onClick={() => {
+                                  setEditingUser(u);
+                                  setEditEmail(u.email);
+                                  setEditPassword("");
+                                }}
+                                className="p-2 text-slate-400 hover:text-blue-500 transition-colors rounded-lg hover:bg-blue-500/10"
+                                title="Editar usuario"
+                              >
+                                <Pencil size={16} />
+                              </button>
+                              {isSuperAdmin && (
+                                <button
+                                  onClick={() => setUserToDelete(u.id)}
+                                  className="p-2 text-slate-400 hover:text-red-500 transition-colors rounded-lg hover:bg-red-500/10"
+                                  title="Eliminar usuario (Solo SuperAdmin)"
+                                >
+                                  <Trash2 size={16} />
+                                </button>
+                              )}
+                            </div>
                           </td>
                         </tr>
                       ))}
@@ -551,6 +653,109 @@ export const AdminPanel: React.FC = () => {
         onCancel={() => setProjectToDelete(null)}
         isDestructive={true}
       />
+
+      <ConfirmModal
+        isOpen={!!userToDelete}
+        title="Dar de Baja Usuario"
+        message={`¿Eliminar a ${users.find((u) => u.id === userToDelete)?.username || "este usuario"}? Esta acción es irreversible.`}
+        onConfirm={() =>
+          userToDelete && handleDeleteUser(userToDelete)
+        }
+        onCancel={() => setUserToDelete(null)}
+        isDestructive={true}
+      />
+
+      {/* User Editor Modal */}
+      {editingUser && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
+          <div
+            className="absolute inset-0 bg-slate-950/40 backdrop-blur-md animate-in fade-in duration-300"
+            onClick={() => setEditingUser(null)}
+          />
+          <div className="relative w-full max-w-sm bg-white dark:bg-slate-900 rounded-[32px] shadow-[0_0_50px_rgba(0,0,0,0.3)] border utilitarian-border overflow-hidden animate-in zoom-in-95 duration-300">
+            <div className="p-8 border-b utilitarian-border bg-slate-50 dark:bg-slate-800/50">
+              <h3 className="text-base font-display font-black text-slate-900 dark:text-white uppercase tracking-tight mb-1">
+                Editar Usuario
+              </h3>
+              <p className="text-[10px] font-bold text-slate-500 uppercase tracking-widest mt-1">
+                {editingUser.username}
+              </p>
+            </div>
+
+            <div className="p-6 space-y-4">
+              <div className="space-y-1.5">
+                <label className="flex items-center gap-2 text-[10px] font-bold uppercase tracking-widest text-slate-500">
+                  <Mail size={12} />
+                  Email Corporativo
+                </label>
+                <input
+                  type="email"
+                  value={editEmail}
+                  onChange={(e) => setEditEmail(e.target.value)}
+                  className="w-full px-4 py-2.5 bg-slate-50 dark:bg-slate-900 border utilitarian-border rounded-xl text-sm outline-none focus:ring-2 focus:ring-primary/20"
+                />
+              </div>
+
+              <div className="space-y-1.5">
+                <label className="flex items-center gap-2 text-[10px] font-bold uppercase tracking-widest text-slate-500">
+                  <Lock size={12} />
+                  Nueva Contraseña (opcional)
+                </label>
+                <input
+                  type="password"
+                  value={editPassword}
+                  onChange={(e) => setEditPassword(e.target.value)}
+                  placeholder="Dejar vacío para no cambiar"
+                  className={clsx(
+                    "w-full px-4 py-2.5 bg-slate-50 dark:bg-slate-900 border rounded-xl text-sm outline-none focus:ring-2",
+                    editPassword
+                      ? editPassword.length < 8
+                        ? "border-red-300 focus:ring-red-500/20"
+                        : "border-green-300 focus:ring-green-500/20"
+                      : "utilitarian-border focus:ring-primary/20"
+                  )}
+                />
+                <div className="flex items-center justify-between">
+                  <p className="text-[9px] text-slate-500 italic">
+                    {editPassword
+                      ? editPassword.length < 8
+                        ? "Mínimo 8 caracteres requeridos"
+                        : "Contraseña válida"
+                      : "Si dejas vacío, no se modificará la contraseña"}
+                  </p>
+                  {editPassword && (
+                    <span
+                      className={clsx(
+                        "text-[9px] font-bold",
+                        editPassword.length < 8 ? "text-red-500" : "text-green-500"
+                      )}
+                    >
+                      {editPassword.length < 8 ? "✗" : "✓"}
+                    </span>
+                  )}
+                </div>
+              </div>
+            </div>
+
+            <div className="p-6 pt-0 space-y-3">
+              <button
+                onClick={handleEditUser}
+                disabled={loading || !editEmail}
+                className="w-full py-4 rounded-2xl font-black uppercase tracking-widest text-[11px] bg-primary text-white hover:bg-primary/90 disabled:opacity-50 transition-colors"
+              >
+                {loading ? "Guardando..." : "Guardar Cambios"}
+              </button>
+              <button
+                onClick={() => setEditingUser(null)}
+                disabled={loading}
+                className="w-full py-4 rounded-2xl font-black uppercase tracking-widest text-[11px] text-slate-400 hover:text-slate-600 dark:hover:text-white transition-colors disabled:opacity-50"
+              >
+                Cancelar
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Project Assigner Modal Override */}
       {assigningUser && (

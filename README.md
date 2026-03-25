@@ -241,3 +241,18 @@ Para mover tus datos a otra computadora o hacer un respaldo, consulta la **[Guí
 - **[Instalación macOS](./INSTALL_MACOS.md)** — Instalación completa en Mac (Intel y Apple Silicon)
 - **[Instalación Linux](./INSTALL_LINUX.md)** — Instalación completa en Ubuntu/Debian/Fedora
 - **[Migración y Backups](./BACKUP_MIGRATION.md)** — Copia de seguridad de la base de datos
+------
+.env
+# Credenciales base
+KEYCLOAK_ADMIN=superadmin
+KEYCLOAK_ADMIN_PASSWORD=superadmin
+KC_DB_PASSWORD=keycloak
+POSTGRES_USER=keycloak
+# Configuración de Red
+ALLOWED_ORIGINS=http://localhost:5173,http://localhost:3001
+OSRM_DOCKER_NETWORK=gtfs_generator_default
+# App
+PORT=3001
+DB_PATH=/data/gtfs.db
+NODE_ENV=development
+----

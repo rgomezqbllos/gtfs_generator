@@ -589,6 +589,13 @@ export default async function adminRoutes(fastify: FastifyInstance) {
     fastify.put<{ Params: { id: string }, Body: { username: string, email: string, firstName?: string, lastName?: string, password?: string } }>('/admin/users/:id', async (request: any, reply: any) => {
         try {
             const id = request.params.id;
+            const payload = request.body;
+
+            // Validate email format
+            const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+            if (!emailRegex.test(payload.email)) {
+                return reply.code(400).send({ error: 'Email inválido' });
+            }
 
             // TenantAdmins can only update users that share at least one project with them where the TenantAdmin is an admin
             if (!request.isSuperAdmin) {
@@ -600,12 +607,11 @@ export default async function adminRoutes(fastify: FastifyInstance) {
                 `).get(viewerId, id);
 
                 if (!sharedProjects) {
-                    return reply.code(403).send({ error: 'You do not have permission to manage this user' });
+                    return reply.code(403).send({ error: 'No tienes permisos para actualizar este usuario' });
                 }
             }
 
             const kc = await getKcAdminClient();
-            const payload = request.body;
 
             await kc.users.update({ id }, {
                 username: payload.username,
@@ -615,6 +621,10 @@ export default async function adminRoutes(fastify: FastifyInstance) {
             });
 
             if (payload.password) {
+                // Validate password strength
+                if (payload.password.length < 8) {
+                    return reply.code(400).send({ error: 'La contraseña debe tener al menos 8 caracteres' });
+                }
                 // Keycloak reset password API expects credential payload
                 await kc.users.resetPassword({
                     id,
@@ -628,34 +638,59 @@ export default async function adminRoutes(fastify: FastifyInstance) {
 
             db.prepare('UPDATE users SET username = ?, email = ? WHERE id = ?').run(payload.username, payload.email, id);
 
-            return { success: true };
+            return { success: true, message: 'Usuario actualizado correctamente' };
         } catch (error: any) {
             console.error('Failed to update user:', error.response?.data || error.message);
-            return reply.code(500).send({ error: error.response?.data?.errorMessage || 'Failed to update user' });
+
+            // Better error messages
+            if (error.response?.data?.errorMessage?.includes('conflict')) {
+                return reply.code(409).send({ error: 'Este email ya está en uso' });
+            }
+            if (error.response?.data?.errorMessage?.includes('duplicate')) {
+                return reply.code(409).send({ error: 'Este nombre de usuario ya existe' });
+            }
+
+            return reply.code(500).send({ error: error.response?.data?.errorMessage || 'Error al actualizar usuario' });
         }
     });
 
     // Delete User
     fastify.delete<{ Params: { id: string } }>('/admin/users/:id', async (request: any, reply: any) => {
         if (!request.isSuperAdmin) {
-            return reply.code(403).send({ error: 'Only SuperAdmin can fully delete users. Remove them from your project instead.' });
+            return reply.code(403).send({ error: 'Solo SuperAdmin puede eliminar usuarios. Usa "Remover de Proyecto" para gestionar acceso.' });
         }
         try {
             const kc = await getKcAdminClient();
             const id = request.params.id;
 
             const user = db.prepare('SELECT username FROM users WHERE id = ?').get(id) as any;
-            if (user?.username === 'admin') {
-                return reply.code(400).send({ error: 'Cannot delete the builtin admin account' });
+            if (!user) {
+                return reply.code(404).send({ error: 'Usuario no encontrado' });
             }
 
-            await kc.users.del({ id });
-            db.prepare('DELETE FROM users WHERE id = ?').run(id);
+            if (user?.username === 'admin') {
+                return reply.code(400).send({ error: 'No se puede eliminar la cuenta de administrador integrada' });
+            }
 
-            return { success: true };
+            // Delete in transaction for consistency
+            db.transaction(() => {
+                // Remove user from all projects first
+                db.prepare('DELETE FROM user_projects WHERE user_id = ?').run(id);
+                // Then delete the user
+                db.prepare('DELETE FROM users WHERE id = ?').run(id);
+            })();
+
+            await kc.users.del({ id });
+
+            return { success: true, message: `Usuario ${user.username} eliminado correctamente` };
         } catch (error: any) {
             console.error('Failed to delete user:', error.response?.data || error.message);
-            return reply.code(500).send({ error: error.response?.data?.errorMessage || 'Failed to delete user' });
+
+            if (error.message?.includes('not found') || error.response?.status === 404) {
+                return reply.code(404).send({ error: 'Usuario no encontrado en Keycloak' });
+            }
+
+            return reply.code(500).send({ error: error.response?.data?.errorMessage || 'Error al eliminar usuario' });
         }
     });
 
