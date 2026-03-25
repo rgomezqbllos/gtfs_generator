@@ -2,7 +2,7 @@ import { FastifyInstance } from 'fastify';
 import db from '../db';
 import { randomUUID } from 'crypto';
 import { fetchRoute, fetchRouteWithWaypoints } from '../services/routing';
-import { mapToOsrmProfile, normalizeRoutingProfile, RoutingProfile } from '../constants/routingProfiles';
+import { mapToOsrmProfile, normalizeRoutingProfile, ROUTING_PROFILES, RoutingProfile, DEFAULT_ROUTING_PROFILE } from '../constants/routingProfiles';
 import { resolveProjectRouting } from '../services/ProjectRoutingService';
 
 interface SegmentBody {
@@ -16,6 +16,104 @@ interface SegmentBody {
 }
 
 export default async function segmentsRoutes(fastify: FastifyInstance) {
+
+    // -----------------------------------------------------------------------
+    // GET /segments/preview?start_node_id=X&end_node_id=Y
+    // Returns route alternatives for all 3 OSRM profiles without persisting.
+    // MUST be registered before GET /segments/:id to avoid path collision.
+    // -----------------------------------------------------------------------
+    fastify.get('/segments/preview', async (request: any, reply: any) => {
+        const { start_node_id, end_node_id } = request.query as { start_node_id?: string; end_node_id?: string };
+        if (!start_node_id || !end_node_id) {
+            return reply.code(400).send({ error: 'start_node_id and end_node_id are required' });
+        }
+
+        const nodes = db.prepare(
+            'SELECT stop_id, stop_lat, stop_lon FROM stops WHERE stop_id IN (?, ?) AND project_id = ?'
+        ).all(start_node_id, end_node_id, request.projectId) as { stop_id: string; stop_lat: number; stop_lon: number }[];
+
+        if (nodes.length < 2 && start_node_id !== end_node_id) {
+            return reply.code(400).send({ error: 'One or both stops do not exist in this project' });
+        }
+
+        const startNode = nodes.find(n => n.stop_id === start_node_id)!;
+        const endNode   = nodes.find(n => n.stop_id === end_node_id)!;
+
+        const routing = await resolveProjectRouting(request.projectId);
+
+        // Helper: straight-line geometry + Haversine distance
+        const straightLine = () => {
+            const geom = { type: 'LineString' as const, coordinates: [[startNode.stop_lon, startNode.stop_lat], [endNode.stop_lon, endNode.stop_lat]] };
+            const R = 6371e3;
+            const φ1 = startNode.stop_lat * Math.PI / 180;
+            const φ2 = endNode.stop_lat  * Math.PI / 180;
+            const Δφ = (endNode.stop_lat  - startNode.stop_lat)  * Math.PI / 180;
+            const Δλ = (endNode.stop_lon  - startNode.stop_lon)  * Math.PI / 180;
+            const a  = Math.sin(Δφ / 2) ** 2 + Math.cos(φ1) * Math.cos(φ2) * Math.sin(Δλ / 2) ** 2;
+            const dist = R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+            return { geom, dist };
+        };
+
+        // Ordered: recommended profile first, then the rest
+        const orderedProfiles: RoutingProfile[] = [
+            DEFAULT_ROUTING_PROFILE,
+            ...ROUTING_PROFILES.filter(p => p !== DEFAULT_ROUTING_PROFILE)
+        ];
+
+        // If no OSRM is configured, return straight-line fallback for all profiles
+        if (!routing.routingUrl) {
+            const { geom, dist } = straightLine();
+            return orderedProfiles.map((profile, i) => ({
+                profile,
+                distance: Math.round(dist),
+                travel_time: null,
+                geometry: geom,
+                recommended: i === 0,
+                available: true,
+                fallback: true
+            }));
+        }
+
+        // Fetch all profiles in parallel
+        const results = await Promise.allSettled(
+            orderedProfiles.map(profile =>
+                fetchRoute(
+                    [startNode.stop_lon, startNode.stop_lat],
+                    [endNode.stop_lon, endNode.stop_lat],
+                    routing.routingUrl || undefined,
+                    mapToOsrmProfile(profile)
+                )
+            )
+        );
+
+        const anyAvailable = results.some(r => r.status === 'fulfilled' && r.value !== null);
+
+        return orderedProfiles.map((profile, i) => {
+            const result = results[i];
+            if (result.status === 'fulfilled' && result.value) {
+                return {
+                    profile,
+                    distance:    Math.round(result.value.distance),
+                    travel_time: Math.round(result.value.duration),
+                    geometry:    result.value.geometry,
+                    recommended: i === 0,
+                    available:   true,
+                    fallback:    false
+                };
+            }
+            // Profile unavailable — use straight-line fallback only if no profiles worked
+            const { geom, dist } = straightLine();
+            return {
+                profile,
+                distance:    anyAvailable ? null : Math.round(dist),
+                travel_time: null,
+                geometry:    anyAvailable ? null : geom,
+                recommended: i === 0,
+                available:   !anyAvailable,
+                fallback:    !anyAvailable
+            };
+        });
+    });
 
     // GET all segments
     fastify.get('/segments', async (request: any) => {
