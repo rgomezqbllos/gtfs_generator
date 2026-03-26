@@ -762,7 +762,7 @@ const RouteDetailsPanel: React.FC<RouteDetailsPanelProps> = ({ route, onClose, o
                                         <div className="flex-1">
                                             <div className="flex items-center gap-2 mb-1">
                                                 <span className="text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-widest">Segmento Vial</span>
-                                                {!isEditing && <Clock size={10} className="text-primary" title="Click para editar franjas horarias" />}
+                                                {!isEditing && <Clock size={10} className="text-primary" />}
                                                 <ChevronRight size={10} className="text-slate-300" />
                                             </div>
                                             <h4 className="font-bold text-slate-900 dark:text-slate-200 text-sm leading-tight">
