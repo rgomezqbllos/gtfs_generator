@@ -154,6 +154,7 @@ export const AdminPanel: React.FC = () => {
       alert("La contraseña debe tener al menos 8 caracteres");
       return;
     }
+    setLoading(true);
     try {
       const res = await fetch(`${API_URL}/admin/users`, {
         method: "POST",
@@ -168,8 +169,8 @@ export const AdminPanel: React.FC = () => {
           role: newUserRole,
         }),
       });
+      const data = await res.json().catch(() => ({}));
       if (res.ok) {
-        const data = await res.json().catch(() => ({}));
         setNewUserName("");
         setNewUserEmail("");
         setNewUserPassword("");
@@ -178,11 +179,12 @@ export const AdminPanel: React.FC = () => {
         alert(data.message || "Usuario creado correctamente");
         return;
       }
-      const error = await res.json().catch(() => ({}));
-      alert(`Error: ${error.error || "No se pudo crear el usuario"}`);
+      alert(`Error: ${data.error || `HTTP ${res.status} — No se pudo crear el usuario`}`);
     } catch (e) {
       console.error(e);
-      alert("Error al crear usuario");
+      alert("Error de conexión al crear usuario");
+    } finally {
+      setLoading(false);
     }
   };
 

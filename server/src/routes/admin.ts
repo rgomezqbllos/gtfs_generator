@@ -39,6 +39,153 @@ async function getKcAdminClient() {
     return kcAdminClient;
 }
 
+/**
+ * Extract a human-readable error message from Keycloak admin client errors.
+ * v26+ uses fetch internally (not axios), so error shapes differ:
+ *   - v26+: error.responseData?.errorMessage, error.response?.status
+ *   - legacy: error.response?.data?.errorMessage, error.response?.status
+ */
+function extractKcError(error: any): { status: number; message: string } {
+    // v26+ fetch-based error shape
+    const status =
+        error?.response?.status ||
+        error?.status ||
+        error?.responseData?.statusCode ||
+        0;
+
+    const message =
+        // v26+ keycloak-admin-client (fetch-based)
+        error?.responseData?.errorMessage ||
+        error?.responseData?.error_description ||
+        error?.responseData?.error ||
+        // Legacy (axios-based)
+        error?.response?.data?.errorMessage ||
+        error?.response?.data?.error_description ||
+        error?.response?.data?.error ||
+        // Generic
+        error?.message ||
+        'Unknown Keycloak error';
+
+    return { status, message };
+}
+
+/**
+ * Fallback: create a Keycloak user via direct REST API call.
+ * Used when @keycloak/keycloak-admin-client fails (e.g., permission issues).
+ */
+async function createKeycloakUserDirect(payload: {
+    username: string;
+    email: string;
+    password?: string;
+    firstName?: string;
+    lastName?: string;
+}): Promise<{ id: string }> {
+    const keycloakUrl = process.env.KEYCLOAK_URL || 'http://localhost:8080';
+    const realm = process.env.KEYCLOAK_REALM || 'gtfs';
+    const clientId = process.env.KEYCLOAK_ADMIN_CLIENT_ID || 'gtfs-admin';
+    const clientSecret = process.env.KEYCLOAK_ADMIN_CLIENT_SECRET || 'gtfs-admin-secret-key-do-not-share';
+
+    // 1. Get admin token via client_credentials
+    const tokenRes = await fetch(
+        `${keycloakUrl}/realms/${realm}/protocol/openid-connect/token`,
+        {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+            body: new URLSearchParams({
+                grant_type: 'client_credentials',
+                client_id: clientId,
+                client_secret: clientSecret,
+            }),
+        }
+    );
+    if (!tokenRes.ok) {
+        const body = await tokenRes.text();
+        throw new Error(`Keycloak auth failed (${tokenRes.status}): ${body}. Verifica que el client '${clientId}' exista en el realm '${realm}' con Service Account habilitado y el secret sea correcto.`);
+    }
+    const { access_token } = (await tokenRes.json()) as { access_token: string };
+
+    // 2. Create user
+    const userPayload: any = {
+        username: payload.username,
+        email: payload.email,
+        firstName: payload.firstName || '',
+        lastName: payload.lastName || '',
+        enabled: true,
+        credentials: [{
+            type: 'password',
+            value: payload.password || 'temp123!',
+            temporary: false,
+        }],
+    };
+
+    const createRes = await fetch(
+        `${keycloakUrl}/admin/realms/${realm}/users`,
+        {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                Authorization: `Bearer ${access_token}`,
+            },
+            body: JSON.stringify(userPayload),
+        }
+    );
+
+    if (createRes.status === 409) {
+        // User already exists — find by username
+        const searchRes = await fetch(
+            `${keycloakUrl}/admin/realms/${realm}/users?username=${encodeURIComponent(payload.username)}&exact=true`,
+            { headers: { Authorization: `Bearer ${access_token}` } }
+        );
+        if (searchRes.ok) {
+            const users = (await searchRes.json()) as any[];
+            if (users.length > 0) return { id: users[0].id };
+        }
+        // Fallback: search by email
+        const searchByEmail = await fetch(
+            `${keycloakUrl}/admin/realms/${realm}/users?email=${encodeURIComponent(payload.email)}&exact=true`,
+            { headers: { Authorization: `Bearer ${access_token}` } }
+        );
+        if (searchByEmail.ok) {
+            const users = (await searchByEmail.json()) as any[];
+            if (users.length > 0) return { id: users[0].id };
+        }
+        throw new Error('El usuario ya existe en Keycloak pero no se pudo localizar');
+    }
+
+    if (createRes.status === 403) {
+        throw new Error(
+            `Keycloak rechazó la creación del usuario (403 Forbidden). ` +
+            `El Service Account del client '${clientId}' necesita el rol 'manage-users' de 'realm-management'. ` +
+            `Ve a Keycloak Admin → Clients → ${clientId} → Service Account Roles → Assign role → realm-management → manage-users.`
+        );
+    }
+
+    if (!createRes.ok) {
+        const body = await createRes.text();
+        let detail = body;
+        try { detail = JSON.parse(body)?.errorMessage || body; } catch {}
+        throw new Error(`Error al crear usuario en Keycloak (${createRes.status}): ${detail}`);
+    }
+
+    // Extract user ID from Location header
+    const location = createRes.headers.get('Location') || '';
+    const userId = location.split('/').pop();
+    if (!userId) {
+        // Fallback: search by username
+        const searchRes = await fetch(
+            `${keycloakUrl}/admin/realms/${realm}/users?username=${encodeURIComponent(payload.username)}&exact=true`,
+            { headers: { Authorization: `Bearer ${access_token}` } }
+        );
+        if (searchRes.ok) {
+            const users = (await searchRes.json()) as any[];
+            if (users.length > 0) return { id: users[0].id };
+        }
+        throw new Error('Usuario creado pero no se pudo obtener su ID');
+    }
+
+    return { id: userId };
+}
+
 function collectFilesRecursive(dir: string): string[] {
     const entries = fs.readdirSync(dir, { withFileTypes: true });
     const files: string[] = [];
@@ -514,12 +661,18 @@ export default async function adminRoutes(fastify: FastifyInstance) {
     // Create User (Keycloak + Local) — SuperAdmin only, can create admin or operations users
     fastify.post<{ Body: { username: string, email: string, password?: string, firstName?: string, lastName?: string, role?: string } }>('/admin/users', async (request: any, reply: any) => {
         if (!request.isSuperAdmin) return reply.code(403).send({ error: 'Solo SuperAdmin puede crear usuarios' });
+
+        const payload = request.body;
+        if (!payload.username?.trim() || !payload.email?.trim()) {
+            return reply.code(400).send({ error: 'Username y email son obligatorios' });
+        }
+
+        const userRole = payload.role === 'admin' ? 'admin' : 'operations';
+        let userId: string;
+
+        // Strategy 1: Try via keycloak-admin-client library
         try {
             const kc = await getKcAdminClient();
-            const payload = request.body;
-            const userRole = payload.role === 'admin' ? 'admin' : 'operations';
-
-            let userId: string;
             try {
                 const kcUser = await kc.users.create({
                     username: payload.username,
@@ -535,17 +688,27 @@ export default async function adminRoutes(fastify: FastifyInstance) {
                 });
                 userId = kcUser.id;
             } catch (kcError: any) {
-                // Check if user already exists in Keycloak
-                if (kcError.response?.status === 409 || (kcError.response?.data?.errorMessage?.includes('exists'))) {
+                const { status, message } = extractKcError(kcError);
+
+                // User already exists — find and sync
+                if (status === 409 || message?.toLowerCase().includes('exists')) {
                     console.log('User already exists in Keycloak, attempting to find and sync...');
-                    const existingUsers = await kc.users.find({ email: payload.email });
-                    if (existingUsers.length > 0) {
-                        userId = existingUsers[0].id!;
+                    const byUsername = await kc.users.find({ username: payload.username, exact: true });
+                    if (byUsername.length > 0) {
+                        userId = byUsername[0].id!;
                     } else {
-                        throw kcError;
+                        const byEmail = await kc.users.find({ email: payload.email });
+                        if (byEmail.length > 0) {
+                            userId = byEmail[0].id!;
+                        } else {
+                            throw new Error('El usuario ya existe en Keycloak pero no se pudo localizar');
+                        }
                     }
-                } else {
+                } else if (status === 403) {
+                    // Permission issue — fall through to direct REST API
                     throw kcError;
+                } else {
+                    throw new Error(message);
                 }
             }
 
@@ -556,33 +719,74 @@ export default async function adminRoutes(fastify: FastifyInstance) {
                     const adminRole = realmRoles.find((r: any) => r.name === 'admin');
                     if (adminRole) {
                         await kc.users.addRealmRoleMappings({
-                            id: userId,
+                            id: userId!,
                             roles: [{ id: adminRole.id!, name: 'admin' }],
                         });
                     }
                 } catch (roleError: any) {
-                    console.error('Failed to assign admin role:', roleError.message);
+                    console.warn('Failed to assign admin role via library:', roleError.message);
                 }
             }
+        } catch (libraryError: any) {
+            // Strategy 2: Fallback to direct Keycloak REST API
+            const { status: kcStatus } = extractKcError(libraryError);
+            console.warn(`keycloak-admin-client failed (status=${kcStatus}): ${libraryError.message}. Falling back to direct REST API...`);
 
-            db.prepare(`
-                INSERT INTO users (id, username, email)
-                VALUES (?, ?, ?)
-                ON CONFLICT(id) DO UPDATE SET
-                    username = excluded.username,
-                    email = excluded.email
-            `).run(userId, payload.username, payload.email);
+            try {
+                const result = await createKeycloakUserDirect(payload);
+                userId = result.id;
 
-            return { success: true, id: userId, role: userRole, message: `Usuario ${userRole} creado correctamente` };
-        } catch (error: any) {
-            const details =
-                error?.response?.data?.errorMessage ||
-                error?.response?.data?.error_description ||
-                error?.response?.data?.error ||
-                error?.message;
-            console.error('Failed to create/sync user:', error.response?.data || error.message);
-            return reply.code(500).send({ error: details || 'Failed to manage user' });
+                // Assign admin role via direct REST API if needed
+                if (userRole === 'admin') {
+                    try {
+                        const keycloakUrl = process.env.KEYCLOAK_URL || 'http://localhost:8080';
+                        const realm = process.env.KEYCLOAK_REALM || 'gtfs';
+                        const clientId = process.env.KEYCLOAK_ADMIN_CLIENT_ID || 'gtfs-admin';
+                        const clientSecret = process.env.KEYCLOAK_ADMIN_CLIENT_SECRET || 'gtfs-admin-secret-key-do-not-share';
+
+                        const tokenRes = await fetch(`${keycloakUrl}/realms/${realm}/protocol/openid-connect/token`, {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+                            body: new URLSearchParams({ grant_type: 'client_credentials', client_id: clientId, client_secret: clientSecret }),
+                        });
+                        if (tokenRes.ok) {
+                            const { access_token } = (await tokenRes.json()) as { access_token: string };
+                            // Find admin role
+                            const rolesRes = await fetch(`${keycloakUrl}/admin/realms/${realm}/roles`, {
+                                headers: { Authorization: `Bearer ${access_token}` },
+                            });
+                            if (rolesRes.ok) {
+                                const roles = (await rolesRes.json()) as any[];
+                                const adminRole = roles.find((r: any) => r.name === 'admin');
+                                if (adminRole) {
+                                    await fetch(`${keycloakUrl}/admin/realms/${realm}/users/${userId}/role-mappings/realm`, {
+                                        method: 'POST',
+                                        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${access_token}` },
+                                        body: JSON.stringify([{ id: adminRole.id, name: 'admin' }]),
+                                    });
+                                }
+                            }
+                        }
+                    } catch (roleError: any) {
+                        console.warn('Failed to assign admin role via REST API:', roleError.message);
+                    }
+                }
+            } catch (directError: any) {
+                console.error('Direct Keycloak REST API also failed:', directError.message);
+                return reply.code(500).send({ error: directError.message });
+            }
         }
+
+        // Save to local DB
+        db.prepare(`
+            INSERT INTO users (id, username, email)
+            VALUES (?, ?, ?)
+            ON CONFLICT(id) DO UPDATE SET
+                username = excluded.username,
+                email = excluded.email
+        `).run(userId!, payload.username, payload.email);
+
+        return { success: true, id: userId!, role: userRole, message: `Usuario ${userRole} creado correctamente` };
     });
 
     // Maintenance: Sync Users from Keycloak
@@ -748,17 +952,17 @@ export default async function adminRoutes(fastify: FastifyInstance) {
 
             return { success: true, message: 'Usuario actualizado correctamente' };
         } catch (error: any) {
-            console.error('Failed to update user:', error.response?.data || error.message);
+            const { status: kcStatus, message: kcMsg } = extractKcError(error);
+            console.error('Failed to update user:', kcMsg);
 
-            // Better error messages
-            if (error.response?.data?.errorMessage?.includes('conflict')) {
-                return reply.code(409).send({ error: 'Este email ya está en uso' });
+            if (kcStatus === 409 || kcMsg?.toLowerCase().includes('conflict')) {
+                return reply.code(409).send({ error: 'Este email o username ya está en uso' });
             }
-            if (error.response?.data?.errorMessage?.includes('duplicate')) {
+            if (kcMsg?.toLowerCase().includes('duplicate')) {
                 return reply.code(409).send({ error: 'Este nombre de usuario ya existe' });
             }
 
-            return reply.code(500).send({ error: error.response?.data?.errorMessage || 'Error al actualizar usuario' });
+            return reply.code(500).send({ error: kcMsg || 'Error al actualizar usuario' });
         }
     });
 
@@ -792,13 +996,14 @@ export default async function adminRoutes(fastify: FastifyInstance) {
 
             return { success: true, message: `Usuario ${user.username} eliminado correctamente` };
         } catch (error: any) {
-            console.error('Failed to delete user:', error.response?.data || error.message);
+            const { status: kcStatus, message: kcMsg } = extractKcError(error);
+            console.error('Failed to delete user:', kcMsg);
 
-            if (error.message?.includes('not found') || error.response?.status === 404) {
+            if (kcMsg?.includes('not found') || kcStatus === 404) {
                 return reply.code(404).send({ error: 'Usuario no encontrado en Keycloak' });
             }
 
-            return reply.code(500).send({ error: error.response?.data?.errorMessage || 'Error al eliminar usuario' });
+            return reply.code(500).send({ error: kcMsg || 'Error al eliminar usuario' });
         }
     });
 

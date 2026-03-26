@@ -78,5 +78,13 @@
       "client": "gtfs-admin",
       "roles": ["admin"]
     }
-  ]
+  ],
+  "clientScopeMappings": {
+    "realm-management": [
+      {
+        "client": "gtfs-admin",
+        "roles": ["manage-users", "view-users", "manage-realm", "view-realm"]
+      }
+    ]
+  }
 }
