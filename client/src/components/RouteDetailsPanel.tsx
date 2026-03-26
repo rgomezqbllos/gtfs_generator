@@ -35,7 +35,7 @@ const RouteDetailsPanel: React.FC<RouteDetailsPanelProps> = ({ route, onClose, o
     const [showTimeSlots, setShowTimeSlots] = React.useState(false);
 
     const [isAdding, setIsAdding] = React.useState<'prepend' | 'append' | null>(null);
-    const [stopSearch, setStopSearch] = React.useState('');
+    const [segmentSearch, setSegmentSearch] = React.useState('');
     const [savingSegment, setSavingSegment] = React.useState(false);
 
     const [targetDuration, setTargetDuration] = React.useState<number | null>(null);
@@ -95,26 +95,11 @@ const RouteDetailsPanel: React.FC<RouteDetailsPanelProps> = ({ route, onClose, o
                 currentDist += (seg.distance || 0);
                 currentTime += (seg.travel_time || 0);
 
-                processed.push({
-                    segment: seg,
-                    startStop,
-                    endStop,
-                    accumulatedDist: currentDist,
-                    accumulatedTime: currentTime
-                });
+                processed.push({ segment: seg, startStop, endStop, accumulatedDist: currentDist, accumulatedTime: currentTime });
             } else {
                 processed.push({
-                    segment: {
-                        segment_id: `missing-${i}`,
-                        start_node_id: startId,
-                        end_node_id: endId,
-                        distance: 0,
-                        travel_time: 0
-                    } as Segment,
-                    startStop,
-                    endStop,
-                    accumulatedDist: currentDist,
-                    accumulatedTime: currentTime
+                    segment: { segment_id: `missing-${i}`, start_node_id: startId, end_node_id: endId, distance: 0, travel_time: 0 } as Segment,
+                    startStop, endStop, accumulatedDist: currentDist, accumulatedTime: currentTime
                 });
             }
         }
@@ -134,64 +119,43 @@ const RouteDetailsPanel: React.FC<RouteDetailsPanelProps> = ({ route, onClose, o
         return stops.find(s => s.stop_id === anchorStopId) || null;
     }, [anchorStopId, stops]);
 
-    // Compatible existing segments (already created, connect to anchor)
+    // Compatible existing segments: revenue segments that connect to the anchor node
     const compatibleSegments = React.useMemo(() => {
-        if (!anchorStopId || !isAdding) return [];
-        return allSegments.filter(s => {
-            if (s.type === 'empty') return false;
-            if (isAdding === 'append') return s.start_node_id === anchorStopId;
-            if (isAdding === 'prepend') return s.end_node_id === anchorStopId;
-            return false;
-        });
-    }, [anchorStopId, isAdding, allSegments]);
-
-    // Stops already used in this path (to exclude from suggestions)
-    const usedStopIds = React.useMemo(() => new Set(pathStops), [pathStops]);
-
-    // Calculate distance between two stops (Haversine)
-    const calcDistance = React.useCallback((a: Stop, b: Stop): number => {
-        const R = 6371000;
-        const dLat = (b.stop_lat - a.stop_lat) * Math.PI / 180;
-        const dLon = (b.stop_lon - a.stop_lon) * Math.PI / 180;
-        const sinLat = Math.sin(dLat / 2);
-        const sinLon = Math.sin(dLon / 2);
-        const h = sinLat * sinLat + Math.cos(a.stop_lat * Math.PI / 180) * Math.cos(b.stop_lat * Math.PI / 180) * sinLon * sinLon;
-        return R * 2 * Math.atan2(Math.sqrt(h), Math.sqrt(1 - h));
-    }, []);
-
-    // Available stops for next connection, sorted by proximity
-    const availableStops = React.useMemo(() => {
         if (!isAdding) return [];
 
-        const searchLower = stopSearch.toLowerCase().trim();
+        const searchLower = segmentSearch.toLowerCase().trim();
 
-        // For empty routes, show all stops
+        // For empty routes: show ALL revenue segments
         if (pathStops.length === 0) {
-            return stops
+            return allSegments
+                .filter(s => s.type !== 'empty')
                 .filter(s => {
                     if (!searchLower) return true;
-                    return s.stop_name?.toLowerCase().includes(searchLower) ||
-                           s.stop_code?.toLowerCase().includes(searchLower) ||
-                           s.stop_id?.toLowerCase().includes(searchLower);
+                    const startName = (s as any).start_node_name || '';
+                    const endName = (s as any).end_node_name || '';
+                    return startName.toLowerCase().includes(searchLower) ||
+                           endName.toLowerCase().includes(searchLower);
                 })
-                .slice(0, 30);
+                .slice(0, 50);
         }
 
-        if (!anchorStop) return [];
+        if (!anchorStopId) return [];
 
-        // Filter stops: exclude used ones, filter by search, sort by distance to anchor
-        return stops
-            .filter(s => !usedStopIds.has(s.stop_id))
+        return allSegments
+            .filter(s => {
+                if (s.type === 'empty') return false;
+                if (isAdding === 'append') return s.start_node_id === anchorStopId;
+                if (isAdding === 'prepend') return s.end_node_id === anchorStopId;
+                return false;
+            })
             .filter(s => {
                 if (!searchLower) return true;
-                return s.stop_name?.toLowerCase().includes(searchLower) ||
-                       s.stop_code?.toLowerCase().includes(searchLower) ||
-                       s.stop_id?.toLowerCase().includes(searchLower);
-            })
-            .map(s => ({ ...s, _dist: calcDistance(anchorStop, s) }))
-            .sort((a, b) => a._dist - b._dist)
-            .slice(0, 30);
-    }, [isAdding, pathStops, anchorStop, stops, usedStopIds, stopSearch, calcDistance]);
+                const startName = (s as any).start_node_name || '';
+                const endName = (s as any).end_node_name || '';
+                return startName.toLowerCase().includes(searchLower) ||
+                       endName.toLowerCase().includes(searchLower);
+            });
+    }, [isAdding, pathStops, anchorStopId, allSegments, segmentSearch]);
 
     // Focus search when panel opens
     React.useEffect(() => {
@@ -203,12 +167,12 @@ const RouteDetailsPanel: React.FC<RouteDetailsPanelProps> = ({ route, onClose, o
     const handleStartAdding = (type: 'prepend' | 'append') => {
         if (isAdding === type) {
             setIsAdding(null);
-            setStopSearch('');
+            setSegmentSearch('');
             cancelPicking();
             return;
         }
         setIsAdding(type);
-        setStopSearch('');
+        setSegmentSearch('');
         cancelPicking();
     };
 
@@ -216,62 +180,87 @@ const RouteDetailsPanel: React.FC<RouteDetailsPanelProps> = ({ route, onClose, o
         return () => cancelPicking();
     }, []);
 
-    // Select a stop to add — backend auto-creates segment via OSRM
-    const handleSelectStop = async (stop: Stop) => {
+    // Select an existing segment — add it to the route
+    const handleSelectSegment = async (seg: Segment) => {
         if (savingSegment) return;
         setSavingSegment(true);
 
         try {
             let newStopIds = [...pathStops];
-            if (pathStops.length === 0) {
-                // First stop selected — need a second one to form a segment
-                // For now, just set this as the starting point
-                newStopIds = [stop.stop_id];
-                setPathStops(newStopIds);
-                setSavingSegment(false);
-                return;
+
+            if (routeSegments.length === 0) {
+                newStopIds = [seg.start_node_id, seg.end_node_id];
             } else if (isAdding === 'prepend') {
-                newStopIds.unshift(stop.stop_id);
+                newStopIds.unshift(seg.start_node_id);
             } else if (isAdding === 'append') {
-                newStopIds.push(stop.stop_id);
+                newStopIds.push(seg.end_node_id);
             }
 
-            await handleSavePath(newStopIds);
-            setStopSearch('');
-        } catch (e) {
-            console.error(e);
+            let segmentsToUpdate: Segment[] = [];
+            if (targetDuration) {
+                const current = routeSegments.map(r => r.segment);
+                const combined = isAdding === 'prepend' ? [seg, ...current] : [...current, seg];
+                segmentsToUpdate = recalculateSegmentTimes(combined, targetDuration * 60);
+            }
+
+            await handleSavePath(newStopIds, segmentsToUpdate);
         } finally {
             setSavingSegment(false);
         }
     };
 
-    // Select an existing segment directly
-    const handleSelectExistingSegment = (seg: Segment) => {
-        let newStopIds = [...pathStops];
+    // Enable map picking mode for segments (legacy behavior)
+    const handlePickSegmentFromMap = () => {
+        startPicking('segment', (segmentId) => {
+            const seg = allSegments.find(s => s.segment_id === segmentId);
+            if (!seg) return;
 
-        if (routeSegments.length === 0) {
-            newStopIds = [seg.start_node_id, seg.end_node_id];
-        } else if (isAdding === 'prepend') {
-            newStopIds.unshift(seg.start_node_id);
-        } else if (isAdding === 'append') {
-            newStopIds.push(seg.end_node_id);
-        }
+            if (seg.type === 'empty') {
+                alert("No se pueden anadir segmentos vacios a una ruta comercial.");
+                return;
+            }
 
-        let segmentsToUpdate: Segment[] = [];
-        if (targetDuration) {
-            const current = routeSegments.map(r => r.segment);
-            const combined = isAdding === 'prepend' ? [seg, ...current] : [...current, seg];
-            segmentsToUpdate = recalculateSegmentTimes(combined, targetDuration * 60);
-        }
+            let isValid = false;
+            if (routeSegments.length === 0) {
+                isValid = true;
+            } else if (isAdding === 'prepend') {
+                isValid = seg.end_node_id === pathStops[0];
+            } else if (isAdding === 'append') {
+                isValid = seg.start_node_id === pathStops[pathStops.length - 1];
+            }
 
-        handleSavePath(newStopIds, segmentsToUpdate);
+            if (isValid) {
+                handleSelectSegment(seg);
+            } else {
+                alert("Segmento invalido: no conecta con el nodo actual de la ruta.");
+            }
+        });
     };
 
-    // Enable map picking mode for stops
-    const handlePickFromMap = () => {
-        startPicking('stop', (stopId) => {
+    // Enable map picking mode for stops (creates segment automatically)
+    const handlePickStopFromMap = () => {
+        startPicking('stop', async (stopId) => {
             const stop = stops.find(s => s.stop_id === stopId);
-            if (stop) handleSelectStop(stop);
+            if (!stop) return;
+
+            if (savingSegment) return;
+            setSavingSegment(true);
+
+            try {
+                let newStopIds = [...pathStops];
+                if (pathStops.length === 0) {
+                    // Can't create a path with just 1 stop — need at least 2
+                    alert("Primero selecciona un segmento existente o selecciona dos paradas.");
+                    return;
+                } else if (isAdding === 'prepend') {
+                    newStopIds.unshift(stopId);
+                } else if (isAdding === 'append') {
+                    newStopIds.push(stopId);
+                }
+                await handleSavePath(newStopIds);
+            } finally {
+                setSavingSegment(false);
+            }
         });
     };
 
@@ -286,7 +275,10 @@ const RouteDetailsPanel: React.FC<RouteDetailsPanelProps> = ({ route, onClose, o
                 })
             });
 
-            if (!res.ok) throw new Error("Error al guardar el trayecto");
+            if (!res.ok) {
+                const errorData = await res.json().catch(() => ({}));
+                throw new Error(errorData.error || `HTTP ${res.status}`);
+            }
 
             if (updatedSegments.length > 0) {
                 await Promise.all(updatedSegments.map(seg =>
@@ -305,15 +297,15 @@ const RouteDetailsPanel: React.FC<RouteDetailsPanelProps> = ({ route, onClose, o
 
             setPathStops(newStopIds);
             setIsAdding(null);
-            setStopSearch('');
+            setSegmentSearch('');
             cancelPicking();
 
-            // Refetch to get the auto-created segments
+            // Refetch to get auto-created segments
             setTimeout(() => fetchData(), 300);
 
-        } catch (e) {
+        } catch (e: any) {
             console.error(e);
-            alert("Error al sincronizar recorrido");
+            alert(`Error: ${e.message || 'No se pudo sincronizar el recorrido'}`);
         }
     }
 
@@ -326,29 +318,22 @@ const RouteDetailsPanel: React.FC<RouteDetailsPanelProps> = ({ route, onClose, o
             if (index === segments.length - 1) {
                 return { ...s, travel_time: Math.max(0, totalTimeSeconds - accumulatedTime) };
             }
-
             const proportion = (s.distance || 0) / totalDist;
             const segmentTime = Math.round(totalTimeSeconds * proportion);
             accumulatedTime += segmentTime;
-
-            return {
-                ...s,
-                travel_time: segmentTime
-            };
+            return { ...s, travel_time: segmentTime };
         });
     };
 
     const handleTimeChange = (newTimeMinutes: number) => {
         setTargetDuration(newTimeMinutes);
         const totalTimeSeconds = newTimeMinutes * 60;
-
         const currentRouteSegments = routeSegments.map(rs => rs.segment);
         const totalDist = currentRouteSegments.reduce((sum, s) => sum + (s.distance || 0), 0);
         if (totalDist > 0) {
             const speedKmh = (totalDist / 1000) / (newTimeMinutes / 60);
             setTargetSpeed(parseFloat(speedKmh.toFixed(1)));
         }
-
         const updatedSegments = recalculateSegmentTimes(currentRouteSegments, totalTimeSeconds);
         setAllSegments(prev => prev.map(s => {
             const updated = updatedSegments.find(u => u.segment_id === s.segment_id);
@@ -358,15 +343,12 @@ const RouteDetailsPanel: React.FC<RouteDetailsPanelProps> = ({ route, onClose, o
 
     const handleSpeedChange = (newSpeedKmh: number) => {
         setTargetSpeed(newSpeedKmh);
-
         const currentRouteSegments = routeSegments.map(rs => rs.segment);
         const totalDist = currentRouteSegments.reduce((sum, s) => sum + (s.distance || 0), 0);
-
         if (newSpeedKmh > 0 && totalDist > 0) {
             const timeHours = (totalDist / 1000) / newSpeedKmh;
             const timeMinutes = Math.round(timeHours * 60);
             setTargetDuration(timeMinutes);
-
             const updatedSegments = recalculateSegmentTimes(currentRouteSegments, timeMinutes * 60);
             setAllSegments(prev => prev.map(s => {
                 const updated = updatedSegments.find(u => u.segment_id === s.segment_id);
@@ -379,11 +361,9 @@ const RouteDetailsPanel: React.FC<RouteDetailsPanelProps> = ({ route, onClose, o
         if (targetDuration && routeSegments.length > 0) {
             const currentSegments = routeSegments.map(rs => rs.segment);
             const currentTotalTime = currentSegments.reduce((sum, s) => sum + (s.travel_time || 0), 0);
-
             if (Math.abs(currentTotalTime - (targetDuration * 60)) > 60) {
                 const updated = recalculateSegmentTimes(currentSegments, targetDuration * 60);
                 const hasChanges = updated.some((u, i) => u.travel_time !== currentSegments[i].travel_time);
-
                 if (hasChanges) {
                     setAllSegments(prev => prev.map(s => {
                         const up = updated.find(u => u.segment_id === s.segment_id);
@@ -395,9 +375,7 @@ const RouteDetailsPanel: React.FC<RouteDetailsPanelProps> = ({ route, onClose, o
     }, [routeSegments.length, targetDuration]);
 
     const handleRemoveSegment = (index: number) => {
-        if (index !== 0 && index !== routeSegments.length - 1) {
-            return;
-        }
+        if (index !== 0 && index !== routeSegments.length - 1) return;
 
         const newStopIds = [...pathStops];
         if (index === 0) {
@@ -408,10 +386,7 @@ const RouteDetailsPanel: React.FC<RouteDetailsPanelProps> = ({ route, onClose, o
 
         let segmentsToUpdate: Segment[] = [];
         if (targetDuration) {
-            const remainingSegments = routeSegments
-                .filter((_, i) => i !== index)
-                .map(r => r.segment);
-
+            const remainingSegments = routeSegments.filter((_, i) => i !== index).map(r => r.segment);
             segmentsToUpdate = recalculateSegmentTimes(remainingSegments, targetDuration * 60);
         }
 
@@ -429,13 +404,18 @@ const RouteDetailsPanel: React.FC<RouteDetailsPanelProps> = ({ route, onClose, o
         return `${Math.round(meters)} m`;
     };
 
-    // Render the stop/segment picker inline panel
+    const getSegmentDisplayName = (seg: Segment) => {
+        const startName = (seg as any).start_node_name || stops.find(s => s.stop_id === seg.start_node_id)?.stop_name || seg.start_node_id;
+        const endName = (seg as any).end_node_name || stops.find(s => s.stop_id === seg.end_node_id)?.stop_name || seg.end_node_id;
+        return { startName, endName };
+    };
+
+    // Render segment picker panel
     const renderAddPanel = () => {
         if (!isAdding) return null;
 
         const isFirstSegment = pathStops.length === 0;
-        const anchor = anchorStop;
-        const isMapPicking = pickingState.isActive && pickingState.type === 'stop';
+        const isMapPicking = pickingState.isActive;
 
         return (
             <div className="mx-2 mb-4 bg-white dark:bg-slate-800/60 border-2 border-primary/30 rounded-2xl overflow-hidden animate-in fade-in slide-in-from-top-2 duration-300">
@@ -447,136 +427,129 @@ const RouteDetailsPanel: React.FC<RouteDetailsPanelProps> = ({ route, onClose, o
                                 <Navigation size={14} className="text-primary" />
                             </div>
                             <h4 className="text-xs font-bold text-slate-900 dark:text-white uppercase tracking-wider">
-                                {isFirstSegment ? 'Seleccionar Parada de Inicio' : isAdding === 'append' ? 'Siguiente Parada' : 'Parada Anterior'}
+                                {isFirstSegment ? 'Seleccionar Primer Segmento' : isAdding === 'append' ? 'Anexar Segmento' : 'Anteponer Segmento'}
                             </h4>
                         </div>
                         <button
-                            onClick={() => { setIsAdding(null); setStopSearch(''); cancelPicking(); }}
+                            onClick={() => { setIsAdding(null); setSegmentSearch(''); cancelPicking(); }}
                             className="p-1.5 text-slate-400 hover:text-red-500 rounded-lg hover:bg-red-50 dark:hover:bg-red-900/20 transition-all"
                         >
                             <X size={14} />
                         </button>
                     </div>
 
-                    {anchor && (
+                    {anchorStop && (
                         <div className="flex items-center gap-2 text-[10px] text-slate-500">
                             <MapPin size={10} className="text-primary" />
-                            <span>Conectando desde: <strong className="text-slate-700 dark:text-slate-300">{anchor.stop_name}</strong></span>
+                            <span>
+                                {isAdding === 'append' ? 'Continuando desde' : 'Conectando antes de'}:
+                                <strong className="text-slate-700 dark:text-slate-300 ml-1">{anchorStop.stop_name}</strong>
+                            </span>
                         </div>
                     )}
                 </div>
 
-                {/* Search + Map Pick */}
+                {/* Search + Map Pick buttons */}
                 <div className="px-4 pt-3 pb-2 flex gap-2">
                     <div className="flex-1 relative">
                         <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
                         <input
                             ref={searchInputRef}
                             type="text"
-                            value={stopSearch}
-                            onChange={e => setStopSearch(e.target.value)}
-                            placeholder="Buscar parada por nombre o codigo..."
+                            value={segmentSearch}
+                            onChange={e => setSegmentSearch(e.target.value)}
+                            placeholder="Buscar segmento por nombre de parada..."
                             className="w-full pl-9 pr-3 py-2.5 text-xs bg-slate-50 dark:bg-slate-900/50 border border-slate-200 dark:border-slate-700 rounded-xl focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary transition-all"
                         />
                     </div>
                     <button
-                        onClick={isMapPicking ? () => cancelPicking() : handlePickFromMap}
+                        onClick={isMapPicking ? () => cancelPicking() : handlePickSegmentFromMap}
                         className={clsx(
-                            "px-3 py-2.5 rounded-xl text-[10px] font-bold uppercase tracking-wider flex items-center gap-1.5 transition-all whitespace-nowrap",
+                            "px-2.5 py-2.5 rounded-xl text-[9px] font-bold uppercase tracking-wider flex items-center gap-1 transition-all whitespace-nowrap",
                             isMapPicking
                                 ? "bg-primary text-white shadow-lg shadow-primary/30 animate-pulse"
                                 : "bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300 hover:bg-primary/10 hover:text-primary border border-slate-200 dark:border-slate-600"
                         )}
+                        title="Seleccionar segmento en el mapa"
                     >
-                        <MapPin size={12} />
-                        {isMapPicking ? 'Eligiendo...' : 'Mapa'}
+                        <Ruler size={11} />
+                        Seg
+                    </button>
+                    <button
+                        onClick={isMapPicking ? () => cancelPicking() : handlePickStopFromMap}
+                        className={clsx(
+                            "px-2.5 py-2.5 rounded-xl text-[9px] font-bold uppercase tracking-wider flex items-center gap-1 transition-all whitespace-nowrap",
+                            pickingState.isActive && pickingState.type === 'stop'
+                                ? "bg-emerald-500 text-white shadow-lg shadow-emerald-500/30 animate-pulse"
+                                : "bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300 hover:bg-emerald-50 hover:text-emerald-600 border border-slate-200 dark:border-slate-600"
+                        )}
+                        title="Seleccionar parada en el mapa (auto-crea segmento)"
+                    >
+                        <MapPin size={11} />
+                        Stop
                     </button>
                 </div>
 
-                {/* Existing compatible segments (quick-add) */}
-                {compatibleSegments.length > 0 && !stopSearch && (
-                    <div className="px-4 pb-2">
-                        <div className="text-[9px] font-bold text-slate-400 uppercase tracking-widest mb-2 flex items-center gap-1.5">
-                            <Zap size={9} className="text-amber-500" />
-                            Segmentos existentes ({compatibleSegments.length})
-                        </div>
-                        <div className="space-y-1 max-h-24 overflow-y-auto custom-scrollbar">
-                            {compatibleSegments.slice(0, 5).map(seg => {
-                                const targetStop = stops.find(s =>
-                                    s.stop_id === (isAdding === 'append' ? seg.end_node_id : seg.start_node_id)
-                                );
-                                return (
-                                    <button
-                                        key={seg.segment_id}
-                                        onClick={() => handleSelectExistingSegment(seg)}
-                                        className="w-full flex items-center gap-3 px-3 py-2 rounded-lg bg-amber-50/50 dark:bg-amber-900/10 border border-amber-200/50 dark:border-amber-800/30 hover:bg-amber-100 dark:hover:bg-amber-900/20 transition-all text-left group"
-                                    >
-                                        <div className="p-1 bg-amber-100 dark:bg-amber-900/30 rounded-md">
-                                            <Zap size={10} className="text-amber-600" />
-                                        </div>
-                                        <div className="flex-1 min-w-0">
-                                            <div className="text-xs font-semibold text-slate-800 dark:text-slate-200 truncate">
-                                                {targetStop?.stop_name || seg.end_node_id}
-                                            </div>
-                                            <div className="text-[9px] text-slate-400">
-                                                {formatDist(seg.distance || 0)} &middot; {formatTime(seg.travel_time || 0)}
-                                            </div>
-                                        </div>
-                                        <ChevronRight size={12} className="text-slate-300 group-hover:text-primary transition-colors" />
-                                    </button>
-                                );
-                            })}
-                        </div>
-                    </div>
-                )}
-
-                {/* Stop list */}
+                {/* Segment list */}
                 <div className="px-4 pb-3">
                     <div className="text-[9px] font-bold text-slate-400 uppercase tracking-widest mb-2 flex items-center gap-1.5">
-                        <MapPin size={9} className="text-primary" />
-                        {isFirstSegment ? 'Paradas disponibles' : 'Paradas cercanas'} ({availableStops.length})
+                        <Zap size={9} className="text-amber-500" />
+                        {isFirstSegment ? 'Todos los segmentos' : 'Segmentos compatibles'} ({compatibleSegments.length})
                     </div>
-                    <div className="space-y-1 max-h-48 overflow-y-auto custom-scrollbar">
-                        {availableStops.length === 0 && (
+                    <div className="space-y-1 max-h-64 overflow-y-auto custom-scrollbar">
+                        {compatibleSegments.length === 0 && (
                             <div className="py-6 text-center">
-                                <p className="text-[10px] text-slate-400 font-medium">
-                                    {stopSearch ? 'Sin resultados para esta busqueda' : 'No hay paradas registradas en el proyecto'}
+                                <div className="p-3 bg-slate-100 dark:bg-slate-800 rounded-full inline-block mb-3">
+                                    <AlertCircle size={20} className="text-slate-300" />
+                                </div>
+                                <p className="text-[10px] text-slate-400 font-medium mb-2">
+                                    {segmentSearch
+                                        ? 'Sin resultados para esta busqueda'
+                                        : isFirstSegment
+                                            ? 'No hay segmentos creados en el proyecto'
+                                            : 'No hay segmentos que conecten con esta parada'}
                                 </p>
+                                {!isFirstSegment && !segmentSearch && (
+                                    <p className="text-[9px] text-slate-400">
+                                        Usa el boton <strong>Stop</strong> para seleccionar una parada en el mapa y crear el segmento automaticamente via OSRM.
+                                    </p>
+                                )}
                             </div>
                         )}
-                        {availableStops.map((stop: any) => (
-                            <button
-                                key={stop.stop_id}
-                                onClick={() => handleSelectStop(stop)}
-                                disabled={savingSegment}
-                                className={clsx(
-                                    "w-full flex items-center gap-3 px-3 py-2.5 rounded-lg transition-all text-left group",
-                                    savingSegment
-                                        ? "opacity-50 cursor-wait"
-                                        : "hover:bg-primary/5 dark:hover:bg-primary/10 hover:border-primary/30",
-                                    "bg-white dark:bg-slate-800/40 border border-slate-100 dark:border-slate-700/50"
-                                )}
-                            >
-                                <div className="p-1.5 bg-slate-100 dark:bg-slate-700 rounded-lg group-hover:bg-primary/10 transition-colors">
-                                    <MapPin size={12} className="text-slate-400 group-hover:text-primary transition-colors" />
-                                </div>
-                                <div className="flex-1 min-w-0">
-                                    <div className="text-xs font-semibold text-slate-800 dark:text-slate-200 truncate">
-                                        {stop.stop_name || stop.stop_id}
+                        {compatibleSegments.map(seg => {
+                            const { startName, endName } = getSegmentDisplayName(seg);
+                            return (
+                                <button
+                                    key={seg.segment_id}
+                                    onClick={() => handleSelectSegment(seg)}
+                                    disabled={savingSegment}
+                                    className={clsx(
+                                        "w-full flex items-center gap-3 px-3 py-3 rounded-xl transition-all text-left group",
+                                        savingSegment
+                                            ? "opacity-50 cursor-wait"
+                                            : "hover:bg-primary/5 dark:hover:bg-primary/10 hover:border-primary/30",
+                                        "bg-white dark:bg-slate-800/40 border border-slate-100 dark:border-slate-700/50"
+                                    )}
+                                >
+                                    <div className="p-1.5 bg-amber-50 dark:bg-amber-900/20 rounded-lg group-hover:bg-primary/10 transition-colors">
+                                        <Zap size={12} className="text-amber-500 group-hover:text-primary transition-colors" />
                                     </div>
-                                    <div className="text-[9px] text-slate-400 flex items-center gap-2">
-                                        {stop.stop_code && <span>{stop.stop_code}</span>}
-                                        {stop._dist !== undefined && stop._dist > 0 && (
-                                            <span>{formatDist(stop._dist)}</span>
-                                        )}
-                                        {stop.node_type && stop.node_type !== 'regular' && (
-                                            <span className="px-1.5 py-0.5 bg-slate-100 dark:bg-slate-700 rounded text-[8px] uppercase font-bold">{stop.node_type}</span>
-                                        )}
+                                    <div className="flex-1 min-w-0">
+                                        <div className="text-xs font-semibold text-slate-800 dark:text-slate-200 truncate">
+                                            {startName} <span className="text-slate-300 dark:text-slate-600">&rarr;</span> {endName}
+                                        </div>
+                                        <div className="text-[9px] text-slate-400 flex items-center gap-3 mt-0.5">
+                                            <span className="flex items-center gap-1"><Ruler size={8} /> {formatDist(seg.distance || 0)}</span>
+                                            <span className="flex items-center gap-1"><Clock size={8} /> {formatTime(seg.travel_time || 0)}</span>
+                                            {seg.routing_profile && (
+                                                <span className="px-1.5 py-0.5 bg-slate-100 dark:bg-slate-700 rounded text-[7px] uppercase font-bold">{seg.routing_profile}</span>
+                                            )}
+                                        </div>
                                     </div>
-                                </div>
-                                <ChevronRight size={12} className="text-slate-300 group-hover:text-primary transition-colors" />
-                            </button>
-                        ))}
+                                    <ChevronRight size={12} className="text-slate-300 group-hover:text-primary transition-colors" />
+                                </button>
+                            );
+                        })}
                     </div>
                 </div>
 
@@ -584,7 +557,7 @@ const RouteDetailsPanel: React.FC<RouteDetailsPanelProps> = ({ route, onClose, o
                     <div className="px-4 pb-3">
                         <div className="flex items-center gap-2 px-3 py-2 bg-primary/5 rounded-lg">
                             <div className="w-4 h-4 border-2 border-primary/30 border-t-primary rounded-full animate-spin" />
-                            <span className="text-[10px] font-bold text-primary uppercase tracking-wider">Generando segmento via OSRM...</span>
+                            <span className="text-[10px] font-bold text-primary uppercase tracking-wider">Sincronizando recorrido...</span>
                         </div>
                     </div>
                 )}
@@ -644,10 +617,10 @@ const RouteDetailsPanel: React.FC<RouteDetailsPanelProps> = ({ route, onClose, o
                     </div>
                 </div>
 
-                {/* Refined Tabs */}
+                {/* Tabs */}
                 <div className="flex p-1.5 bg-slate-100 dark:bg-slate-800/80 rounded-[18px] border utilitarian-border">
                     <button
-                        onClick={() => { if (!isEditing) { setActiveTab(0); setIsAdding(null); setStopSearch(''); } }}
+                        onClick={() => { if (!isEditing) { setActiveTab(0); setIsAdding(null); setSegmentSearch(''); } }}
                         disabled={isEditing}
                         className={clsx(
                             "flex-1 py-2.5 text-[11px] font-bold uppercase tracking-widest rounded-[12px] transition-all",
@@ -660,7 +633,7 @@ const RouteDetailsPanel: React.FC<RouteDetailsPanelProps> = ({ route, onClose, o
                         Trayecto Ida
                     </button>
                     <button
-                        onClick={() => { if (!isEditing) { setActiveTab(1); setIsAdding(null); setStopSearch(''); } }}
+                        onClick={() => { if (!isEditing) { setActiveTab(1); setIsAdding(null); setSegmentSearch(''); } }}
                         disabled={isEditing}
                         className={clsx(
                             "flex-1 py-2.5 text-[11px] font-bold uppercase tracking-widest rounded-[12px] transition-all",
@@ -683,7 +656,7 @@ const RouteDetailsPanel: React.FC<RouteDetailsPanelProps> = ({ route, onClose, o
                             if (confirm('Descartar cambios no sincronizados?')) {
                                 setIsEditing(false);
                                 setIsAdding(null);
-                                setStopSearch('');
+                                setSegmentSearch('');
                                 cancelPicking();
                                 fetchData();
                             }
@@ -705,7 +678,7 @@ const RouteDetailsPanel: React.FC<RouteDetailsPanelProps> = ({ route, onClose, o
 
                 {isEditing && (
                      <button
-                        onClick={() => { setIsEditing(false); setIsAdding(null); setStopSearch(''); cancelPicking(); }}
+                        onClick={() => { setIsEditing(false); setIsAdding(null); setSegmentSearch(''); cancelPicking(); }}
                         className="px-6 py-3 rounded-2xl bg-emerald-500 text-white shadow-lg shadow-emerald-500/20 font-bold text-xs uppercase tracking-widest flex items-center gap-2 hover:scale-[1.02] active:scale-95 transition-all"
                     >
                         <Save size={16} />
@@ -735,7 +708,7 @@ const RouteDetailsPanel: React.FC<RouteDetailsPanelProps> = ({ route, onClose, o
                             >
                                 <Plus size={18} />
                                 <span className="text-[10px] font-bold uppercase tracking-widest">
-                                    {pathStops.length === 0 ? 'Seleccionar Parada de Inicio' : 'Anteponer Segmento'}
+                                    {pathStops.length === 0 ? 'Seleccionar Primer Segmento' : 'Anteponer Segmento'}
                                 </span>
                             </button>
                         )}
@@ -748,12 +721,11 @@ const RouteDetailsPanel: React.FC<RouteDetailsPanelProps> = ({ route, onClose, o
                              <AlertCircle size={48} strokeWidth={1.5} />
                         </div>
                         <h3 className="font-display font-bold text-slate-900 dark:text-white mb-2">Ruta sin segmentos vinculados</h3>
-                        <p className="text-xs text-slate-500 font-medium leading-relaxed">Haz click en "Editar Segmentos" para construir el recorrido seleccionando paradas.</p>
+                        <p className="text-xs text-slate-500 font-medium leading-relaxed">Haz click en "Editar Segmentos" para construir el recorrido seleccionando segmentos del inventario.</p>
                     </div>
                 )}
 
                 <div className="space-y-4 relative">
-                    {/* Visual Connector Line */}
                     {routeSegments.length > 1 && (
                         <div className="absolute left-[19px] top-6 bottom-6 w-[2px] bg-gradient-to-b from-primary via-slate-200 to-primary dark:via-slate-800 pointer-events-none opacity-30" />
                     )}
