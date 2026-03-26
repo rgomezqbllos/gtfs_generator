@@ -54,9 +54,40 @@ export const authenticate = async (request: FastifyRequest, reply: FastifyReply)
         const username = decoded.preferred_username || '';
         const email = decoded.email || '';
 
+        const mergeDuplicateUser = (existingId: string, incomingId: string) => {
+            if (!existingId || existingId === incomingId) return;
+            db.transaction(() => {
+                const projects = db.prepare('SELECT project_id, role FROM user_projects WHERE user_id = ?').all(existingId) as { project_id: string; role: string }[];
+                for (const project of projects) {
+                    db.prepare(`
+                        INSERT INTO user_projects (user_id, project_id, role)
+                        VALUES (?, ?, ?)
+                        ON CONFLICT(user_id, project_id) DO UPDATE SET role = excluded.role
+                    `).run(incomingId, project.project_id, project.role || 'editor');
+                }
+                db.prepare('DELETE FROM user_projects WHERE user_id = ?').run(existingId);
+                db.prepare('DELETE FROM users WHERE id = ?').run(existingId);
+            })();
+            request.log.warn(`Merged duplicate user ${existingId} into ${incomingId} for username=${username || 'unknown'}`);
+        };
+
         // Check if user has the global 'admin' role from Keycloak
         const roles = decoded.realm_access?.roles || decoded.roles || [];
         request.isSuperAdmin = roles.includes('admin');
+
+        // Deduplicate user entries when Keycloak user IDs change (e.g., realm re-import).
+        // Prefer username match; fall back to email if username is empty.
+        if (username) {
+            const existingByUsername = db.prepare('SELECT id FROM users WHERE username = ?').get(username) as { id: string } | undefined;
+            if (existingByUsername && existingByUsername.id !== userId) {
+                mergeDuplicateUser(existingByUsername.id, userId);
+            }
+        } else if (email) {
+            const existingByEmail = db.prepare('SELECT id FROM users WHERE email = ?').get(email) as { id: string } | undefined;
+            if (existingByEmail && existingByEmail.id !== userId) {
+                mergeDuplicateUser(existingByEmail.id, userId);
+            }
+        }
 
         // Sync user to local DB
         db.prepare(`
