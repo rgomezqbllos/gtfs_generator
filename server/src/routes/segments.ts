@@ -371,14 +371,14 @@ export default async function segmentsRoutes(fastify: FastifyInstance) {
     // --- TIME SLOTS ENDPOINTS ---
 
     // GET slots for a segment
-    fastify.get('/segments/:id/slots', async (request, reply) => {
+    fastify.get('/segments/:id/slots', async (request: any, reply) => {
         const { id } = request.params as { id: string };
-        const slots = db.prepare('SELECT * FROM segment_time_slots WHERE segment_id = ? ORDER BY start_time').all(id);
+        const slots = db.prepare('SELECT * FROM segment_time_slots WHERE segment_id = ? AND project_id = ? ORDER BY start_time').all(id, request.projectId);
         return slots;
     });
 
     // POST (Create) a slot
-    fastify.post('/segments/:id/slots', async (request, reply) => {
+    fastify.post('/segments/:id/slots', async (request: any, reply) => {
         const { id } = request.params as { id: string };
         const body = request.body as { start_time: string; end_time: string; travel_time: number };
         const { start_time, end_time, travel_time } = body;
@@ -396,10 +396,10 @@ export default async function segmentsRoutes(fastify: FastifyInstance) {
         const slotId = randomUUID();
         try {
             const stmt = db.prepare(`
-                INSERT INTO segment_time_slots (id, segment_id, start_time, end_time, travel_time)
-                VALUES (?, ?, ?, ?, ?)
+                INSERT INTO segment_time_slots (id, segment_id, project_id, start_time, end_time, travel_time)
+                VALUES (?, ?, ?, ?, ?, ?)
             `);
-            stmt.run(slotId, id, start_time, end_time, travel_time);
+            stmt.run(slotId, id, request.projectId, start_time, end_time, travel_time);
             return { id: slotId, segment_id: id, ...body };
         } catch (err) {
             request.log.error(err);

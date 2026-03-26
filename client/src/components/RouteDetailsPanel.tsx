@@ -7,6 +7,7 @@ import { useEditor } from '../context/EditorContext';
 
 import { API_URL } from '../config';
 import TimeSlotsManager from './TimeSlotsManager';
+import TimeSlotEditorModal from './TimeSlotEditorModal';
 
 interface RouteDetailsPanelProps {
     route: Route;
@@ -37,6 +38,7 @@ const RouteDetailsPanel: React.FC<RouteDetailsPanelProps> = ({ route, onClose, o
     const [isAdding, setIsAdding] = React.useState<'prepend' | 'append' | null>(null);
     const [segmentSearch, setSegmentSearch] = React.useState('');
     const [savingSegment, setSavingSegment] = React.useState(false);
+    const [selectedSegmentForSlots, setSelectedSegmentForSlots] = React.useState<(Segment & { startName?: string; endName?: string }) | null>(null);
 
     const [targetDuration, setTargetDuration] = React.useState<number | null>(null);
     const [targetSpeed, setTargetSpeed] = React.useState<number | null>(null);
@@ -741,11 +743,26 @@ const RouteDetailsPanel: React.FC<RouteDetailsPanelProps> = ({ route, onClose, o
                                      </div>
                                 </div>
 
-                                <div className="bg-white dark:bg-slate-800/40 border utilitarian-border rounded-2xl p-5 hover:bg-slate-50/50 dark:hover:bg-primary/5 transition-all group/card">
+                                <div
+                                    onClick={() => {
+                                        if (!isEditing) {
+                                            setSelectedSegmentForSlots({
+                                                ...item.segment,
+                                                startName: item.startStop?.stop_name,
+                                                endName: item.endStop?.stop_name
+                                            });
+                                        }
+                                    }}
+                                    className={clsx(
+                                        "bg-white dark:bg-slate-800/40 border utilitarian-border rounded-2xl p-5 hover:bg-slate-50/50 dark:hover:bg-primary/5 transition-all group/card",
+                                        !isEditing && "cursor-pointer hover:border-primary/40 hover:shadow-md"
+                                    )}
+                                >
                                     <div className="flex justify-between items-start mb-4">
                                         <div className="flex-1">
                                             <div className="flex items-center gap-2 mb-1">
                                                 <span className="text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-widest">Segmento Vial</span>
+                                                {!isEditing && <Clock size={10} className="text-primary" title="Click para editar franjas horarias" />}
                                                 <ChevronRight size={10} className="text-slate-300" />
                                             </div>
                                             <h4 className="font-bold text-slate-900 dark:text-slate-200 text-sm leading-tight">
@@ -907,6 +924,12 @@ const RouteDetailsPanel: React.FC<RouteDetailsPanelProps> = ({ route, onClose, o
                     onClose={() => setShowTimeSlots(false)}
                 />
             )}
+
+            <TimeSlotEditorModal
+                isOpen={!!selectedSegmentForSlots}
+                onClose={() => setSelectedSegmentForSlots(null)}
+                segment={selectedSegmentForSlots}
+            />
         </Draggable>
     );
 };
