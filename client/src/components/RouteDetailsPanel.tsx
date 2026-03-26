@@ -436,7 +436,7 @@ const RouteDetailsPanel: React.FC<RouteDetailsPanelProps> = ({ route, onClose, o
                     )}
                 >
                     {isEditing ? <RotateCcw size={16} /> : <Edit2 size={16} />}
-                    {isEditing ? 'Cancelar Edición' : 'Editar Traza / Añadir'}
+                    {isEditing ? 'Cancelar Edición' : 'Editar Segmentos / Añadir'}
                 </button>
                 
                 {isEditing && (
@@ -484,7 +484,7 @@ const RouteDetailsPanel: React.FC<RouteDetailsPanelProps> = ({ route, onClose, o
                         <div className="p-6 bg-slate-100 dark:bg-slate-800 rounded-full mb-6 text-slate-300">
                              <AlertCircle size={48} strokeWidth={1.5} />
                         </div>
-                        <h3 className="font-display font-bold text-slate-900 dark:text-white mb-2">Traza no definida</h3>
+                        <h3 className="font-display font-bold text-slate-900 dark:text-white mb-2">Ruta sin segmentos vinculados</h3>
                         <p className="text-xs text-slate-500 font-medium leading-relaxed">Inicia la edición para vincular el primer segmento vial a esta ruta comercial.</p>
                     </div>
                 )}
@@ -593,7 +593,7 @@ const RouteDetailsPanel: React.FC<RouteDetailsPanelProps> = ({ route, onClose, o
                                     <div className="text-2xl font-display font-black text-slate-900 dark:text-white leading-none mb-1">
                                         {formatDist(routeSegments[routeSegments.length - 1].accumulatedDist)}
                                     </div>
-                                    <span className="text-[9px] font-bold text-slate-400 uppercase tracking-widest">Longitud de Traza</span>
+                                    <span className="text-[9px] font-bold text-slate-400 uppercase tracking-widest">Longitud de Recorrido</span>
                                 </div>
                                 <div className="text-right flex-1">
                                     {isEditing ? (
