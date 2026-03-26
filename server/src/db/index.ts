@@ -97,6 +97,72 @@ export function initDB() {
             }
         }
 
+        // Trips table PK migration: ensure composite PK (trip_id, project_id)
+        try {
+            const tripsPK = db.pragma('table_info(trips)') as { name: string; pk: number }[];
+            const pkColumns = tripsPK.filter(c => c.pk > 0).map(c => c.name);
+            if (pkColumns.length > 0 && !pkColumns.includes('project_id')) {
+                console.log('Migrating trips table to composite PK (trip_id, project_id)...');
+                db.exec(`
+                    CREATE TABLE IF NOT EXISTS trips_new (
+                        trip_id TEXT NOT NULL,
+                        project_id TEXT NOT NULL,
+                        route_id TEXT NOT NULL,
+                        service_id TEXT NOT NULL,
+                        trip_headsign TEXT,
+                        trip_short_name TEXT,
+                        direction_id INTEGER,
+                        block_id TEXT,
+                        shape_id TEXT,
+                        wheelchair_accessible INTEGER,
+                        bikes_allowed INTEGER,
+                        PRIMARY KEY (trip_id, project_id),
+                        FOREIGN KEY(route_id, project_id) REFERENCES routes(route_id, project_id) ON DELETE CASCADE,
+                        FOREIGN KEY(service_id, project_id) REFERENCES calendar(service_id, project_id) ON DELETE CASCADE
+                    );
+                    INSERT OR IGNORE INTO trips_new SELECT * FROM trips;
+                    DROP TABLE trips;
+                    ALTER TABLE trips_new RENAME TO trips;
+                `);
+                console.log('Migrated: trips table now has composite PK (trip_id, project_id)');
+            }
+        } catch (e) {
+            console.warn('Trips PK migration warning:', e);
+        }
+
+        // stop_times table PK migration: ensure composite PK includes project_id
+        try {
+            const stPK = db.pragma('table_info(stop_times)') as { name: string; pk: number }[];
+            const stPkCols = stPK.filter(c => c.pk > 0).map(c => c.name);
+            if (stPkCols.length > 0 && !stPkCols.includes('project_id')) {
+                console.log('Migrating stop_times table to composite PK...');
+                db.exec(`
+                    CREATE TABLE IF NOT EXISTS stop_times_new (
+                        trip_id TEXT NOT NULL,
+                        project_id TEXT NOT NULL,
+                        arrival_time TEXT,
+                        departure_time TEXT,
+                        stop_id TEXT NOT NULL,
+                        stop_sequence INTEGER NOT NULL,
+                        stop_headsign TEXT,
+                        pickup_type INTEGER,
+                        drop_off_type INTEGER,
+                        shape_dist_traveled REAL,
+                        timepoint INTEGER,
+                        PRIMARY KEY(trip_id, stop_sequence, project_id),
+                        FOREIGN KEY(trip_id, project_id) REFERENCES trips(trip_id, project_id) ON DELETE CASCADE,
+                        FOREIGN KEY(stop_id, project_id) REFERENCES stops(stop_id, project_id) ON DELETE CASCADE
+                    );
+                    INSERT OR IGNORE INTO stop_times_new SELECT * FROM stop_times;
+                    DROP TABLE stop_times;
+                    ALTER TABLE stop_times_new RENAME TO stop_times;
+                `);
+                console.log('Migrated: stop_times table now has composite PK');
+            }
+        } catch (e) {
+            console.warn('stop_times PK migration warning:', e);
+        }
+
         // Settings Migration
         db.exec(`
             CREATE TABLE IF NOT EXISTS settings (

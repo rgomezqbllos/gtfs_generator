@@ -474,18 +474,14 @@ export default async function routesRoutes(fastify: FastifyInstance) {
                   VALUES (?, ?, 1, 1, 1, 1, 1, 1, 1, '20240101', '20241231')`).run(service_id, request.projectId);
 
         const trip_id = `t_${id}_${direction_id}`;
-
-        const upsertTrip = db.prepare(`
-          INSERT INTO trips (route_id, service_id, trip_id, project_id, trip_headsign, direction_id, shape_id)
-          VALUES (?, ?, ?, ?, ?, ?, ?)
-          ON CONFLICT(trip_id, project_id) DO UPDATE SET
-            trip_headsign=excluded.trip_headsign,
-            shape_id=excluded.shape_id
-      `);
-
         const shape_id = `sh_${id}_${direction_id}`;
 
-        upsertTrip.run(id, service_id, trip_id, request.projectId, `Direction ${direction_id}`, direction_id, shape_id);
+        // Use DELETE+INSERT instead of UPSERT to avoid PK mismatch on legacy DBs
+        db.prepare('DELETE FROM trips WHERE trip_id = ? AND project_id = ?').run(trip_id, request.projectId);
+        db.prepare(`
+          INSERT INTO trips (route_id, service_id, trip_id, project_id, trip_headsign, direction_id, shape_id)
+          VALUES (?, ?, ?, ?, ?, ?, ?)
+        `).run(id, service_id, trip_id, request.projectId, `Direction ${direction_id}`, direction_id, shape_id);
 
         // 2. Process Segments and Shapes
         // Delete existing shape points for this shape_id
