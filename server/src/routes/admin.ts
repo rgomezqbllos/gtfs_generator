@@ -13,30 +13,29 @@ import { sanitizeFileName } from '../services/osrm/security';
 
 let kcAdminClient: KcAdminClient | null = null;
 async function getKcAdminClient() {
+    const keycloakUrl = process.env.KEYCLOAK_URL || 'http://localhost:8080';
+    const keycloakAdminClientId = process.env.KEYCLOAK_ADMIN_CLIENT_ID || 'gtfs-admin';
+    const keycloakAdminClientSecret = process.env.KEYCLOAK_ADMIN_CLIENT_SECRET || 'gtfs-admin-secret-key-do-not-share';
+
     if (!kcAdminClient) {
-        const keycloakUrl = process.env.KEYCLOAK_URL;
-        const keycloakAdminClientId = process.env.KEYCLOAK_ADMIN_CLIENT_ID || 'gtfs-admin';
-        const keycloakAdminClientSecret = process.env.KEYCLOAK_ADMIN_CLIENT_SECRET || 'gtfs-admin-secret-key-do-not-share';
-
-        if (!keycloakUrl) {
-            throw new Error('Missing required env var: KEYCLOAK_URL');
-        }
-
         kcAdminClient = new KcAdminClient({
             baseUrl: keycloakUrl,
             realmName: 'gtfs'
         });
-        try {
-            await kcAdminClient.auth({
-                clientId: keycloakAdminClientId,
-                clientSecret: keycloakAdminClientSecret,
-                grantType: 'client_credentials'
-            });
-        } catch (err) {
-            kcAdminClient = null; // Reset so next call retries auth
-            throw err;
-        }
     }
+
+    // Re-authenticate on every use to avoid stale/expired admin tokens.
+    try {
+        await kcAdminClient.auth({
+            clientId: keycloakAdminClientId,
+            clientSecret: keycloakAdminClientSecret,
+            grantType: 'client_credentials'
+        });
+    } catch (err) {
+        kcAdminClient = null; // Reset so next call retries auth
+        throw err;
+    }
+
     return kcAdminClient;
 }
 
@@ -576,8 +575,13 @@ export default async function adminRoutes(fastify: FastifyInstance) {
 
             return { success: true, id: userId, role: userRole, message: `Usuario ${userRole} creado correctamente` };
         } catch (error: any) {
+            const details =
+                error?.response?.data?.errorMessage ||
+                error?.response?.data?.error_description ||
+                error?.response?.data?.error ||
+                error?.message;
             console.error('Failed to create/sync user:', error.response?.data || error.message);
-            return reply.code(500).send({ error: error.response?.data?.errorMessage || 'Failed to manage user' });
+            return reply.code(500).send({ error: details || 'Failed to manage user' });
         }
     });
 

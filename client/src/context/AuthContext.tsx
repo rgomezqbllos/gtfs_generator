@@ -115,19 +115,26 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
                 if (authenticated) {
                     setToken(keycloak.token || null);
                     if (keycloak.tokenParsed) {
+                        const realmRoles = keycloak.realmAccess?.roles || [];
+                        const clientId = keycloakConfig.clientId;
+                        const clientRoles =
+                            (keycloak.tokenParsed as any)?.resource_access?.[clientId]?.roles || [];
+                        const mergedRoles = Array.from(new Set([...realmRoles, ...clientRoles]));
                         setUser({
                             id: keycloak.tokenParsed.sub || '',
                             username: keycloak.tokenParsed.preferred_username || '',
                             email: keycloak.tokenParsed.email,
                             firstName: keycloak.tokenParsed.given_name,
                             lastName: keycloak.tokenParsed.family_name,
-                            roles: keycloak.realmAccess?.roles || [],
+                            roles: mergedRoles,
                         });
                     }
 
                     // SuperAdmin skips project fetch — they only manage infrastructure
                     const roles = keycloak.realmAccess?.roles || [];
-                    const isAdmin = roles.includes('admin');
+                    const clientRoles =
+                        (keycloak.tokenParsed as any)?.resource_access?.[keycloakConfig.clientId]?.roles || [];
+                    const isAdmin = roles.includes('admin') || clientRoles.includes('admin');
 
                     if (!isAdmin) {
                         try {

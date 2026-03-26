@@ -137,7 +137,23 @@ export const AdminPanel: React.FC = () => {
   };
 
   const handleCreateUser = async () => {
-    if (!newUserName || !newUserEmail || !newUserPassword) return;
+    if (!isSuperAdmin) {
+      alert("Solo SuperAdmin puede crear usuarios");
+      return;
+    }
+    if (!newUserName || !newUserEmail || !newUserPassword) {
+      alert("Completa username, email y password");
+      return;
+    }
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(newUserEmail)) {
+      alert("Email inválido");
+      return;
+    }
+    if (newUserPassword.length < 8) {
+      alert("La contraseña debe tener al menos 8 caracteres");
+      return;
+    }
     try {
       const res = await fetch(`${API_URL}/admin/users`, {
         method: "POST",
@@ -153,14 +169,20 @@ export const AdminPanel: React.FC = () => {
         }),
       });
       if (res.ok) {
+        const data = await res.json().catch(() => ({}));
         setNewUserName("");
         setNewUserEmail("");
         setNewUserPassword("");
         setNewUserRole("operations");
         fetchUsers();
+        alert(data.message || "Usuario creado correctamente");
+        return;
       }
+      const error = await res.json().catch(() => ({}));
+      alert(`Error: ${error.error || "No se pudo crear el usuario"}`);
     } catch (e) {
       console.error(e);
+      alert("Error al crear usuario");
     }
   };
 

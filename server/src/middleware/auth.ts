@@ -72,8 +72,22 @@ export const authenticate = async (request: FastifyRequest, reply: FastifyReply)
         };
 
         // Check if user has the global 'admin' role from Keycloak
-        const roles = decoded.realm_access?.roles || decoded.roles || [];
-        request.isSuperAdmin = roles.includes('admin');
+        const realmRoles = decoded.realm_access?.roles || [];
+        const tokenRoles = decoded.roles || [];
+        const resourceAccess = decoded.resource_access || {};
+        const clientId = decoded.azp || process.env.KEYCLOAK_CLIENT_ID || 'gtfs-client';
+        const clientRoles = resourceAccess?.[clientId]?.roles || [];
+        const realmMgmtRoles = resourceAccess?.['realm-management']?.roles || [];
+        const allRoles = new Set<string>([
+            ...realmRoles,
+            ...tokenRoles,
+            ...clientRoles,
+            ...realmMgmtRoles,
+        ]);
+        const superAdminUsername = process.env.KEYCLOAK_ADMIN || 'superadmin';
+        request.isSuperAdmin =
+            allRoles.has('admin') ||
+            decoded.preferred_username === superAdminUsername;
 
         // Deduplicate user entries when Keycloak user IDs change (e.g., realm re-import).
         // Prefer username match; fall back to email if username is empty.
