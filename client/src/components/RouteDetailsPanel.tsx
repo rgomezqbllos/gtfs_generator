@@ -570,6 +570,7 @@ const RouteDetailsPanel: React.FC<RouteDetailsPanelProps> = ({ route, onClose, o
     const lastSeg = routeSegments.length > 0 ? routeSegments[routeSegments.length - 1] : null;
 
     return (
+        <>
         <Draggable className="absolute top-4 right-4 w-[420px] glass-panel shadow-2xl rounded-2xl flex flex-col border border-white/10 dark:border-slate-700/50 z-40 max-h-[92vh] animate-in slide-in-from-right-6 duration-300 pointer-events-auto overflow-hidden">
             {/* Compact Header */}
             <div className="drag-handle cursor-move px-4 pt-4 pb-3 bg-slate-50/90 dark:bg-slate-900/90 backdrop-blur-md border-b border-slate-200/50 dark:border-slate-700/50">
@@ -860,6 +861,8 @@ const RouteDetailsPanel: React.FC<RouteDetailsPanelProps> = ({ route, onClose, o
                 </button>
             </div>
 
+        </Draggable>
+
             {showTimeSlots && (
                 <TimeSlotsManager
                     route={route}
@@ -872,7 +875,7 @@ const RouteDetailsPanel: React.FC<RouteDetailsPanelProps> = ({ route, onClose, o
                 onClose={() => setSelectedSegmentForSlots(null)}
                 segment={selectedSegmentForSlots}
             />
-        </Draggable>
+        </>
     );
 };
 
