@@ -628,6 +628,19 @@ const MapEditor: React.FC = () => {
             return; // Stop processing
         }
 
+        // Stop picking mode — user clicks a stop on the map to select it
+        if (pickingState.isActive && pickingState.type === 'stop') {
+            const features = event.features || [];
+            const stopFeature = features.find(f => f.layer.id === 'stops-layer-circle');
+            if (stopFeature && stopFeature.properties) {
+                const stop = stopFeature.properties as any;
+                if (stop.stop_id && pickingState.onPick) {
+                    pickingState.onPick(stop.stop_id);
+                }
+            }
+            return;
+        }
+
         // Check for Stops Layer Click FIRST (High Priority)
         const features = event.features || [];
         const stopFeature = features.find(f => f.layer.id === 'stops-layer-circle');

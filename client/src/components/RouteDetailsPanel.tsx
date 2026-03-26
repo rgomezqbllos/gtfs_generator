@@ -1,6 +1,6 @@
 import * as React from 'react';
 import type { Route, Stop, Segment } from '../types';
-import { ArrowLeft, Clock, Ruler, Calendar, Bus, Trash2, Edit2, AlertCircle, Plus, ChevronRight, Save, X, RotateCcw, Activity } from 'lucide-react';
+import { ArrowLeft, Clock, Ruler, Calendar, Bus, Trash2, Edit2, AlertCircle, Plus, ChevronRight, Save, X, RotateCcw, Activity, Search, MapPin, Zap, Navigation } from 'lucide-react';
 import { clsx } from 'clsx';
 import Draggable from './UI/Draggable';
 import { useEditor } from '../context/EditorContext';
@@ -11,7 +11,7 @@ import TimeSlotsManager from './TimeSlotsManager';
 interface RouteDetailsPanelProps {
     route: Route;
     onClose: () => void;
-    onBack?: () => void; 
+    onBack?: () => void;
     onOpenTrips?: () => void;
     onOpenCalendar?: () => void;
 }
@@ -25,19 +25,23 @@ interface ProcessedSegment {
 }
 
 const RouteDetailsPanel: React.FC<RouteDetailsPanelProps> = ({ route, onClose, onBack, onOpenTrips, onOpenCalendar }) => {
-    const { startPicking, cancelPicking } = useEditor();
+    const { startPicking, cancelPicking, pickingState } = useEditor();
     const [activeTab, setActiveTab] = React.useState<0 | 1>(0);
     const [pathStops, setPathStops] = React.useState<string[]>([]);
     const [stops, setStops] = React.useState<Stop[]>([]);
     const [allSegments, setAllSegments] = React.useState<Segment[]>([]);
     const [loading, setLoading] = React.useState(true);
     const [isEditing, setIsEditing] = React.useState(false);
-    const [showTimeSlots, setShowTimeSlots] = React.useState(false); 
+    const [showTimeSlots, setShowTimeSlots] = React.useState(false);
 
     const [isAdding, setIsAdding] = React.useState<'prepend' | 'append' | null>(null);
+    const [stopSearch, setStopSearch] = React.useState('');
+    const [savingSegment, setSavingSegment] = React.useState(false);
 
-    const [targetDuration, setTargetDuration] = React.useState<number | null>(null); 
-    const [targetSpeed, setTargetSpeed] = React.useState<number | null>(null); 
+    const [targetDuration, setTargetDuration] = React.useState<number | null>(null);
+    const [targetSpeed, setTargetSpeed] = React.useState<number | null>(null);
+
+    const searchInputRef = React.useRef<HTMLInputElement>(null);
 
     const fetchData = React.useCallback(async () => {
         setLoading(true);
@@ -117,47 +121,159 @@ const RouteDetailsPanel: React.FC<RouteDetailsPanelProps> = ({ route, onClose, o
         return processed;
     }, [pathStops, allSegments, stops]);
 
+    // Anchor node: the stop that new segments must connect to
+    const anchorStopId = React.useMemo(() => {
+        if (pathStops.length === 0) return null;
+        if (isAdding === 'prepend') return pathStops[0];
+        if (isAdding === 'append') return pathStops[pathStops.length - 1];
+        return null;
+    }, [pathStops, isAdding]);
+
+    const anchorStop = React.useMemo(() => {
+        if (!anchorStopId) return null;
+        return stops.find(s => s.stop_id === anchorStopId) || null;
+    }, [anchorStopId, stops]);
+
+    // Compatible existing segments (already created, connect to anchor)
+    const compatibleSegments = React.useMemo(() => {
+        if (!anchorStopId || !isAdding) return [];
+        return allSegments.filter(s => {
+            if (s.type === 'empty') return false;
+            if (isAdding === 'append') return s.start_node_id === anchorStopId;
+            if (isAdding === 'prepend') return s.end_node_id === anchorStopId;
+            return false;
+        });
+    }, [anchorStopId, isAdding, allSegments]);
+
+    // Stops already used in this path (to exclude from suggestions)
+    const usedStopIds = React.useMemo(() => new Set(pathStops), [pathStops]);
+
+    // Calculate distance between two stops (Haversine)
+    const calcDistance = React.useCallback((a: Stop, b: Stop): number => {
+        const R = 6371000;
+        const dLat = (b.stop_lat - a.stop_lat) * Math.PI / 180;
+        const dLon = (b.stop_lon - a.stop_lon) * Math.PI / 180;
+        const sinLat = Math.sin(dLat / 2);
+        const sinLon = Math.sin(dLon / 2);
+        const h = sinLat * sinLat + Math.cos(a.stop_lat * Math.PI / 180) * Math.cos(b.stop_lat * Math.PI / 180) * sinLon * sinLon;
+        return R * 2 * Math.atan2(Math.sqrt(h), Math.sqrt(1 - h));
+    }, []);
+
+    // Available stops for next connection, sorted by proximity
+    const availableStops = React.useMemo(() => {
+        if (!isAdding) return [];
+
+        const searchLower = stopSearch.toLowerCase().trim();
+
+        // For empty routes, show all stops
+        if (pathStops.length === 0) {
+            return stops
+                .filter(s => {
+                    if (!searchLower) return true;
+                    return s.stop_name?.toLowerCase().includes(searchLower) ||
+                           s.stop_code?.toLowerCase().includes(searchLower) ||
+                           s.stop_id?.toLowerCase().includes(searchLower);
+                })
+                .slice(0, 30);
+        }
+
+        if (!anchorStop) return [];
+
+        // Filter stops: exclude used ones, filter by search, sort by distance to anchor
+        return stops
+            .filter(s => !usedStopIds.has(s.stop_id))
+            .filter(s => {
+                if (!searchLower) return true;
+                return s.stop_name?.toLowerCase().includes(searchLower) ||
+                       s.stop_code?.toLowerCase().includes(searchLower) ||
+                       s.stop_id?.toLowerCase().includes(searchLower);
+            })
+            .map(s => ({ ...s, _dist: calcDistance(anchorStop, s) }))
+            .sort((a, b) => a._dist - b._dist)
+            .slice(0, 30);
+    }, [isAdding, pathStops, anchorStop, stops, usedStopIds, stopSearch, calcDistance]);
+
+    // Focus search when panel opens
+    React.useEffect(() => {
+        if (isAdding && searchInputRef.current) {
+            setTimeout(() => searchInputRef.current?.focus(), 100);
+        }
+    }, [isAdding]);
 
     const handleStartAdding = (type: 'prepend' | 'append') => {
         if (isAdding === type) {
             setIsAdding(null);
+            setStopSearch('');
             cancelPicking();
             return;
         }
-
         setIsAdding(type);
-
-        startPicking('segment', (segmentId) => {
-            const seg = allSegments.find(s => s.segment_id === segmentId);
-            if (!seg) return;
-
-            if (seg.type === 'empty') {
-                alert("No se pueden añadir aristas de servicio vacío a una ruta comercial.");
-                return;
-            }
-
-            let isValid = false;
-            if (routeSegments.length === 0) {
-                isValid = true;
-            } else if (type === 'prepend') {
-                const firstStopId = pathStops[0];
-                if (seg.end_node_id === firstStopId) isValid = true;
-            } else {
-                const lastStopId = pathStops[pathStops.length - 1];
-                if (seg.start_node_id === lastStopId) isValid = true;
-            }
-
-            if (isValid) {
-                handleSelectSegment(seg);
-            } else {
-                alert("Segmento Inválido: No conecta con el nodo actual de la ruta.");
-            }
-        });
+        setStopSearch('');
+        cancelPicking();
     };
 
     React.useEffect(() => {
         return () => cancelPicking();
     }, []);
+
+    // Select a stop to add — backend auto-creates segment via OSRM
+    const handleSelectStop = async (stop: Stop) => {
+        if (savingSegment) return;
+        setSavingSegment(true);
+
+        try {
+            let newStopIds = [...pathStops];
+            if (pathStops.length === 0) {
+                // First stop selected — need a second one to form a segment
+                // For now, just set this as the starting point
+                newStopIds = [stop.stop_id];
+                setPathStops(newStopIds);
+                setSavingSegment(false);
+                return;
+            } else if (isAdding === 'prepend') {
+                newStopIds.unshift(stop.stop_id);
+            } else if (isAdding === 'append') {
+                newStopIds.push(stop.stop_id);
+            }
+
+            await handleSavePath(newStopIds);
+            setStopSearch('');
+        } catch (e) {
+            console.error(e);
+        } finally {
+            setSavingSegment(false);
+        }
+    };
+
+    // Select an existing segment directly
+    const handleSelectExistingSegment = (seg: Segment) => {
+        let newStopIds = [...pathStops];
+
+        if (routeSegments.length === 0) {
+            newStopIds = [seg.start_node_id, seg.end_node_id];
+        } else if (isAdding === 'prepend') {
+            newStopIds.unshift(seg.start_node_id);
+        } else if (isAdding === 'append') {
+            newStopIds.push(seg.end_node_id);
+        }
+
+        let segmentsToUpdate: Segment[] = [];
+        if (targetDuration) {
+            const current = routeSegments.map(r => r.segment);
+            const combined = isAdding === 'prepend' ? [seg, ...current] : [...current, seg];
+            segmentsToUpdate = recalculateSegmentTimes(combined, targetDuration * 60);
+        }
+
+        handleSavePath(newStopIds, segmentsToUpdate);
+    };
+
+    // Enable map picking mode for stops
+    const handlePickFromMap = () => {
+        startPicking('stop', (stopId) => {
+            const stop = stops.find(s => s.stop_id === stopId);
+            if (stop) handleSelectStop(stop);
+        });
+    };
 
     const handleSavePath = async (newStopIds: string[], updatedSegments: Segment[] = []) => {
         try {
@@ -189,7 +305,11 @@ const RouteDetailsPanel: React.FC<RouteDetailsPanelProps> = ({ route, onClose, o
 
             setPathStops(newStopIds);
             setIsAdding(null);
-            cancelPicking(); 
+            setStopSearch('');
+            cancelPicking();
+
+            // Refetch to get the auto-created segments
+            setTimeout(() => fetchData(), 300);
 
         } catch (e) {
             console.error(e);
@@ -272,7 +392,7 @@ const RouteDetailsPanel: React.FC<RouteDetailsPanelProps> = ({ route, onClose, o
                 }
             }
         }
-    }, [routeSegments.length, targetDuration]); 
+    }, [routeSegments.length, targetDuration]);
 
     const handleRemoveSegment = (index: number) => {
         if (index !== 0 && index !== routeSegments.length - 1) {
@@ -298,27 +418,6 @@ const RouteDetailsPanel: React.FC<RouteDetailsPanelProps> = ({ route, onClose, o
         handleSavePath(newStopIds, segmentsToUpdate);
     };
 
-    const handleSelectSegment = (seg: Segment) => {
-        let newStopIds = [...pathStops];
-
-        if (routeSegments.length === 0) {
-            newStopIds = [seg.start_node_id, seg.end_node_id];
-        } else if (isAdding === 'prepend') {
-            newStopIds.unshift(seg.start_node_id);
-        } else if (isAdding === 'append') {
-            newStopIds.push(seg.end_node_id);
-        }
-
-        let segmentsToUpdate: Segment[] = [];
-        if (targetDuration) {
-            const current = routeSegments.map(r => r.segment);
-            const combined = isAdding === 'prepend' ? [seg, ...current] : [...current, seg];
-            segmentsToUpdate = recalculateSegmentTimes(combined, targetDuration * 60);
-        }
-
-        handleSavePath(newStopIds, segmentsToUpdate);
-    };
-
     const formatTime = (seconds: number) => {
         const h = Math.floor(seconds / 3600);
         const m = Math.floor((seconds % 3600) / 60);
@@ -330,6 +429,169 @@ const RouteDetailsPanel: React.FC<RouteDetailsPanelProps> = ({ route, onClose, o
         return `${Math.round(meters)} m`;
     };
 
+    // Render the stop/segment picker inline panel
+    const renderAddPanel = () => {
+        if (!isAdding) return null;
+
+        const isFirstSegment = pathStops.length === 0;
+        const anchor = anchorStop;
+        const isMapPicking = pickingState.isActive && pickingState.type === 'stop';
+
+        return (
+            <div className="mx-2 mb-4 bg-white dark:bg-slate-800/60 border-2 border-primary/30 rounded-2xl overflow-hidden animate-in fade-in slide-in-from-top-2 duration-300">
+                {/* Header */}
+                <div className="px-5 py-4 bg-primary/5 dark:bg-primary/10 border-b border-primary/10">
+                    <div className="flex items-center justify-between mb-2">
+                        <div className="flex items-center gap-2">
+                            <div className="p-1.5 bg-primary/10 rounded-lg">
+                                <Navigation size={14} className="text-primary" />
+                            </div>
+                            <h4 className="text-xs font-bold text-slate-900 dark:text-white uppercase tracking-wider">
+                                {isFirstSegment ? 'Seleccionar Parada de Inicio' : isAdding === 'append' ? 'Siguiente Parada' : 'Parada Anterior'}
+                            </h4>
+                        </div>
+                        <button
+                            onClick={() => { setIsAdding(null); setStopSearch(''); cancelPicking(); }}
+                            className="p-1.5 text-slate-400 hover:text-red-500 rounded-lg hover:bg-red-50 dark:hover:bg-red-900/20 transition-all"
+                        >
+                            <X size={14} />
+                        </button>
+                    </div>
+
+                    {anchor && (
+                        <div className="flex items-center gap-2 text-[10px] text-slate-500">
+                            <MapPin size={10} className="text-primary" />
+                            <span>Conectando desde: <strong className="text-slate-700 dark:text-slate-300">{anchor.stop_name}</strong></span>
+                        </div>
+                    )}
+                </div>
+
+                {/* Search + Map Pick */}
+                <div className="px-4 pt-3 pb-2 flex gap-2">
+                    <div className="flex-1 relative">
+                        <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+                        <input
+                            ref={searchInputRef}
+                            type="text"
+                            value={stopSearch}
+                            onChange={e => setStopSearch(e.target.value)}
+                            placeholder="Buscar parada por nombre o codigo..."
+                            className="w-full pl-9 pr-3 py-2.5 text-xs bg-slate-50 dark:bg-slate-900/50 border border-slate-200 dark:border-slate-700 rounded-xl focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary transition-all"
+                        />
+                    </div>
+                    <button
+                        onClick={isMapPicking ? () => cancelPicking() : handlePickFromMap}
+                        className={clsx(
+                            "px-3 py-2.5 rounded-xl text-[10px] font-bold uppercase tracking-wider flex items-center gap-1.5 transition-all whitespace-nowrap",
+                            isMapPicking
+                                ? "bg-primary text-white shadow-lg shadow-primary/30 animate-pulse"
+                                : "bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300 hover:bg-primary/10 hover:text-primary border border-slate-200 dark:border-slate-600"
+                        )}
+                    >
+                        <MapPin size={12} />
+                        {isMapPicking ? 'Eligiendo...' : 'Mapa'}
+                    </button>
+                </div>
+
+                {/* Existing compatible segments (quick-add) */}
+                {compatibleSegments.length > 0 && !stopSearch && (
+                    <div className="px-4 pb-2">
+                        <div className="text-[9px] font-bold text-slate-400 uppercase tracking-widest mb-2 flex items-center gap-1.5">
+                            <Zap size={9} className="text-amber-500" />
+                            Segmentos existentes ({compatibleSegments.length})
+                        </div>
+                        <div className="space-y-1 max-h-24 overflow-y-auto custom-scrollbar">
+                            {compatibleSegments.slice(0, 5).map(seg => {
+                                const targetStop = stops.find(s =>
+                                    s.stop_id === (isAdding === 'append' ? seg.end_node_id : seg.start_node_id)
+                                );
+                                return (
+                                    <button
+                                        key={seg.segment_id}
+                                        onClick={() => handleSelectExistingSegment(seg)}
+                                        className="w-full flex items-center gap-3 px-3 py-2 rounded-lg bg-amber-50/50 dark:bg-amber-900/10 border border-amber-200/50 dark:border-amber-800/30 hover:bg-amber-100 dark:hover:bg-amber-900/20 transition-all text-left group"
+                                    >
+                                        <div className="p-1 bg-amber-100 dark:bg-amber-900/30 rounded-md">
+                                            <Zap size={10} className="text-amber-600" />
+                                        </div>
+                                        <div className="flex-1 min-w-0">
+                                            <div className="text-xs font-semibold text-slate-800 dark:text-slate-200 truncate">
+                                                {targetStop?.stop_name || seg.end_node_id}
+                                            </div>
+                                            <div className="text-[9px] text-slate-400">
+                                                {formatDist(seg.distance || 0)} &middot; {formatTime(seg.travel_time || 0)}
+                                            </div>
+                                        </div>
+                                        <ChevronRight size={12} className="text-slate-300 group-hover:text-primary transition-colors" />
+                                    </button>
+                                );
+                            })}
+                        </div>
+                    </div>
+                )}
+
+                {/* Stop list */}
+                <div className="px-4 pb-3">
+                    <div className="text-[9px] font-bold text-slate-400 uppercase tracking-widest mb-2 flex items-center gap-1.5">
+                        <MapPin size={9} className="text-primary" />
+                        {isFirstSegment ? 'Paradas disponibles' : 'Paradas cercanas'} ({availableStops.length})
+                    </div>
+                    <div className="space-y-1 max-h-48 overflow-y-auto custom-scrollbar">
+                        {availableStops.length === 0 && (
+                            <div className="py-6 text-center">
+                                <p className="text-[10px] text-slate-400 font-medium">
+                                    {stopSearch ? 'Sin resultados para esta busqueda' : 'No hay paradas registradas en el proyecto'}
+                                </p>
+                            </div>
+                        )}
+                        {availableStops.map((stop: any) => (
+                            <button
+                                key={stop.stop_id}
+                                onClick={() => handleSelectStop(stop)}
+                                disabled={savingSegment}
+                                className={clsx(
+                                    "w-full flex items-center gap-3 px-3 py-2.5 rounded-lg transition-all text-left group",
+                                    savingSegment
+                                        ? "opacity-50 cursor-wait"
+                                        : "hover:bg-primary/5 dark:hover:bg-primary/10 hover:border-primary/30",
+                                    "bg-white dark:bg-slate-800/40 border border-slate-100 dark:border-slate-700/50"
+                                )}
+                            >
+                                <div className="p-1.5 bg-slate-100 dark:bg-slate-700 rounded-lg group-hover:bg-primary/10 transition-colors">
+                                    <MapPin size={12} className="text-slate-400 group-hover:text-primary transition-colors" />
+                                </div>
+                                <div className="flex-1 min-w-0">
+                                    <div className="text-xs font-semibold text-slate-800 dark:text-slate-200 truncate">
+                                        {stop.stop_name || stop.stop_id}
+                                    </div>
+                                    <div className="text-[9px] text-slate-400 flex items-center gap-2">
+                                        {stop.stop_code && <span>{stop.stop_code}</span>}
+                                        {stop._dist !== undefined && stop._dist > 0 && (
+                                            <span>{formatDist(stop._dist)}</span>
+                                        )}
+                                        {stop.node_type && stop.node_type !== 'regular' && (
+                                            <span className="px-1.5 py-0.5 bg-slate-100 dark:bg-slate-700 rounded text-[8px] uppercase font-bold">{stop.node_type}</span>
+                                        )}
+                                    </div>
+                                </div>
+                                <ChevronRight size={12} className="text-slate-300 group-hover:text-primary transition-colors" />
+                            </button>
+                        ))}
+                    </div>
+                </div>
+
+                {savingSegment && (
+                    <div className="px-4 pb-3">
+                        <div className="flex items-center gap-2 px-3 py-2 bg-primary/5 rounded-lg">
+                            <div className="w-4 h-4 border-2 border-primary/30 border-t-primary rounded-full animate-spin" />
+                            <span className="text-[10px] font-bold text-primary uppercase tracking-wider">Generando segmento via OSRM...</span>
+                        </div>
+                    </div>
+                )}
+            </div>
+        );
+    };
+
     return (
         <Draggable className="absolute top-10 right-10 w-[520px] glass-panel shadow-[0_40px_80px_-20px_rgba(0,0,0,0.5)] rounded-3xl flex flex-col border border-white/20 dark:border-slate-800 z-40 max-h-[90vh] animate-in slide-in-from-right-10 duration-500 ease-out-expo pointer-events-auto overflow-hidden">
             {/* Header Area */}
@@ -337,8 +599,8 @@ const RouteDetailsPanel: React.FC<RouteDetailsPanelProps> = ({ route, onClose, o
                 <div className="flex justify-between items-start mb-6">
                     <div className="flex items-center gap-4">
                         <div className="relative group">
-                             <div 
-                                className="w-12 h-12 rounded-2xl shadow-lg border-2 border-white dark:border-slate-800 flex items-center justify-center font-display font-black text-lg transition-transform hover:scale-110" 
+                             <div
+                                className="w-12 h-12 rounded-2xl shadow-lg border-2 border-white dark:border-slate-800 flex items-center justify-center font-display font-black text-lg transition-transform hover:scale-110"
                                 style={{ backgroundColor: `#${route.route_color}`, color: `#${route.route_text_color}` }}
                              >
                                 {route.route_short_name}
@@ -354,7 +616,7 @@ const RouteDetailsPanel: React.FC<RouteDetailsPanelProps> = ({ route, onClose, o
                             <p className="text-[11px] font-bold text-slate-400 uppercase tracking-[0.2em]">Operational Insights</p>
                         </div>
                     </div>
-                    
+
                     <div className="flex gap-2">
                         {onBack && (
                             <button onClick={onBack} className="p-2.5 text-slate-400 hover:text-primary rounded-xl hover:bg-white dark:hover:bg-slate-800 border-none transition-all">
@@ -385,7 +647,7 @@ const RouteDetailsPanel: React.FC<RouteDetailsPanelProps> = ({ route, onClose, o
                 {/* Refined Tabs */}
                 <div className="flex p-1.5 bg-slate-100 dark:bg-slate-800/80 rounded-[18px] border utilitarian-border">
                     <button
-                        onClick={() => { if (!isEditing) { setActiveTab(0); setIsAdding(null); } }}
+                        onClick={() => { if (!isEditing) { setActiveTab(0); setIsAdding(null); setStopSearch(''); } }}
                         disabled={isEditing}
                         className={clsx(
                             "flex-1 py-2.5 text-[11px] font-bold uppercase tracking-widest rounded-[12px] transition-all",
@@ -398,7 +660,7 @@ const RouteDetailsPanel: React.FC<RouteDetailsPanelProps> = ({ route, onClose, o
                         Trayecto Ida
                     </button>
                     <button
-                        onClick={() => { if (!isEditing) { setActiveTab(1); setIsAdding(null); } }}
+                        onClick={() => { if (!isEditing) { setActiveTab(1); setIsAdding(null); setStopSearch(''); } }}
                         disabled={isEditing}
                         className={clsx(
                             "flex-1 py-2.5 text-[11px] font-bold uppercase tracking-widest rounded-[12px] transition-all",
@@ -413,14 +675,16 @@ const RouteDetailsPanel: React.FC<RouteDetailsPanelProps> = ({ route, onClose, o
                 </div>
             </div>
 
-            {/* Actions Bar - Simplified to avoid card-over-card */}
+            {/* Actions Bar */}
             <div className="px-8 py-4 bg-white/30 dark:bg-slate-900/30 border-b utilitarian-border flex gap-4">
                 <button
                     onClick={() => {
                         if (isEditing) {
-                            if (confirm('¿Descartar cambios no sincronizados?')) {
+                            if (confirm('Descartar cambios no sincronizados?')) {
                                 setIsEditing(false);
                                 setIsAdding(null);
+                                setStopSearch('');
+                                cancelPicking();
                                 fetchData();
                             }
                         } else {
@@ -436,12 +700,12 @@ const RouteDetailsPanel: React.FC<RouteDetailsPanelProps> = ({ route, onClose, o
                     )}
                 >
                     {isEditing ? <RotateCcw size={16} /> : <Edit2 size={16} />}
-                    {isEditing ? 'Cancelar Edición' : 'Editar Segmentos / Añadir'}
+                    {isEditing ? 'Cancelar Edicion' : 'Editar Segmentos / Anadir'}
                 </button>
-                
+
                 {isEditing && (
                      <button
-                        onClick={() => setIsEditing(false)}
+                        onClick={() => { setIsEditing(false); setIsAdding(null); setStopSearch(''); cancelPicking(); }}
                         className="px-6 py-3 rounded-2xl bg-emerald-500 text-white shadow-lg shadow-emerald-500/20 font-bold text-xs uppercase tracking-widest flex items-center gap-2 hover:scale-[1.02] active:scale-95 transition-all"
                     >
                         <Save size={16} />
@@ -455,37 +719,36 @@ const RouteDetailsPanel: React.FC<RouteDetailsPanelProps> = ({ route, onClose, o
                 {loading && (
                     <div className="flex flex-col items-center justify-center py-20 animate-pulse text-slate-400">
                         <div className="w-10 h-10 rounded-full border-4 border-slate-200 dark:border-slate-800 border-t-primary animate-spin mb-4" />
-                        <span className="text-[10px] font-bold uppercase tracking-[0.2em]">Compilando Red Cartográfica...</span>
+                        <span className="text-[10px] font-bold uppercase tracking-[0.2em]">Compilando Red Cartografica...</span>
                     </div>
                 )}
 
                 {/* Prepend Area */}
                 {isEditing && !loading && (
-                    <div className="mb-8">
-                        <button
-                            onClick={() => handleStartAdding('prepend')}
-                            className={clsx(
-                                "w-full py-4 border-2 border-dashed rounded-[20px] flex flex-col items-center justify-center gap-1 transition-all",
-                                isAdding === 'prepend'
-                                    ? "border-primary bg-primary/5 text-primary"
-                                    : "border-slate-200 dark:border-slate-800 text-slate-400 hover:border-primary hover:text-primary hover:bg-primary/5"
-                            )}
-                        >
-                            <Plus size={18} className={isAdding === 'prepend' ? "animate-bounce" : ""} />
-                            <span className="text-[10px] font-bold uppercase tracking-widest">
-                                {isAdding === 'prepend' ? 'Seleccionar en el mapa (Origen)' : 'Anteponer Segmento'}
-                            </span>
-                        </button>
+                    <div className="mb-6">
+                        {isAdding === 'prepend' ? (
+                            renderAddPanel()
+                        ) : (
+                            <button
+                                onClick={() => handleStartAdding('prepend')}
+                                className="w-full py-4 border-2 border-dashed rounded-[20px] flex flex-col items-center justify-center gap-1 transition-all border-slate-200 dark:border-slate-800 text-slate-400 hover:border-primary hover:text-primary hover:bg-primary/5"
+                            >
+                                <Plus size={18} />
+                                <span className="text-[10px] font-bold uppercase tracking-widest">
+                                    {pathStops.length === 0 ? 'Seleccionar Parada de Inicio' : 'Anteponer Segmento'}
+                                </span>
+                            </button>
+                        )}
                     </div>
                 )}
 
-                {!loading && routeSegments.length === 0 && (
+                {!loading && routeSegments.length === 0 && !isEditing && (
                     <div className="flex flex-col items-center justify-center py-20 text-center px-10">
                         <div className="p-6 bg-slate-100 dark:bg-slate-800 rounded-full mb-6 text-slate-300">
                              <AlertCircle size={48} strokeWidth={1.5} />
                         </div>
                         <h3 className="font-display font-bold text-slate-900 dark:text-white mb-2">Ruta sin segmentos vinculados</h3>
-                        <p className="text-xs text-slate-500 font-medium leading-relaxed">Inicia la edición para vincular el primer segmento vial a esta ruta comercial.</p>
+                        <p className="text-xs text-slate-500 font-medium leading-relaxed">Haz click en "Editar Segmentos" para construir el recorrido seleccionando paradas.</p>
                     </div>
                 )}
 
@@ -514,7 +777,7 @@ const RouteDetailsPanel: React.FC<RouteDetailsPanelProps> = ({ route, onClose, o
                                                 <ChevronRight size={10} className="text-slate-300" />
                                             </div>
                                             <h4 className="font-bold text-slate-900 dark:text-slate-200 text-sm leading-tight">
-                                                {item.startStop?.stop_name} <span className="text-slate-300 dark:text-slate-600 font-medium px-1">→</span> {item.endStop?.stop_name}
+                                                {item.startStop?.stop_name} <span className="text-slate-300 dark:text-slate-600 font-medium px-1">&rarr;</span> {item.endStop?.stop_name}
                                             </h4>
                                         </div>
                                         {isEditing && (
@@ -562,22 +825,19 @@ const RouteDetailsPanel: React.FC<RouteDetailsPanelProps> = ({ route, onClose, o
                 </div>
 
                 {/* Append Area */}
-                {isEditing && !loading && routeSegments.length > 0 && (
-                    <div className="mt-8">
-                         <button
-                            onClick={() => handleStartAdding('append')}
-                            className={clsx(
-                                "w-full py-4 border-2 border-dashed rounded-[20px] flex flex-col items-center justify-center gap-1 transition-all",
-                                isAdding === 'append'
-                                    ? "border-primary bg-primary/5 text-primary"
-                                    : "border-slate-200 dark:border-slate-800 text-slate-400 hover:border-primary hover:text-primary hover:bg-primary/5"
-                            )}
-                        >
-                            <Plus size={18} className={isAdding === 'append' ? "animate-bounce" : ""} />
-                            <span className="text-[10px] font-bold uppercase tracking-widest">
-                                {isAdding === 'append' ? 'Seleccionar en el mapa (Destino)' : 'Anexar al Final'}
-                            </span>
-                        </button>
+                {isEditing && !loading && pathStops.length > 0 && (
+                    <div className="mt-6">
+                        {isAdding === 'append' ? (
+                            renderAddPanel()
+                        ) : (
+                            <button
+                                onClick={() => handleStartAdding('append')}
+                                className="w-full py-4 border-2 border-dashed rounded-[20px] flex flex-col items-center justify-center gap-1 transition-all border-slate-200 dark:border-slate-800 text-slate-400 hover:border-primary hover:text-primary hover:bg-primary/5"
+                            >
+                                <Plus size={18} />
+                                <span className="text-[10px] font-bold uppercase tracking-widest">Anexar al Final</span>
+                            </button>
+                        )}
                     </div>
                 )}
             </div>
@@ -587,7 +847,7 @@ const RouteDetailsPanel: React.FC<RouteDetailsPanelProps> = ({ route, onClose, o
                 <div className="p-8 bg-slate-100/50 dark:bg-slate-900/50 backdrop-blur-md border-t utilitarian-border">
                     <div className="flex items-center justify-between gap-6">
                         <div className="flex-1">
-                            <span className="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] mb-3 block">Métrica consolidada</span>
+                            <span className="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] mb-3 block">Metrica consolidada</span>
                             <div className="flex items-center gap-8">
                                 <div>
                                     <div className="text-2xl font-display font-black text-slate-900 dark:text-white leading-none mb-1">
@@ -611,7 +871,7 @@ const RouteDetailsPanel: React.FC<RouteDetailsPanelProps> = ({ route, onClose, o
                                                 </div>
                                             </div>
                                             <div className="flex items-center gap-1 text-[10px] font-bold text-slate-500 uppercase tracking-widest">
-                                                <Activity size={10} className="mr-1" /> Vel: 
+                                                <Activity size={10} className="mr-1" /> Vel:
                                                 <input
                                                     type="number"
                                                     min="1"
