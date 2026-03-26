@@ -476,16 +476,16 @@ export default async function routesRoutes(fastify: FastifyInstance) {
         const trip_id = `t_${id}_${direction_id}`;
 
         const upsertTrip = db.prepare(`
-          INSERT INTO trips (route_id, service_id, trip_id, trip_headsign, direction_id, shape_id)
-          VALUES (?, ?, ?, ?, ?, ?)
-          ON CONFLICT(trip_id) DO UPDATE SET 
+          INSERT INTO trips (route_id, service_id, trip_id, project_id, trip_headsign, direction_id, shape_id)
+          VALUES (?, ?, ?, ?, ?, ?, ?)
+          ON CONFLICT(trip_id, project_id) DO UPDATE SET
             trip_headsign=excluded.trip_headsign,
             shape_id=excluded.shape_id
       `);
 
         const shape_id = `sh_${id}_${direction_id}`;
 
-        upsertTrip.run(id, service_id, trip_id, `Direction ${direction_id}`, direction_id, shape_id);
+        upsertTrip.run(id, service_id, trip_id, request.projectId, `Direction ${direction_id}`, direction_id, shape_id);
 
         // 2. Process Segments and Shapes
         // Delete existing shape points for this shape_id
