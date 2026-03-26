@@ -567,180 +567,147 @@ const RouteDetailsPanel: React.FC<RouteDetailsPanelProps> = ({ route, onClose, o
         );
     };
 
+    const lastSeg = routeSegments.length > 0 ? routeSegments[routeSegments.length - 1] : null;
+
     return (
-        <Draggable className="absolute top-10 right-10 w-[520px] glass-panel shadow-[0_40px_80px_-20px_rgba(0,0,0,0.5)] rounded-3xl flex flex-col border border-white/20 dark:border-slate-800 z-40 max-h-[90vh] animate-in slide-in-from-right-10 duration-500 ease-out-expo pointer-events-auto overflow-hidden">
-            {/* Header Area */}
-            <div className="drag-handle cursor-move bg-slate-50/80 dark:bg-slate-900/80 backdrop-blur-md p-8 border-b utilitarian-border">
-                <div className="flex justify-between items-start mb-6">
-                    <div className="flex items-center gap-4">
-                        <div className="relative group">
-                             <div
-                                className="w-12 h-12 rounded-2xl shadow-lg border-2 border-white dark:border-slate-800 flex items-center justify-center font-display font-black text-lg transition-transform hover:scale-110"
-                                style={{ backgroundColor: `#${route.route_color}`, color: `#${route.route_text_color}` }}
-                             >
-                                {route.route_short_name}
-                             </div>
-                             <div className="absolute -bottom-1 -right-1 bg-white dark:bg-slate-900 p-1 rounded-full border utilitarian-border">
-                                <Activity size={10} className="text-primary" />
-                             </div>
-                        </div>
-                        <div>
-                            <h2 className="text-2xl font-display font-bold text-slate-900 dark:text-white tracking-tight leading-none mb-1">
-                                Detalle de Ruta
-                            </h2>
-                            <p className="text-[11px] font-bold text-slate-400 uppercase tracking-[0.2em]">Operational Insights</p>
+        <Draggable className="absolute top-4 right-4 w-[420px] glass-panel shadow-2xl rounded-2xl flex flex-col border border-white/10 dark:border-slate-700/50 z-40 max-h-[92vh] animate-in slide-in-from-right-6 duration-300 pointer-events-auto overflow-hidden">
+            {/* Compact Header */}
+            <div className="drag-handle cursor-move px-4 pt-4 pb-3 bg-slate-50/90 dark:bg-slate-900/90 backdrop-blur-md border-b border-slate-200/50 dark:border-slate-700/50">
+                <div className="flex items-center gap-3 mb-3">
+                    <div
+                        className="w-9 h-9 rounded-xl shadow-sm border border-white/30 dark:border-slate-700 flex items-center justify-center font-bold text-sm shrink-0"
+                        style={{ backgroundColor: `#${route.route_color}`, color: `#${route.route_text_color}` }}
+                    >
+                        {route.route_short_name}
+                    </div>
+                    <div className="flex-1 min-w-0">
+                        <h2 className="text-sm font-bold text-slate-900 dark:text-white truncate leading-tight">
+                            {route.route_long_name}
+                        </h2>
+                        <div className="flex items-center gap-3 text-[10px] text-slate-400">
+                            <span>{route.agency_name || 'Sin agencia'}</span>
                         </div>
                     </div>
-
-                    <div className="flex gap-2">
+                    <div className="flex items-center gap-1 shrink-0">
                         {onBack && (
-                            <button onClick={onBack} className="p-2.5 text-slate-400 hover:text-primary rounded-xl hover:bg-white dark:hover:bg-slate-800 border-none transition-all">
-                                <ArrowLeft size={18} />
+                            <button onClick={onBack} className="p-1.5 text-slate-400 hover:text-primary rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 transition-all">
+                                <ArrowLeft size={16} />
                             </button>
                         )}
-                        <button onClick={onClose} className="p-2.5 text-slate-400 hover:text-red-500 rounded-xl hover:bg-white dark:hover:bg-slate-800 transition-all">
-                            <X size={20} strokeWidth={2.5} />
+                        <button onClick={onClose} className="p-1.5 text-slate-400 hover:text-red-500 rounded-lg hover:bg-red-50 dark:hover:bg-red-900/20 transition-all">
+                            <X size={16} />
                         </button>
                     </div>
                 </div>
 
-                <div className="grid grid-cols-2 gap-8 mb-8">
-                    <div>
-                        <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest block mb-2 underline decoration-primary/40 underline-offset-4">Servicio Comercial</span>
-                        <div className="font-bold text-slate-900 dark:text-gray-100 text-[15px] leading-tight" title={route.route_long_name}>
-                            {route.route_long_name}
-                        </div>
+                {/* Tabs + Edit toggle in one row */}
+                <div className="flex items-center gap-2">
+                    <div className="flex flex-1 p-1 bg-slate-100 dark:bg-slate-800/80 rounded-xl">
+                        <button
+                            onClick={() => { if (!isEditing) { setActiveTab(0); setIsAdding(null); setSegmentSearch(''); } }}
+                            disabled={isEditing}
+                            className={clsx(
+                                "flex-1 py-1.5 text-[10px] font-bold uppercase tracking-wider rounded-lg transition-all",
+                                activeTab === 0
+                                    ? "bg-white dark:bg-slate-700 text-primary shadow-sm"
+                                    : "text-slate-400 hover:text-slate-600 dark:hover:text-slate-300",
+                                isEditing && "opacity-50 cursor-not-allowed"
+                            )}
+                        >
+                            Ida
+                        </button>
+                        <button
+                            onClick={() => { if (!isEditing) { setActiveTab(1); setIsAdding(null); setSegmentSearch(''); } }}
+                            disabled={isEditing}
+                            className={clsx(
+                                "flex-1 py-1.5 text-[10px] font-bold uppercase tracking-wider rounded-lg transition-all",
+                                activeTab === 1
+                                    ? "bg-white dark:bg-slate-700 text-primary shadow-sm"
+                                    : "text-slate-400 hover:text-slate-600 dark:hover:text-slate-300",
+                                isEditing && "opacity-50 cursor-not-allowed"
+                            )}
+                        >
+                            Vuelta
+                        </button>
                     </div>
-                    <div>
-                        <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest block mb-2 underline decoration-primary/40 underline-offset-4">Agencia Operativa</span>
-                        <div className="font-bold text-slate-900 dark:text-gray-100 text-[15px]">
-                            {route.agency_name || 'Sin Asignar'}
-                        </div>
-                    </div>
-                </div>
-
-                {/* Tabs */}
-                <div className="flex p-1.5 bg-slate-100 dark:bg-slate-800/80 rounded-[18px] border utilitarian-border">
                     <button
-                        onClick={() => { if (!isEditing) { setActiveTab(0); setIsAdding(null); setSegmentSearch(''); } }}
-                        disabled={isEditing}
-                        className={clsx(
-                            "flex-1 py-2.5 text-[11px] font-bold uppercase tracking-widest rounded-[12px] transition-all",
-                            activeTab === 0
-                                ? "bg-white dark:bg-slate-700 text-primary shadow-sm ring-1 ring-slate-200 dark:ring-slate-600"
-                                : "text-slate-500 hover:text-slate-900 dark:hover:text-slate-200",
-                            isEditing && "opacity-50 cursor-not-allowed"
-                        )}
-                    >
-                        Trayecto Ida
-                    </button>
-                    <button
-                        onClick={() => { if (!isEditing) { setActiveTab(1); setIsAdding(null); setSegmentSearch(''); } }}
-                        disabled={isEditing}
-                        className={clsx(
-                            "flex-1 py-2.5 text-[11px] font-bold uppercase tracking-widest rounded-[12px] transition-all",
-                            activeTab === 1
-                                ? "bg-white dark:bg-slate-700 text-primary shadow-sm ring-1 ring-slate-200 dark:ring-slate-600"
-                                : "text-slate-500 hover:text-slate-900 dark:hover:text-slate-200",
-                            isEditing && "opacity-50 cursor-not-allowed"
-                        )}
-                    >
-                        Trayecto Vuelta
-                    </button>
-                </div>
-            </div>
-
-            {/* Actions Bar */}
-            <div className="px-8 py-4 bg-white/30 dark:bg-slate-900/30 border-b utilitarian-border flex gap-4">
-                <button
-                    onClick={() => {
-                        if (isEditing) {
-                            if (confirm('Descartar cambios no sincronizados?')) {
-                                setIsEditing(false);
-                                setIsAdding(null);
-                                setSegmentSearch('');
-                                cancelPicking();
-                                fetchData();
+                        onClick={() => {
+                            if (isEditing) {
+                                if (confirm('Descartar cambios?')) {
+                                    setIsEditing(false); setIsAdding(null); setSegmentSearch(''); cancelPicking(); fetchData();
+                                }
+                            } else {
+                                setIsEditing(true); setIsAdding(null);
                             }
-                        } else {
-                            setIsEditing(true);
-                            setIsAdding(null);
-                        }
-                    }}
-                    className={clsx(
-                        "flex-1 py-3 rounded-2xl font-bold text-xs uppercase tracking-widest flex items-center justify-center gap-2 transition-all",
-                        isEditing
-                            ? "bg-red-50 dark:bg-red-900/20 text-red-600 border border-red-200 dark:border-red-900/40 hover:bg-red-100"
-                            : "bg-primary text-white shadow-lg shadow-primary/20 hover:scale-[1.02] active:scale-95"
-                    )}
-                >
-                    {isEditing ? <RotateCcw size={16} /> : <Edit2 size={16} />}
-                    {isEditing ? 'Cancelar Edicion' : 'Editar Segmentos / Anadir'}
-                </button>
-
-                {isEditing && (
-                     <button
-                        onClick={() => { setIsEditing(false); setIsAdding(null); setSegmentSearch(''); cancelPicking(); }}
-                        className="px-6 py-3 rounded-2xl bg-emerald-500 text-white shadow-lg shadow-emerald-500/20 font-bold text-xs uppercase tracking-widest flex items-center gap-2 hover:scale-[1.02] active:scale-95 transition-all"
+                        }}
+                        className={clsx(
+                            "p-2 rounded-xl transition-all",
+                            isEditing
+                                ? "bg-red-50 dark:bg-red-900/20 text-red-500 hover:bg-red-100"
+                                : "bg-primary/10 text-primary hover:bg-primary/20"
+                        )}
                     >
-                        <Save size={16} />
-                        Guardar
+                        {isEditing ? <RotateCcw size={14} /> : <Edit2 size={14} />}
                     </button>
-                )}
+                    {isEditing && (
+                        <button
+                            onClick={() => { setIsEditing(false); setIsAdding(null); setSegmentSearch(''); cancelPicking(); }}
+                            className="p-2 rounded-xl bg-emerald-500 text-white hover:bg-emerald-600 transition-all"
+                        >
+                            <Save size={14} />
+                        </button>
+                    )}
+                </div>
             </div>
 
             {/* Segments List */}
-            <div className="flex-1 overflow-y-auto px-8 py-6 custom-scrollbar relative bg-white/20">
+            <div className="flex-1 overflow-y-auto px-4 py-3 custom-scrollbar relative">
                 {loading && (
-                    <div className="flex flex-col items-center justify-center py-20 animate-pulse text-slate-400">
-                        <div className="w-10 h-10 rounded-full border-4 border-slate-200 dark:border-slate-800 border-t-primary animate-spin mb-4" />
-                        <span className="text-[10px] font-bold uppercase tracking-[0.2em]">Compilando Red Cartografica...</span>
+                    <div className="flex items-center justify-center py-12 text-slate-400">
+                        <div className="w-6 h-6 border-2 border-slate-200 dark:border-slate-700 border-t-primary rounded-full animate-spin" />
                     </div>
                 )}
 
                 {/* Prepend Area */}
                 {isEditing && !loading && (
-                    <div className="mb-6">
+                    <div className="mb-3">
                         {isAdding === 'prepend' ? (
                             renderAddPanel()
                         ) : (
                             <button
                                 onClick={() => handleStartAdding('prepend')}
-                                className="w-full py-4 border-2 border-dashed rounded-[20px] flex flex-col items-center justify-center gap-1 transition-all border-slate-200 dark:border-slate-800 text-slate-400 hover:border-primary hover:text-primary hover:bg-primary/5"
+                                className="w-full py-2.5 border border-dashed rounded-xl flex items-center justify-center gap-2 transition-all text-[10px] font-bold uppercase tracking-wider border-slate-200 dark:border-slate-700 text-slate-400 hover:border-primary hover:text-primary hover:bg-primary/5"
                             >
-                                <Plus size={18} />
-                                <span className="text-[10px] font-bold uppercase tracking-widest">
-                                    {pathStops.length === 0 ? 'Seleccionar Primer Segmento' : 'Anteponer Segmento'}
-                                </span>
+                                <Plus size={12} />
+                                {pathStops.length === 0 ? 'Primer segmento' : 'Anteponer'}
                             </button>
                         )}
                     </div>
                 )}
 
                 {!loading && routeSegments.length === 0 && !isEditing && (
-                    <div className="flex flex-col items-center justify-center py-20 text-center px-10">
-                        <div className="p-6 bg-slate-100 dark:bg-slate-800 rounded-full mb-6 text-slate-300">
-                             <AlertCircle size={48} strokeWidth={1.5} />
-                        </div>
-                        <h3 className="font-display font-bold text-slate-900 dark:text-white mb-2">Ruta sin segmentos vinculados</h3>
-                        <p className="text-xs text-slate-500 font-medium leading-relaxed">Haz click en "Editar Segmentos" para construir el recorrido seleccionando segmentos del inventario.</p>
+                    <div className="flex flex-col items-center py-10 text-center px-6">
+                        <AlertCircle size={28} className="text-slate-300 dark:text-slate-600 mb-3" strokeWidth={1.5} />
+                        <p className="text-xs text-slate-500 font-medium">Sin segmentos. Usa el editor para construir el recorrido.</p>
                     </div>
                 )}
 
-                <div className="space-y-4 relative">
+                {/* Segment Timeline */}
+                <div className="space-y-1 relative">
                     {routeSegments.length > 1 && (
-                        <div className="absolute left-[19px] top-6 bottom-6 w-[2px] bg-gradient-to-b from-primary via-slate-200 to-primary dark:via-slate-800 pointer-events-none opacity-30" />
+                        <div className="absolute left-[11px] top-4 bottom-4 w-px bg-gradient-to-b from-primary/40 via-slate-300 to-primary/40 dark:via-slate-700 pointer-events-none" />
                     )}
 
                     {routeSegments.map((item, index) => {
                         const canDelete = index === 0 || index === routeSegments.length - 1;
 
                         return (
-                            <div key={item.segment.segment_id} className="relative pl-10 group animate-in fade-in slide-in-from-left-4" style={{ animationDelay: `${index * 50}ms` }}>
-                                <div className="absolute left-0 top-[18px] w-10 flex justify-center z-10">
-                                     <div className="w-10 h-10 rounded-xl bg-white dark:bg-slate-800 border-2 border-primary shadow-lg flex items-center justify-center font-mono text-[10px] font-bold text-primary">
+                            <div key={item.segment.segment_id} className="relative pl-7 group">
+                                {/* Step indicator */}
+                                <div className="absolute left-0 top-3 w-[22px] flex justify-center z-10">
+                                    <div className="w-[22px] h-[22px] rounded-md bg-white dark:bg-slate-800 border-2 border-primary/60 flex items-center justify-center text-[9px] font-bold text-primary font-mono">
                                         {index + 1}
-                                     </div>
+                                    </div>
                                 </div>
 
                                 <div
@@ -754,58 +721,40 @@ const RouteDetailsPanel: React.FC<RouteDetailsPanelProps> = ({ route, onClose, o
                                         }
                                     }}
                                     className={clsx(
-                                        "bg-white dark:bg-slate-800/40 border utilitarian-border rounded-2xl p-5 hover:bg-slate-50/50 dark:hover:bg-primary/5 transition-all group/card",
-                                        !isEditing && "cursor-pointer hover:border-primary/40 hover:shadow-md"
+                                        "rounded-xl px-3 py-2.5 border transition-all",
+                                        !isEditing
+                                            ? "cursor-pointer border-transparent hover:border-primary/30 hover:bg-primary/5 dark:hover:bg-primary/10"
+                                            : "border-slate-100 dark:border-slate-700/50 bg-white/50 dark:bg-slate-800/30"
                                     )}
                                 >
-                                    <div className="flex justify-between items-start mb-4">
-                                        <div className="flex-1">
-                                            <div className="flex items-center gap-2 mb-1">
-                                                <span className="text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-widest">Segmento Vial</span>
-                                                {!isEditing && <Clock size={10} className="text-primary" />}
-                                                <ChevronRight size={10} className="text-slate-300" />
+                                    <div className="flex items-center justify-between">
+                                        <div className="flex-1 min-w-0">
+                                            <div className="text-[11px] font-semibold text-slate-800 dark:text-slate-200 truncate">
+                                                {item.startStop?.stop_name || '?'} <span className="text-slate-300 dark:text-slate-600 mx-0.5">&rarr;</span> {item.endStop?.stop_name || '?'}
                                             </div>
-                                            <h4 className="font-bold text-slate-900 dark:text-slate-200 text-sm leading-tight">
-                                                {item.startStop?.stop_name} <span className="text-slate-300 dark:text-slate-600 font-medium px-1">&rarr;</span> {item.endStop?.stop_name}
-                                            </h4>
+                                            <div className="flex items-center gap-3 mt-0.5 text-[9px] text-slate-400">
+                                                <span className="flex items-center gap-0.5 font-mono">
+                                                    <Ruler size={8} /> {formatDist(item.segment.distance || 0)}
+                                                </span>
+                                                <span className="flex items-center gap-0.5 font-mono">
+                                                    <Clock size={8} /> {formatTime(item.segment.travel_time || 0)}
+                                                </span>
+                                                {!isEditing && (
+                                                    <span className="text-primary/60 flex items-center gap-0.5">
+                                                        <Clock size={7} /> Franjas
+                                                    </span>
+                                                )}
+                                            </div>
                                         </div>
-                                        {isEditing && (
-                                            <div className="flex gap-1">
-                                                <button
-                                                    onClick={() => canDelete ? handleRemoveSegment(index) : alert("No se pueden eliminar segmentos intermedios para mantener la continuidad.")}
-                                                    className={clsx(
-                                                        "p-2 rounded-lg transition-all",
-                                                        canDelete
-                                                            ? "text-slate-300 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20"
-                                                            : "text-slate-100 dark:text-slate-800 cursor-not-allowed"
-                                                    )}
-                                                    title={canDelete ? "Eliminar" : "Bloqueado: Requerido para continuidad"}
-                                                >
-                                                    <Trash2 size={16} />
-                                                </button>
-                                            </div>
+                                        {isEditing && canDelete && (
+                                            <button
+                                                onClick={(e) => { e.stopPropagation(); handleRemoveSegment(index); }}
+                                                className="p-1 text-slate-300 hover:text-red-500 rounded transition-all shrink-0"
+                                            >
+                                                <Trash2 size={12} />
+                                            </button>
                                         )}
-                                    </div>
-
-                                    <div className="flex items-center gap-6">
-                                        <div className="flex items-center gap-2">
-                                            <div className="p-1.5 rounded-lg bg-primary/5 text-primary">
-                                                <Clock size={12} strokeWidth={2.5} />
-                                            </div>
-                                            <div>
-                                                <span className="block text-[8px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-widest">Acumulado</span>
-                                                <span className="font-mono text-[11px] font-bold text-slate-700 dark:text-slate-300">{formatTime(item.accumulatedTime)}</span>
-                                            </div>
-                                        </div>
-                                        <div className="flex items-center gap-2">
-                                            <div className="p-1.5 rounded-lg bg-indigo-500/5 text-indigo-500">
-                                                <Ruler size={12} strokeWidth={2.5} />
-                                            </div>
-                                            <div>
-                                                <span className="block text-[8px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-widest">Recorrido</span>
-                                                <span className="font-mono text-[11px] font-bold text-slate-700 dark:text-slate-300">{formatDist(item.accumulatedDist)}</span>
-                                            </div>
-                                        </div>
+                                        {!isEditing && <ChevronRight size={12} className="text-slate-300 shrink-0" />}
                                     </div>
                                 </div>
                             </div>
@@ -815,106 +764,99 @@ const RouteDetailsPanel: React.FC<RouteDetailsPanelProps> = ({ route, onClose, o
 
                 {/* Append Area */}
                 {isEditing && !loading && pathStops.length > 0 && (
-                    <div className="mt-6">
+                    <div className="mt-3">
                         {isAdding === 'append' ? (
                             renderAddPanel()
                         ) : (
                             <button
                                 onClick={() => handleStartAdding('append')}
-                                className="w-full py-4 border-2 border-dashed rounded-[20px] flex flex-col items-center justify-center gap-1 transition-all border-slate-200 dark:border-slate-800 text-slate-400 hover:border-primary hover:text-primary hover:bg-primary/5"
+                                className="w-full py-2.5 border border-dashed rounded-xl flex items-center justify-center gap-2 transition-all text-[10px] font-bold uppercase tracking-wider border-slate-200 dark:border-slate-700 text-slate-400 hover:border-primary hover:text-primary hover:bg-primary/5"
                             >
-                                <Plus size={18} />
-                                <span className="text-[10px] font-bold uppercase tracking-widest">Anexar al Final</span>
+                                <Plus size={12} />
+                                Anexar
                             </button>
                         )}
                     </div>
                 )}
             </div>
 
-            {/* Metrics Summary Footer */}
-            {routeSegments.length > 0 && (
-                <div className="p-8 bg-slate-100/50 dark:bg-slate-900/50 backdrop-blur-md border-t utilitarian-border">
-                    <div className="flex items-center justify-between gap-6">
-                        <div className="flex-1">
-                            <span className="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] mb-3 block">Metrica consolidada</span>
-                            <div className="flex items-center gap-8">
-                                <div>
-                                    <div className="text-2xl font-display font-black text-slate-900 dark:text-white leading-none mb-1">
-                                        {formatDist(routeSegments[routeSegments.length - 1].accumulatedDist)}
-                                    </div>
-                                    <span className="text-[9px] font-bold text-slate-400 uppercase tracking-widest">Longitud de Recorrido</span>
+            {/* Compact Metrics + Actions Footer */}
+            {lastSeg && (
+                <div className="px-4 py-3 bg-slate-50/80 dark:bg-slate-900/60 border-t border-slate-200/50 dark:border-slate-700/50">
+                    <div className="flex items-center justify-between mb-2.5">
+                        {isEditing ? (
+                            <>
+                                <div className="flex items-center gap-2">
+                                    <Ruler size={11} className="text-slate-400" />
+                                    <span className="font-mono text-xs font-bold text-slate-700 dark:text-slate-300">{formatDist(lastSeg.accumulatedDist)}</span>
                                 </div>
-                                <div className="text-right flex-1">
-                                    {isEditing ? (
-                                        <div className="flex flex-col items-end gap-2">
-                                            <div className="flex items-center gap-3">
-                                                <div className="relative group">
-                                                    <input
-                                                        type="number"
-                                                        min="1"
-                                                        value={targetDuration || Math.round(routeSegments[routeSegments.length - 1].accumulatedTime / 60)}
-                                                        onChange={(e) => handleTimeChange(parseInt(e.target.value) || 0)}
-                                                        className="w-20 px-3 py-1 text-right text-lg font-black text-primary border-b-2 border-primary/20 bg-transparent focus:outline-none focus:border-primary transition-all rounded-t-lg"
-                                                    />
-                                                    <div className="absolute top-1/2 -right-6 -translate-y-1/2 text-[10px] font-black text-primary">MIN</div>
-                                                </div>
-                                            </div>
-                                            <div className="flex items-center gap-1 text-[10px] font-bold text-slate-500 uppercase tracking-widest">
-                                                <Activity size={10} className="mr-1" /> Vel:
-                                                <input
-                                                    type="number"
-                                                    min="1"
-                                                    step="0.1"
-                                                    value={targetSpeed || (routeSegments[routeSegments.length - 1].accumulatedDist / 1000 / (routeSegments[routeSegments.length - 1].accumulatedTime / 3600)).toFixed(1)}
-                                                    onChange={(e) => handleSpeedChange(parseFloat(e.target.value) || 0)}
-                                                    className="w-10 text-center font-black text-primary bg-transparent focus:outline-none border-b border-transparent focus:border-primary"
-                                                />
-                                                km/h
-                                            </div>
-                                        </div>
-                                    ) : (
-                                        <>
-                                            <div className="text-2xl font-display font-black text-primary leading-none mb-1">
-                                                {formatTime(routeSegments[routeSegments.length - 1].accumulatedTime)}
-                                            </div>
-                                            <span className="text-[9px] font-bold text-slate-400 uppercase tracking-widest">Tiempo de Viaje Estimado</span>
-                                        </>
-                                    )}
+                                <div className="flex items-center gap-2">
+                                    <Clock size={11} className="text-primary" />
+                                    <input
+                                        type="number"
+                                        min="1"
+                                        value={targetDuration || Math.round(lastSeg.accumulatedTime / 60)}
+                                        onChange={(e) => handleTimeChange(parseInt(e.target.value) || 0)}
+                                        className="w-14 px-1.5 py-0.5 text-right text-xs font-bold text-primary bg-primary/5 border border-primary/20 rounded-md focus:outline-none focus:border-primary"
+                                    />
+                                    <span className="text-[9px] font-bold text-primary">min</span>
                                 </div>
-                            </div>
-                        </div>
+                                <div className="flex items-center gap-1">
+                                    <Activity size={10} className="text-slate-400" />
+                                    <input
+                                        type="number"
+                                        min="1"
+                                        step="0.1"
+                                        value={targetSpeed || (lastSeg.accumulatedDist / 1000 / (lastSeg.accumulatedTime / 3600)).toFixed(1)}
+                                        onChange={(e) => handleSpeedChange(parseFloat(e.target.value) || 0)}
+                                        className="w-12 px-1.5 py-0.5 text-right text-xs font-bold text-slate-600 bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-md focus:outline-none focus:border-primary"
+                                    />
+                                    <span className="text-[9px] text-slate-400">km/h</span>
+                                </div>
+                            </>
+                        ) : (
+                            <>
+                                <div className="flex items-center gap-1.5">
+                                    <Ruler size={11} className="text-slate-400" />
+                                    <span className="font-mono text-sm font-bold text-slate-800 dark:text-white">{formatDist(lastSeg.accumulatedDist)}</span>
+                                </div>
+                                <div className="flex items-center gap-1.5">
+                                    <Clock size={11} className="text-primary" />
+                                    <span className="font-mono text-sm font-bold text-primary">{formatTime(lastSeg.accumulatedTime)}</span>
+                                </div>
+                                <div className="flex items-center gap-1">
+                                    <Activity size={10} className="text-slate-400" />
+                                    <span className="font-mono text-xs text-slate-500">
+                                        {lastSeg.accumulatedTime > 0 ? (lastSeg.accumulatedDist / 1000 / (lastSeg.accumulatedTime / 3600)).toFixed(1) : '0'} km/h
+                                    </span>
+                                </div>
+                            </>
+                        )}
                     </div>
                 </div>
             )}
 
-            {/* Bottom Global Links */}
-            <div className="p-4 grid grid-cols-3 gap-2 bg-slate-50 dark:bg-slate-900 border-t utilitarian-border">
+            {/* Action bar */}
+            <div className="px-3 py-2.5 flex items-center gap-1.5 bg-slate-50 dark:bg-slate-900 border-t border-slate-200/50 dark:border-slate-700/50">
                 <button
                     onClick={onOpenTrips}
-                    className="flex flex-col items-center justify-center gap-2 py-3 bg-white dark:bg-slate-800 rounded-2xl border utilitarian-border hover:border-primary/50 transition-all group"
+                    className="flex-1 flex items-center justify-center gap-1.5 py-2 rounded-lg text-[10px] font-bold uppercase tracking-wider text-slate-500 hover:text-primary hover:bg-primary/5 transition-all"
                 >
-                    <div className="shrink-0 p-2 rounded-xl bg-primary/10 text-primary group-hover:bg-primary group-hover:text-white transition-all">
-                        <Bus size={14} strokeWidth={2.5} />
-                    </div>
-                    <span className="text-[9px] font-bold uppercase tracking-widest text-slate-500 group-hover:text-primary transition-all">Viajes</span>
+                    <Bus size={13} /> Viajes
                 </button>
+                <div className="w-px h-5 bg-slate-200 dark:bg-slate-700" />
                 <button
                     onClick={() => setShowTimeSlots(true)}
-                    className="flex flex-col items-center justify-center gap-2 py-3 bg-white dark:bg-slate-800 rounded-2xl border utilitarian-border hover:border-primary/50 transition-all group"
+                    className="flex-1 flex items-center justify-center gap-1.5 py-2 rounded-lg text-[10px] font-bold uppercase tracking-wider text-slate-500 hover:text-primary hover:bg-primary/5 transition-all"
                 >
-                    <div className="shrink-0 p-2 rounded-xl bg-primary/10 text-primary group-hover:bg-primary group-hover:text-white transition-all">
-                        <Clock size={14} strokeWidth={2.5} />
-                    </div>
-                    <span className="text-[9px] font-bold uppercase tracking-widest text-slate-500 group-hover:text-primary transition-all">Horarios</span>
+                    <Clock size={13} /> Horarios
                 </button>
+                <div className="w-px h-5 bg-slate-200 dark:bg-slate-700" />
                 <button
                     onClick={onOpenCalendar}
-                    className="flex flex-col items-center justify-center gap-2 py-3 bg-white dark:bg-slate-800 rounded-2xl border utilitarian-border hover:border-primary/50 transition-all group"
+                    className="flex-1 flex items-center justify-center gap-1.5 py-2 rounded-lg text-[10px] font-bold uppercase tracking-wider text-slate-500 hover:text-primary hover:bg-primary/5 transition-all"
                 >
-                    <div className="shrink-0 p-2 rounded-xl bg-primary/10 text-primary group-hover:bg-primary group-hover:text-white transition-all">
-                        <Calendar size={14} strokeWidth={2.5} />
-                    </div>
-                    <span className="text-[9px] font-bold uppercase tracking-widest text-slate-500 group-hover:text-primary transition-all">Calendario</span>
+                    <Calendar size={13} /> Calendario
                 </button>
             </div>
 
