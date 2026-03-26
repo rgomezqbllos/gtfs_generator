@@ -150,14 +150,68 @@ const MapEditor: React.FC = () => {
         zoom: defaultLocation.zoom
     });
 
+    // Auto-center map on project load/switch:
+    // 1. If stops exist → fit bounding box of all stops
+    // 2. If no stops → use project's map_center_lat/lon
     React.useEffect(() => {
-        if (activeProject) {
-            setViewState(prev => ({
-                ...prev,
-                longitude: activeProject.map_center_lon,
-                latitude: activeProject.map_center_lat
-            }));
-        }
+        if (!activeProject) return;
+
+        const autoCenter = async () => {
+            try {
+                const res = await fetch(`${API_URL}/stops`);
+                if (!res.ok) throw new Error('Failed to fetch stops');
+                const stopsData = await res.json();
+
+                if (Array.isArray(stopsData) && stopsData.length > 0) {
+                    // Compute bounding box of all stops
+                    let minLat = Infinity, maxLat = -Infinity;
+                    let minLon = Infinity, maxLon = -Infinity;
+                    for (const s of stopsData) {
+                        if (s.stop_lat < minLat) minLat = s.stop_lat;
+                        if (s.stop_lat > maxLat) maxLat = s.stop_lat;
+                        if (s.stop_lon < minLon) minLon = s.stop_lon;
+                        if (s.stop_lon > maxLon) maxLon = s.stop_lon;
+                    }
+
+                    const centerLat = (minLat + maxLat) / 2;
+                    const centerLon = (minLon + maxLon) / 2;
+
+                    // Calculate zoom to fit all stops with padding
+                    const latSpan = maxLat - minLat;
+                    const lonSpan = maxLon - minLon;
+                    const span = Math.max(latSpan, lonSpan);
+                    // Approximate zoom: ~0.003 degrees at z17, doubling per zoom-out level
+                    let zoom = 14;
+                    if (span > 0) {
+                        zoom = Math.max(3, Math.min(17, Math.floor(14 - Math.log2(span / 0.01))));
+                    }
+
+                    setViewState(prev => ({
+                        ...prev,
+                        latitude: centerLat,
+                        longitude: centerLon,
+                        zoom,
+                    }));
+                } else {
+                    // No stops — center on project's default coordinates
+                    setViewState(prev => ({
+                        ...prev,
+                        longitude: activeProject.map_center_lon,
+                        latitude: activeProject.map_center_lat,
+                        zoom: 12,
+                    }));
+                }
+            } catch {
+                // Fallback to project center on error
+                setViewState(prev => ({
+                    ...prev,
+                    longitude: activeProject.map_center_lon,
+                    latitude: activeProject.map_center_lat,
+                }));
+            }
+        };
+
+        autoCenter();
     }, [activeProject]);
 
     // Dark Mode Map Style (CSS Filter)
