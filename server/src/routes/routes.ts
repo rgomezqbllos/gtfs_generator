@@ -489,7 +489,7 @@ export default async function routesRoutes(fastify: FastifyInstance) {
 
         // 2. Process Segments and Shapes
         // Delete existing shape points for this shape_id
-        db.prepare('DELETE FROM shapes WHERE shape_id = ?').run(shape_id);
+        db.prepare('DELETE FROM shapes WHERE shape_id = ? AND project_id = ?').run(shape_id, request.projectId);
 
         // We will build the shape points list
         let shape_sequence = 1;
@@ -505,14 +505,14 @@ export default async function routesRoutes(fastify: FastifyInstance) {
         }
 
         // Clear existing stop_times for this trip
-        db.prepare('DELETE FROM stop_times WHERE trip_id = ?').run(trip_id);
+        db.prepare('DELETE FROM stop_times WHERE trip_id = ? AND project_id = ?').run(trip_id, request.projectId);
 
         // Insert first stop_time
         const insertStopTime = db.prepare(`
-          INSERT INTO stop_times (trip_id, arrival_time, departure_time, stop_id, stop_sequence, shape_dist_traveled)
-          VALUES (?, '08:00:00', '08:00:00', ?, ?, ?)
+          INSERT INTO stop_times (trip_id, project_id, arrival_time, departure_time, stop_id, stop_sequence, shape_dist_traveled)
+          VALUES (?, ?, '08:00:00', '08:00:00', ?, ?, ?)
       `);
-        insertStopTime.run(trip_id, ordered_stop_ids[0], 1, 0);
+        insertStopTime.run(trip_id, request.projectId, ordered_stop_ids[0], 1, 0);
 
 
         // Loop through pairs
@@ -664,7 +664,7 @@ export default async function routesRoutes(fastify: FastifyInstance) {
             }
 
             // Insert stop_time
-            insertStopTime.run(trip_id, toId, i + 2, total_dist);
+            insertStopTime.run(trip_id, request.projectId, toId, i + 2, total_dist);
         }
 
         return { message: 'Path saved', trip_id, shape_id, stops_count: ordered_stop_ids.length };
