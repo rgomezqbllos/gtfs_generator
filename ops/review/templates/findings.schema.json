@@ -1,0 +1,50 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "GTFS Generator Agent Findings",
+  "type": "object",
+  "required": ["agent", "pr_id", "generated_at", "findings"],
+  "properties": {
+    "agent": {
+      "type": "string",
+      "enum": [
+        "architect",
+        "qa",
+        "map-dev-controller",
+        "po-transporte",
+        "ux"
+      ]
+    },
+    "pr_id": { "type": "string", "minLength": 1 },
+    "generated_at": { "type": "string", "format": "date-time" },
+    "findings": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "severity",
+          "impact",
+          "evidence",
+          "risk",
+          "recommendation",
+          "suggested_owner",
+          "acceptance_criteria"
+        ],
+        "properties": {
+          "severity": { "type": "string", "enum": ["P0", "P1", "P2", "P3"] },
+          "impact": { "type": "string", "minLength": 1 },
+          "evidence": { "type": "string", "minLength": 1 },
+          "risk": { "type": "string", "minLength": 1 },
+          "recommendation": { "type": "string", "minLength": 1 },
+          "suggested_owner": { "type": "string", "minLength": 1 },
+          "acceptance_criteria": { "type": "string", "minLength": 1 },
+          "domain": {
+            "type": "string",
+            "enum": ["security", "stability", "transport", "ux", "optimization"]
+          }
+        },
+        "additionalProperties": false
+      }
+    }
+  },
+  "additionalProperties": false
+}

@@ -1,0 +1,17 @@
+{
+  "agent": "po-transporte",
+  "pr_id": "sample-pr-001",
+  "generated_at": "2026-04-03T21:03:00Z",
+  "findings": [
+    {
+      "severity": "P2",
+      "impact": "Si falla la asignación correcta de roles, se frena la operación de equipos de planificación.",
+      "evidence": "Flujo de alta de usuarios es prerequisito para asignación a proyectos urbanos e interurbanos.",
+      "risk": "Retrasos de operación y soporte manual para habilitar equipos.",
+      "recommendation": "Definir criterio operativo de alta: usuario creado + rol correcto + asignación a proyecto en un solo flujo.",
+      "suggested_owner": "product-backend",
+      "acceptance_criteria": "El onboarding de usuario queda completo en una sola operación verificable.",
+      "domain": "transport"
+    }
+  ]
+}

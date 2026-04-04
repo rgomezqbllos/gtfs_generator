@@ -69,23 +69,17 @@ function extractKcError(error: any): { status: number; message: string } {
     return { status, message };
 }
 
-/**
- * Fallback: create a Keycloak user via direct REST API call.
- * Used when @keycloak/keycloak-admin-client fails (e.g., permission issues).
- */
-async function createKeycloakUserDirect(payload: {
-    username: string;
-    email: string;
-    password?: string;
-    firstName?: string;
-    lastName?: string;
-}): Promise<{ id: string }> {
-    const keycloakUrl = process.env.KEYCLOAK_URL || 'http://localhost:8080';
-    const realm = process.env.KEYCLOAK_REALM || 'gtfs';
-    const clientId = process.env.KEYCLOAK_ADMIN_CLIENT_ID || 'gtfs-admin';
-    const clientSecret = process.env.KEYCLOAK_ADMIN_CLIENT_SECRET || 'gtfs-admin-secret-key-do-not-share';
+function getKeycloakConfig() {
+    return {
+        keycloakUrl: process.env.KEYCLOAK_URL || 'http://localhost:8080',
+        realm: process.env.KEYCLOAK_REALM || 'gtfs',
+        clientId: process.env.KEYCLOAK_ADMIN_CLIENT_ID || 'gtfs-admin',
+        clientSecret: process.env.KEYCLOAK_ADMIN_CLIENT_SECRET || 'gtfs-admin-secret-key-do-not-share',
+    };
+}
 
-    // 1. Get admin token via client_credentials
+async function getServiceAccountToken() {
+    const { keycloakUrl, realm, clientId, clientSecret } = getKeycloakConfig();
     const tokenRes = await fetch(
         `${keycloakUrl}/realms/${realm}/protocol/openid-connect/token`,
         {
@@ -98,11 +92,134 @@ async function createKeycloakUserDirect(payload: {
             }),
         }
     );
+
     if (!tokenRes.ok) {
         const body = await tokenRes.text();
         throw new Error(`Keycloak auth failed (${tokenRes.status}): ${body}. Verifica que el client '${clientId}' exista en el realm '${realm}' con Service Account habilitado y el secret sea correcto.`);
     }
-    const { access_token } = (await tokenRes.json()) as { access_token: string };
+
+    const json = (await tokenRes.json()) as { access_token?: string };
+    if (!json.access_token) throw new Error('Keycloak auth failed: access_token no recibido');
+    return json.access_token;
+}
+
+async function getMasterAdminToken() {
+    const keycloakUrl = process.env.KEYCLOAK_URL || 'http://localhost:8080';
+    const username = process.env.KEYCLOAK_ADMIN;
+    const password = process.env.KEYCLOAK_ADMIN_PASSWORD;
+
+    if (!username || !password) {
+        throw new Error('Faltan KEYCLOAK_ADMIN y/o KEYCLOAK_ADMIN_PASSWORD para autocorregir permisos del Service Account');
+    }
+
+    const tokenRes = await fetch(
+        `${keycloakUrl}/realms/master/protocol/openid-connect/token`,
+        {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+            body: new URLSearchParams({
+                grant_type: 'password',
+                client_id: 'admin-cli',
+                username,
+                password,
+            }),
+        }
+    );
+
+    if (!tokenRes.ok) {
+        const body = await tokenRes.text();
+        throw new Error(`No se pudo autenticar con admin-cli en master realm (${tokenRes.status}): ${body}`);
+    }
+
+    const json = (await tokenRes.json()) as { access_token?: string };
+    if (!json.access_token) throw new Error('No se recibió token admin para autocorrección de permisos');
+    return json.access_token;
+}
+
+async function ensureAdminClientManageUsersRole() {
+    const { keycloakUrl, realm, clientId } = getKeycloakConfig();
+    const adminToken = await getMasterAdminToken();
+
+    const clientSearchRes = await fetch(
+        `${keycloakUrl}/admin/realms/${realm}/clients?clientId=${encodeURIComponent(clientId)}`,
+        { headers: { Authorization: `Bearer ${adminToken}` } }
+    );
+    if (!clientSearchRes.ok) {
+        const body = await clientSearchRes.text();
+        throw new Error(`No se pudo consultar el client '${clientId}' (${clientSearchRes.status}): ${body}`);
+    }
+
+    const clients = (await clientSearchRes.json()) as any[];
+    const targetClient = clients[0];
+    if (!targetClient?.id) throw new Error(`No existe el client '${clientId}' en el realm '${realm}'`);
+
+    const saRes = await fetch(
+        `${keycloakUrl}/admin/realms/${realm}/clients/${targetClient.id}/service-account-user`,
+        { headers: { Authorization: `Bearer ${adminToken}` } }
+    );
+    if (!saRes.ok) {
+        const body = await saRes.text();
+        throw new Error(`No se pudo obtener el service account de '${clientId}' (${saRes.status}): ${body}`);
+    }
+    const serviceAccountUser = (await saRes.json()) as { id?: string };
+    if (!serviceAccountUser.id) throw new Error(`No se encontró service account user para '${clientId}'`);
+
+    const rmRes = await fetch(
+        `${keycloakUrl}/admin/realms/${realm}/clients?clientId=realm-management`,
+        { headers: { Authorization: `Bearer ${adminToken}` } }
+    );
+    if (!rmRes.ok) {
+        const body = await rmRes.text();
+        throw new Error(`No se pudo consultar realm-management (${rmRes.status}): ${body}`);
+    }
+    const rmClients = (await rmRes.json()) as any[];
+    const realmManagement = rmClients[0];
+    if (!realmManagement?.id) throw new Error(`No se encontró client 'realm-management' en realm '${realm}'`);
+
+    const roleNames = ['manage-users', 'view-users'];
+    const rolesToAssign: any[] = [];
+    for (const roleName of roleNames) {
+        const roleRes = await fetch(
+            `${keycloakUrl}/admin/realms/${realm}/clients/${realmManagement.id}/roles/${roleName}`,
+            { headers: { Authorization: `Bearer ${adminToken}` } }
+        );
+        if (!roleRes.ok) {
+            const body = await roleRes.text();
+            throw new Error(`No se pudo leer rol '${roleName}' de realm-management (${roleRes.status}): ${body}`);
+        }
+        rolesToAssign.push(await roleRes.json());
+    }
+
+    const assignRes = await fetch(
+        `${keycloakUrl}/admin/realms/${realm}/users/${serviceAccountUser.id}/role-mappings/clients/${realmManagement.id}`,
+        {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                Authorization: `Bearer ${adminToken}`,
+            },
+            body: JSON.stringify(rolesToAssign),
+        }
+    );
+    if (!assignRes.ok) {
+        const body = await assignRes.text();
+        throw new Error(`No se pudo asignar roles al service account '${clientId}' (${assignRes.status}): ${body}`);
+    }
+}
+
+/**
+ * Fallback: create a Keycloak user via direct REST API call.
+ * Used when @keycloak/keycloak-admin-client fails (e.g., permission issues).
+ */
+async function createKeycloakUserDirect(payload: {
+    username: string;
+    email: string;
+    password?: string;
+    firstName?: string;
+    lastName?: string;
+}, hasRetriedPermissionFix = false): Promise<{ id: string }> {
+    const { keycloakUrl, realm, clientId } = getKeycloakConfig();
+    const access_token = await getServiceAccountToken();
 
     // 2. Create user
     const userPayload: any = {
@@ -153,6 +270,10 @@ async function createKeycloakUserDirect(payload: {
     }
 
     if (createRes.status === 403) {
+        if (!hasRetriedPermissionFix) {
+            await ensureAdminClientManageUsersRole();
+            return createKeycloakUserDirect(payload, true);
+        }
         throw new Error(
             `Keycloak rechazó la creación del usuario (403 Forbidden). ` +
             `El Service Account del client '${clientId}' necesita el rol 'manage-users' de 'realm-management'. ` +

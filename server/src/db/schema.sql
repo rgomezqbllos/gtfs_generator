@@ -37,6 +37,18 @@ CREATE TABLE IF NOT EXISTS user_projects (
     FOREIGN KEY(project_id) REFERENCES projects(id) ON DELETE CASCADE
 );
 
+CREATE TABLE IF NOT EXISTS user_project_map_preferences (
+    user_id TEXT NOT NULL,
+    project_id TEXT NOT NULL,
+    center_lat REAL NOT NULL CHECK(center_lat >= -90 AND center_lat <= 90),
+    center_lon REAL NOT NULL CHECK(center_lon >= -180 AND center_lon <= 180),
+    zoom REAL NOT NULL CHECK(zoom >= 0 AND zoom <= 22),
+    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY (user_id, project_id),
+    FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE,
+    FOREIGN KEY(project_id) REFERENCES projects(id) ON DELETE CASCADE
+);
+
 -- GTFS Tables (Optimized for Multi-Tenancy)
 CREATE TABLE IF NOT EXISTS agency (
     agency_id TEXT NOT NULL,

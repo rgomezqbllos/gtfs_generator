@@ -8,7 +8,8 @@
         "build": "npm --prefix client run build && npm --prefix server run build",
         "start:prod": "npm --prefix server run start",
         "osrm:setup": "npm --prefix server run osrm:setup --",
-        "install:all": "npm install && npm --prefix client install && npm --prefix server install"
+        "install:all": "npm install && npm --prefix client install && npm --prefix server install",
+        "review:consolidate": "node ops/review/scripts/consolidate-findings.mjs"
     },
     "devDependencies": {
         "concurrently": "^9.2.1"

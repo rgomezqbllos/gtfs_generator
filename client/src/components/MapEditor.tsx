@@ -1,5 +1,5 @@
 import * as React from 'react';
-import Map, { Marker, type MapLayerMouseEvent, Source, Layer } from 'react-map-gl/maplibre';
+import Map, { Marker, type MapLayerMouseEvent, type MapRef, Source, Layer } from 'react-map-gl/maplibre';
 import 'maplibre-gl/dist/maplibre-gl.css';
 import type { Stop, Route, RoutingProfile, SegmentPreview } from '../types';
 import { MapPin, GitBranch, ChevronRight, Activity, CheckCircle } from 'lucide-react';
@@ -115,6 +115,8 @@ const MapEditor: React.FC = () => {
     const { activeProject } = useAuth();
 
     const { theme } = useTheme();
+    const mapRef = React.useRef<MapRef | null>(null);
+    const lastAutoCenteredProjectIdRef = React.useRef<string | null>(null);
 
     const [stops, setStops] = React.useState<Stop[]>([]);
     const [segments, setSegments] = React.useState<any[]>([]); // Changed to any[]
@@ -143,76 +145,139 @@ const MapEditor: React.FC = () => {
 
     // const [selectedStops, setSelectedStops] = React.useState<string[]>([]); // For future connecting nodes feature
     const [loading, setLoading] = React.useState(false);
+    const [isInitialDataLoaded, setIsInitialDataLoaded] = React.useState(false);
+    const [mapPreference, setMapPreference] = React.useState<{ lat: number; lon: number; zoom: number } | null>(null);
+    const [isMapPreferenceLoaded, setIsMapPreferenceLoaded] = React.useState(false);
+
+    const toFiniteNumber = (value: unknown): number | null => {
+        if (typeof value === 'number' && Number.isFinite(value)) return value;
+        if (typeof value === 'string') {
+            const parsed = Number(value);
+            return Number.isFinite(parsed) ? parsed : null;
+        }
+        return null;
+    };
+
+    const isValidLat = (value: unknown): value is number =>
+        typeof value === 'number' && Number.isFinite(value) && value >= -90 && value <= 90;
+
+    const isValidLon = (value: unknown): value is number =>
+        typeof value === 'number' && Number.isFinite(value) && value >= -180 && value <= 180;
+
+    const getSafeProjectCenter = React.useCallback(() => {
+        const projectLat = toFiniteNumber(activeProject?.map_center_lat);
+        const projectLon = toFiniteNumber(activeProject?.map_center_lon);
+        const fallbackLat = defaultLocation.latitude;
+        const fallbackLon = defaultLocation.longitude;
+
+        return {
+            latitude: isValidLat(projectLat) ? projectLat : fallbackLat,
+            longitude: isValidLon(projectLon) ? projectLon : fallbackLon,
+        };
+    }, [activeProject?.map_center_lat, activeProject?.map_center_lon, defaultLocation.latitude, defaultLocation.longitude]);
 
     const [viewState, setViewState] = React.useState({
-        longitude: activeProject?.map_center_lon || defaultLocation.longitude,
-        latitude: activeProject?.map_center_lat || defaultLocation.latitude,
+        longitude: getSafeProjectCenter().longitude,
+        latitude: getSafeProjectCenter().latitude,
         zoom: defaultLocation.zoom
     });
+
+    React.useEffect(() => {
+        if (!activeProject) {
+            setMapPreference(null);
+            setIsMapPreferenceLoaded(false);
+            return;
+        }
+
+        let cancelled = false;
+        const fetchPreference = async () => {
+            setIsMapPreferenceLoaded(false);
+            try {
+                const res = await fetch(`${API_URL}/map-preference`);
+                const data = await res.json();
+                const pref = data?.preference;
+                const prefLat = toFiniteNumber(pref?.center_lat);
+                const prefLon = toFiniteNumber(pref?.center_lon);
+                const prefZoom = toFiniteNumber(pref?.zoom);
+
+                if (!cancelled && isValidLat(prefLat) && isValidLon(prefLon) && prefZoom !== null) {
+                    setMapPreference({
+                        lat: prefLat,
+                        lon: prefLon,
+                        zoom: Math.max(0, Math.min(22, prefZoom)),
+                    });
+                } else if (!cancelled) {
+                    setMapPreference(null);
+                }
+            } catch {
+                if (!cancelled) setMapPreference(null);
+            } finally {
+                if (!cancelled) setIsMapPreferenceLoaded(true);
+            }
+        };
+
+        fetchPreference();
+        return () => { cancelled = true; };
+    }, [activeProject?.id]);
 
     // Auto-center map on project load/switch:
     // 1. If stops exist → fit bounding box of all stops
     // 2. If no stops → use project's map_center_lat/lon
     React.useEffect(() => {
-        if (!activeProject) return;
+        if (!activeProject || !isInitialDataLoaded || !isMapPreferenceLoaded) return;
+        if (lastAutoCenteredProjectIdRef.current === activeProject.id) return;
 
-        const autoCenter = async () => {
-            try {
-                const res = await fetch(`${API_URL}/stops`);
-                if (!res.ok) throw new Error('Failed to fetch stops');
-                const stopsData = await res.json();
+        if (mapPreference) {
+            setViewState(prev => ({
+                ...prev,
+                latitude: mapPreference.lat,
+                longitude: mapPreference.lon,
+                zoom: mapPreference.zoom,
+            }));
+            lastAutoCenteredProjectIdRef.current = activeProject.id;
+            return;
+        }
 
-                if (Array.isArray(stopsData) && stopsData.length > 0) {
-                    // Compute bounding box of all stops
-                    let minLat = Infinity, maxLat = -Infinity;
-                    let minLon = Infinity, maxLon = -Infinity;
-                    for (const s of stopsData) {
-                        if (s.stop_lat < minLat) minLat = s.stop_lat;
-                        if (s.stop_lat > maxLat) maxLat = s.stop_lat;
-                        if (s.stop_lon < minLon) minLon = s.stop_lon;
-                        if (s.stop_lon > maxLon) maxLon = s.stop_lon;
-                    }
+        const validStops = stops
+            .map((s) => ({
+                lat: toFiniteNumber((s as any).stop_lat),
+                lon: toFiniteNumber((s as any).stop_lon),
+            }))
+            .filter((s): s is { lat: number; lon: number } => isValidLat(s.lat) && isValidLon(s.lon));
 
-                    const centerLat = (minLat + maxLat) / 2;
-                    const centerLon = (minLon + maxLon) / 2;
+        if (validStops.length > 0) {
+            const lats = validStops.map((s) => s.lat);
+            const lons = validStops.map((s) => s.lon);
+            const minLat = Math.min(...lats);
+            const maxLat = Math.max(...lats);
+            const minLon = Math.min(...lons);
+            const maxLon = Math.max(...lons);
 
-                    // Calculate zoom to fit all stops with padding
-                    const latSpan = maxLat - minLat;
-                    const lonSpan = maxLon - minLon;
-                    const span = Math.max(latSpan, lonSpan);
-                    // Approximate zoom: ~0.003 degrees at z17, doubling per zoom-out level
-                    let zoom = 14;
-                    if (span > 0) {
-                        zoom = Math.max(3, Math.min(17, Math.floor(14 - Math.log2(span / 0.01))));
-                    }
-
-                    setViewState(prev => ({
-                        ...prev,
-                        latitude: centerLat,
-                        longitude: centerLon,
-                        zoom,
-                    }));
-                } else {
-                    // No stops — center on project's default coordinates
-                    setViewState(prev => ({
-                        ...prev,
-                        longitude: activeProject.map_center_lon,
-                        latitude: activeProject.map_center_lat,
-                        zoom: 12,
-                    }));
-                }
-            } catch {
-                // Fallback to project center on error
+            if (validStops.length === 1 || (minLat === maxLat && minLon === maxLon)) {
                 setViewState(prev => ({
                     ...prev,
-                    longitude: activeProject.map_center_lon,
-                    latitude: activeProject.map_center_lat,
+                    latitude: validStops[0].lat,
+                    longitude: validStops[0].lon,
+                    zoom: 15,
                 }));
+            } else {
+                mapRef.current?.fitBounds(
+                    [[minLon, minLat], [maxLon, maxLat]],
+                    { padding: 80, duration: 600, maxZoom: 16 }
+                );
             }
-        };
+        } else {
+            const safeCenter = getSafeProjectCenter();
+            setViewState(prev => ({
+                ...prev,
+                longitude: safeCenter.longitude,
+                latitude: safeCenter.latitude,
+                zoom: 12,
+            }));
+        }
 
-        autoCenter();
-    }, [activeProject]);
+        lastAutoCenteredProjectIdRef.current = activeProject.id;
+    }, [activeProject, isInitialDataLoaded, isMapPreferenceLoaded, mapPreference, stops, getSafeProjectCenter]);
 
     // Dark Mode Map Style (CSS Filter)
     const mapContainerStyle = React.useMemo(() => {
@@ -337,10 +402,12 @@ const MapEditor: React.FC = () => {
         if (!activeProject) {
             setStops([]);
             setSegments([]);
+            setIsInitialDataLoaded(false);
             return;
         }
 
         try {
+            setIsInitialDataLoaded(false);
             const [stopsRes, segmentsRes] = await Promise.all([
                 fetch(`${API_URL}/stops`),
                 fetch(`${API_URL}/segments`)
@@ -364,6 +431,8 @@ const MapEditor: React.FC = () => {
             console.error('Error fetching data:', error);
             setStops([]);
             setSegments([]);
+        } finally {
+            setIsInitialDataLoaded(true);
         }
     }, [activeProject]);
 
@@ -1171,13 +1240,14 @@ const MapEditor: React.FC = () => {
                 onLocate={handleLocate}
                 onSearch={handleSearch}
                 projectLocation={activeProject ? {
-                    lat: activeProject.map_center_lat,
-                    lon: activeProject.map_center_lon,
+                    lat: getSafeProjectCenter().latitude,
+                    lon: getSafeProjectCenter().longitude,
                     name: activeProject.name
                 } : null}
             />
 
             <Map
+                ref={mapRef}
                 {...viewState}
                 onMove={handleMapMove}
                 onMouseMove={handleMouseMove}

@@ -1,0 +1,17 @@
+{
+  "agent": "map-dev-controller",
+  "pr_id": "sample-pr-001",
+  "generated_at": "2026-04-03T21:02:00Z",
+  "findings": [
+    {
+      "severity": "P2",
+      "impact": "Cambios de auth podrían bloquear edición de segmentos para usuarios válidos en proyectos asignados.",
+      "evidence": "Dependencia de roles en endpoints de administración con impacto transversal en flujo de mapas.",
+      "risk": "Interrupción operativa en digitalización de red de transporte.",
+      "recommendation": "Verificar permisos diferenciados entre administración global y operaciones de edición geoespacial.",
+      "suggested_owner": "backend-maps",
+      "acceptance_criteria": "Usuarios operadores autorizados mantienen acceso normal a edición de red en su proyecto.",
+      "domain": "transport"
+    }
+  ]
+}

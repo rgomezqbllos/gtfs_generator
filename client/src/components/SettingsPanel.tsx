@@ -42,15 +42,69 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({ onClose, currentViewState
         setZoom(defaultLocation.zoom);
     }, [defaultLocation]);
 
-    const handleSaveLocation = () => {
+    useEffect(() => {
+        if (!activeProject || isSuperAdmin) return;
+
+        let cancelled = false;
+        const loadProjectPreference = async () => {
+            try {
+                const res = await fetch(`${API_URL}/map-preference`);
+                const data = await res.json();
+                const pref = data?.preference;
+                if (!pref || cancelled) return;
+
+                if (
+                    typeof pref.center_lat === 'number' &&
+                    typeof pref.center_lon === 'number' &&
+                    typeof pref.zoom === 'number'
+                ) {
+                    setCityName(activeProject.name);
+                    setLat(pref.center_lat);
+                    setLng(pref.center_lon);
+                    setZoom(pref.zoom);
+                }
+            } catch (error) {
+                console.warn('No se pudo cargar preferencia de mapa por proyecto', error);
+            }
+        };
+
+        loadProjectPreference();
+        return () => { cancelled = true; };
+    }, [activeProject?.id, isSuperAdmin]);
+
+    const handleSaveLocation = async () => {
         const newLocation = {
             cityName,
             latitude: Number(lat),
             longitude: Number(lng),
             zoom: Number(zoom)
         };
+
+        if (activeProject && !isSuperAdmin) {
+            try {
+                const res = await fetch(`${API_URL}/map-preference`, {
+                    method: 'PUT',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        center_lat: newLocation.latitude,
+                        center_lon: newLocation.longitude,
+                        zoom: newLocation.zoom,
+                    }),
+                });
+                if (!res.ok) {
+                    const data = await res.json().catch(() => ({}));
+                    throw new Error(data?.error || 'No se pudo guardar la preferencia de mapa');
+                }
+                alert(`Punto predeterminado guardado para "${activeProject.name}"`);
+                return;
+            } catch (error: any) {
+                alert(error?.message || 'Error al guardar preferencia de mapa');
+                return;
+            }
+        }
+
         setDefaultLocation(newLocation);
-        alert('Ubicación predeterminada sincronizada!');
+        alert('Ubicación predeterminada global sincronizada');
     };
 
     const handleUseCurrentLocation = () => {

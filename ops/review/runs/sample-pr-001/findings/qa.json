@@ -1,0 +1,17 @@
+{
+  "agent": "qa",
+  "pr_id": "sample-pr-001",
+  "generated_at": "2026-04-03T21:01:00Z",
+  "findings": [
+    {
+      "severity": "P1",
+      "impact": "No hay evidencia de prueba negativa para actualización de usuarios sin permisos.",
+      "evidence": "Falta caso API/E2E para PUT /admin/users/:id con tenant admin sin acceso.",
+      "risk": "Regresión de seguridad no detectada antes de despliegue.",
+      "recommendation": "Agregar test automatizado para rechazo 403 en escenarios sin pertenencia.",
+      "suggested_owner": "qa-backend",
+      "acceptance_criteria": "Suite falla si un usuario sin permisos actualiza datos de terceros.",
+      "domain": "security"
+    }
+  ]
+}
