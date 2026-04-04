@@ -1,0 +1,17 @@
+{
+  "agent": "ux",
+  "pr_id": "sample-pr-001",
+  "generated_at": "2026-04-03T21:04:00Z",
+  "findings": [
+    {
+      "severity": "P2",
+      "impact": "Mensajes de error de permisos pueden no guiar al usuario administrador en la resolución.",
+      "evidence": "Modal actual reporta 403 con texto técnico sin siguiente paso accionable estandarizado.",
+      "risk": "Aumento de fricción y tickets de soporte por fallas de alta de usuarios.",
+      "recommendation": "Estandarizar mensajes con causa, acción sugerida y referencia de responsable.",
+      "suggested_owner": "frontend-ux",
+      "acceptance_criteria": "Errores de permisos muestran instrucción clara y reducen reintentos fallidos.",
+      "domain": "ux"
+    }
+  ]
+}

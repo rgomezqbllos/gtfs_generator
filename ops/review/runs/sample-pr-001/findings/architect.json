@@ -1,0 +1,17 @@
+{
+  "agent": "architect",
+  "pr_id": "sample-pr-001",
+  "generated_at": "2026-04-03T21:00:00Z",
+  "findings": [
+    {
+      "severity": "P1",
+      "impact": "El control de permisos puede ser inconsistente en actualización de usuarios.",
+      "evidence": "server/src/routes/admin.ts: PUT /admin/users/:id con validación parcial por rol/proyecto.",
+      "risk": "Posible escalada de privilegios en administración multi-tenant.",
+      "recommendation": "Unificar verificación de pertenencia y rol antes de operaciones en Keycloak y DB.",
+      "suggested_owner": "backend",
+      "acceptance_criteria": "Usuarios sin permisos válidos reciben 403 y no se persiste ningún cambio.",
+      "domain": "security"
+    }
+  ]
+}

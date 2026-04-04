@@ -14,8 +14,11 @@ services:
       - PORT=3001
       - DB_PATH=/data/gtfs.db
       - KEYCLOAK_URL=http://keycloak:8080
+      - KEYCLOAK_REALM=${KEYCLOAK_REALM:-gtfs}
       - KEYCLOAK_ADMIN=${KEYCLOAK_ADMIN:-superadmin}
       - KEYCLOAK_ADMIN_PASSWORD=${KEYCLOAK_ADMIN_PASSWORD:-superadmin}
+      - KEYCLOAK_ADMIN_CLIENT_ID=${KEYCLOAK_ADMIN_CLIENT_ID:-gtfs-admin}
+      - KEYCLOAK_ADMIN_CLIENT_SECRET=${KEYCLOAK_ADMIN_CLIENT_SECRET:-gtfs-admin-secret-key-do-not-share}
       - OSRM_BASE_URL=http://host.docker.internal
       - OSRM_DOCKER_NETWORK=gtfs_generator_default
       - ALLOWED_ORIGINS=${ALLOWED_ORIGINS:-http://localhost:5173}

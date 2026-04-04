@@ -1,0 +1,17 @@
+{
+  "agent": "architect",
+  "pr_id": "123",
+  "generated_at": "2026-04-03T12:00:00Z",
+  "findings": [
+    {
+      "severity": "P1",
+      "impact": "Posible bypass de permisos al actualizar usuarios.",
+      "evidence": "server/src/routes/admin.ts: ruta PUT /admin/users/:id no valida membership en todos los escenarios.",
+      "risk": "Escalada de privilegios en tenant con impacto de seguridad.",
+      "recommendation": "Agregar validación consistente de pertenencia y rol antes de persistir cambios.",
+      "suggested_owner": "backend",
+      "acceptance_criteria": "Un usuario sin rol admin en el proyecto recibe 403 y no hay cambios en DB/Keycloak.",
+      "domain": "security"
+    }
+  ]
+}

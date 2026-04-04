@@ -60,6 +60,7 @@ const AuthContext = createContext<AuthContextType>({
 
 // We keep a reference to original fetch to avoid infinite loops
 const originalFetch = window.fetch;
+const getActiveProjectStorageKey = (userId: string) => `gtfs-active-project:${userId}`;
 
 export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
     const [isInitialized, setIsInitialized] = useState(false);
@@ -114,6 +115,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
 
                 if (authenticated) {
                     setToken(keycloak.token || null);
+                    const currentUserId = keycloak.tokenParsed?.sub || '';
                     if (keycloak.tokenParsed) {
                         const realmRoles = keycloak.realmAccess?.roles || [];
                         const clientId = keycloakConfig.clientId;
@@ -121,7 +123,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
                             (keycloak.tokenParsed as any)?.resource_access?.[clientId]?.roles || [];
                         const mergedRoles = Array.from(new Set([...realmRoles, ...clientRoles]));
                         setUser({
-                            id: keycloak.tokenParsed.sub || '',
+                            id: currentUserId,
                             username: keycloak.tokenParsed.preferred_username || '',
                             email: keycloak.tokenParsed.email,
                             firstName: keycloak.tokenParsed.given_name,
@@ -145,7 +147,13 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
                             if (Array.isArray(projects)) {
                                 setMyProjects(projects);
                                 if (projects.length > 0) {
-                                    setActiveProject(projects[0]);
+                                    const savedProjectId = currentUserId
+                                        ? localStorage.getItem(getActiveProjectStorageKey(currentUserId))
+                                        : null;
+                                    const restoredProject = savedProjectId
+                                        ? projects.find((p: Project) => p.id === savedProjectId)
+                                        : null;
+                                    setActiveProject(restoredProject || projects[0]);
                                 }
                             } else {
                                 console.error('API did not return an array of projects:', projects);
@@ -175,6 +183,11 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
             });
         };
     }, []);
+
+    useEffect(() => {
+        if (!user?.id || !activeProject?.id) return;
+        localStorage.setItem(getActiveProjectStorageKey(user.id), activeProject.id);
+    }, [user?.id, activeProject?.id]);
 
     const login = () => keycloak.login();
     const logout = () => keycloak.logout({

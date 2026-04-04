@@ -13,6 +13,19 @@ interface StopBody {
     location_type?: number;
 }
 
+function toFiniteNumber(value: unknown): number | null {
+    if (typeof value === 'number' && Number.isFinite(value)) return value;
+    if (typeof value === 'string') {
+        const parsed = Number(value);
+        return Number.isFinite(parsed) ? parsed : null;
+    }
+    return null;
+}
+
+function isValidLatLon(lat: number, lon: number): boolean {
+    return lat >= -90 && lat <= 90 && lon >= -180 && lon <= 180;
+}
+
 export default async function stopsRoutes(fastify: FastifyInstance) {
 
     // GET all stops
@@ -45,6 +58,12 @@ export default async function stopsRoutes(fastify: FastifyInstance) {
             return reply.code(400).send({ error: 'Missing required fields' });
         }
 
+        const lat = toFiniteNumber(stop_lat);
+        const lon = toFiniteNumber(stop_lon);
+        if (lat === null || lon === null || !isValidLatLon(lat, lon)) {
+            return reply.code(400).send({ error: 'Invalid coordinates. lat must be [-90,90] and lon must be [-180,180]' });
+        }
+
         const stop_id = randomUUID();
 
         // Auto-generate stop_code if missing
@@ -58,10 +77,10 @@ export default async function stopsRoutes(fastify: FastifyInstance) {
           VALUES (?, ?, ?, ?, ?, ?, ?, ?)
         `);
 
-            stmt.run(stop_id, request.projectId, stop_code, stop_name, stop_lat, stop_lon, node_type || 'regular', location_type || 0);
+            stmt.run(stop_id, request.projectId, stop_code, stop_name, lat, lon, node_type || 'regular', location_type || 0);
 
             console.log('Stop created successfully:', stop_id);
-            return { stop_id, stop_code, ...body };
+            return { stop_id, stop_code, ...body, stop_lat: lat, stop_lon: lon };
         } catch (error) {
             console.error('Error inserting stop:', error);
             return reply.code(500).send({ error: 'Database insert failed' });
@@ -77,13 +96,31 @@ export default async function stopsRoutes(fastify: FastifyInstance) {
         const check = db.prepare('SELECT stop_id, stop_lat, stop_lon FROM stops WHERE stop_id = ? AND project_id = ?').get(id, request.projectId) as { stop_id: string, stop_lat: number, stop_lon: number };
         if (!check) return reply.code(404).send({ error: 'Stop not found in this project' });
 
+        const locationChanged = body.stop_lat !== undefined || body.stop_lon !== undefined;
+        const normalizedLat = body.stop_lat !== undefined ? toFiniteNumber(body.stop_lat) : undefined;
+        const normalizedLon = body.stop_lon !== undefined ? toFiniteNumber(body.stop_lon) : undefined;
+        if (body.stop_lat !== undefined && normalizedLat === null) {
+            return reply.code(400).send({ error: 'Invalid stop_lat: must be a finite number' });
+        }
+        if (body.stop_lon !== undefined && normalizedLon === null) {
+            return reply.code(400).send({ error: 'Invalid stop_lon: must be a finite number' });
+        }
+
+        if (locationChanged) {
+            const candidateLat = normalizedLat ?? check.stop_lat;
+            const candidateLon = normalizedLon ?? check.stop_lon;
+            if (!isValidLatLon(candidateLat, candidateLon)) {
+                return reply.code(400).send({ error: 'Invalid coordinates. lat must be [-90,90] and lon must be [-180,180]' });
+            }
+        }
+
         const fields = [];
         const values = [];
 
         if (body.stop_name !== undefined) { fields.push('stop_name = ?'); values.push(body.stop_name); }
         if (body.stop_code !== undefined) { fields.push('stop_code = ?'); values.push(body.stop_code); }
-        if (body.stop_lat !== undefined) { fields.push('stop_lat = ?'); values.push(body.stop_lat); }
-        if (body.stop_lon !== undefined) { fields.push('stop_lon = ?'); values.push(body.stop_lon); }
+        if (normalizedLat !== undefined) { fields.push('stop_lat = ?'); values.push(normalizedLat); }
+        if (normalizedLon !== undefined) { fields.push('stop_lon = ?'); values.push(normalizedLon); }
         if (body.node_type !== undefined) { fields.push('node_type = ?'); values.push(body.node_type); }
         if (body.location_type !== undefined) { fields.push('location_type = ?'); values.push(body.location_type); }
 
@@ -96,9 +133,9 @@ export default async function stopsRoutes(fastify: FastifyInstance) {
 
 
         // --- Recalculate Segments if location changed ---
-        if (body.stop_lat !== undefined || body.stop_lon !== undefined) {
-            const newLat = body.stop_lat ?? check.stop_lat;
-            const newLon = body.stop_lon ?? check.stop_lon;
+        if (locationChanged) {
+            const newLat = normalizedLat ?? check.stop_lat;
+            const newLon = normalizedLon ?? check.stop_lon;
 
             // Find all segments connected to this stop
             // We need to fetch the OTHER node's coordinates for each segment to recalculate routing

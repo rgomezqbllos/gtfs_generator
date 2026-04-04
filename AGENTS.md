@@ -37,6 +37,19 @@ Nuestros agentes están entrenados para actuar en varios niveles dentro del ecos
 - **Análisis de Enrutamiento:** Revisión de perfiles de rutas (Bus Mixed, Trunk, Exclusive) y validación de geometrías operativas.
 - **QA Sensible al Negocio:** Verificación de que las herramientas sean útiles para el usuario final (planificador de transporte), evitando trazos de líneas rectas y asegurando coherencia operativa.
 
+### 4. Equipo de Revisión por PR (Orquestado por PM)
+
+Para control de calidad continuo, el proyecto adopta un esquema de 6 agentes especializados ejecutados en cada PR:
+
+- **PM Orchestrator:** Activa revisión paralela, consolida backlog único, resuelve conflictos entre agentes y controla gate de cierre.
+- **Architect Agent:** Evalúa arquitectura, seguridad, deuda estructural, escalabilidad y límites entre capas.
+- **QA Agent:** Detecta regresiones, brechas de cobertura y criterios de aceptación no verificables.
+- **Map Dev Controller Agent:** Controla calidad de geometrías, consistencia GTFS/OSRM y coherencia operacional de red.
+- **PO Transporte Agent:** Valida alineación funcional con operación urbana/interurbana de transporte público de pasajeros.
+- **UX Agent:** Evalúa fricción, claridad de flujos y consistencia de experiencia para planificadores.
+
+El contrato único de hallazgos por PR está en `ops/review/templates/findings.schema.json` y el flujo operativo en `ops/review/README.md`.
+
 ---
 
 ## 📝 Registro de Evolución Funcional
@@ -47,3 +60,4 @@ En esta sección los agentes registramos las nuevas capacidades que se van añad
 - ✅ **[2024-03-05] Integración Keycloak Superadmin:** Despliegue de un sistema basado en roles y permisos que permite segmentar proyectos por usuarios y asignar recursos específicos.
 - ✅ **[En Progreso] Editor de Horarios Multitrip:** Mejora en la interfaz de usuario para permitir la edición masiva de viajes y el recálculo automático de tiempos muertos (deadheads).
 - ✅ **[En Progreso] Overview & Contextualización:** Creación de guías de usuario integradas para facilitar el onboarding de nuevos planificadores.
+- ✅ **[2026-04-03] Gobernanza Multiagente por PR:** Implementación del marco operativo con 6 agentes, contrato estandarizado de hallazgos, consolidación PM y gate de cierre por severidad P0/P1.

@@ -14,6 +14,7 @@ import agencyRoutes from './routes/agency';
 import mapsRoutes from './routes/maps';
 import importRoutes from './routes/import';
 import projectsRoutes from './routes/projects';
+import mapPreferencesRoutes from './routes/mapPreferences';
 import fastifyStatic from '@fastify/static';
 import fastifyMultipart from '@fastify/multipart';
 import path from 'path';
@@ -92,6 +93,7 @@ server.register(agencyRoutes, { prefix: '/api' });
 server.register(mapsRoutes, { prefix: '/api' });
 server.register(importRoutes, { prefix: '/api' });
 server.register(projectsRoutes, { prefix: '/api' });
+server.register(mapPreferencesRoutes, { prefix: '/api' });
 
 // Initialize DB
 try {
